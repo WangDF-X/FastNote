@@ -146,7 +146,7 @@ Draft → Confirmed → In Progress → Done
 |---|---|
 | Edition | `edition = "2021"`，所有 crate 统一 |
 | MSRV | 1.80（写在本文件头部 `ARCH-01 §2.1` 也需同步） |
-| Target | Windows x64/arm64, macOS Universal, Linux x86_64 |
+| Target | **v1 开发只跑 Windows**（x64）。技术栈选择 Slint/winit 等跨平台方案是为了后续扩展到 macOS/Linux 时不需要重构，不是当前开发目标。 |
 | Release 优化 | `opt-level = 3`、`lto = "thin"`、`panic = "abort"`、`strip = true` |
 
 ### 3.2 Crate Workspace 结构

@@ -248,7 +248,7 @@ strip = true
 | SPIKE-05 | 长文本编辑性能（>2 万字符） | 输入卡顿 | 限制长度、分段渲染、降级为只读预览 |
 | SPIKE-06 | 三平台代码签名/公证成本 | 无法分发 | 早期申请证书；Linux 提供免签 AppImage |
 
-> **待确认 Q-01：** Slint 稳定版对 `no-frame`、`always-on-top`、透明背景的支持程度需以实际版本文档与 Spike 结果为准；本 spec 只约定产品行为，不锁定 API。当前默认：优先 Slint 原生属性，不足时通过 winit 原生窗口句柄设置。
+> **已确认（2026-10-26）Q-01：** Slint 稳定版对 `no-frame`、`always-on-top`、透明背景的支持程度需以实际版本文档与 Spike 结果为准；本 spec 只约定产品行为，不锁定 API。当前默认：优先 Slint 原生属性，不足时通过 winit 原生窗口句柄设置。
 
 ---
 

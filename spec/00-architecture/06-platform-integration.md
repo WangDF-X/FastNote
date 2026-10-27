@@ -327,8 +327,8 @@ pub trait EntryPlatform: Send + Sync {
 | SPIKE-06 | 原生文件对话框 | Windows/macOS 正常；Linux Portal 与 GTK 回退至少一条路径可用 |
 | SPIKE-07 | 三平台系统通知（发布门禁） | 安装包身份、首次授权/拒绝恢复、隐藏驻留通知、点击定位、勿扰/无服务降级；GNOME/KDE 与 macOS LSUIElement 均留证 |
 
-> **待确认 Q-03：** macOS 上 `LSUIElement=1` 且无 Dock 图标时，用户如何发现应用正在运行？当前默认：菜单栏图标 + 首次启动主窗口 + 设置页说明；不额外提供 Dock 图标选项。
-> **待确认 Q-04：** Linux 下是否随包提供 AppIndicator 依赖（deb）或仅依赖系统安装。当前默认：AppImage 内置；deb 声明依赖并提示 GNOME 扩展。
+> **已确认（2026-10-26）Q-03：** macOS 上 `LSUIElement=1` 且无 Dock 图标时，用户如何发现应用正在运行？当前默认：菜单栏图标 + 首次启动主窗口 + 设置页说明；不额外提供 Dock 图标选项。
+> **已确认（2026-10-26）Q-04：** Linux 下是否随包提供 AppIndicator 依赖（deb）或仅依赖系统安装。当前默认：AppImage 内置；deb 声明依赖并提示 GNOME 扩展。
 
 ---
 
