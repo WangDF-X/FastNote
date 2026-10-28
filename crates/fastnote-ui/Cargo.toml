@@ -1,0 +1,13 @@
+[package]
+name = "fastnote-ui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+build = "build.rs"
+
+[dependencies]
+fastnote-core.workspace = true
+slint.workspace = true
+
+[build-dependencies]
+slint-build.workspace = true

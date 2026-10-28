@@ -1,0 +1,14 @@
+export global ShellPalette {
+    in-out property <bool> dark: false;
+
+    out property <color> canvas: dark ? #101215 : #F6F7F9;
+    out property <color> surface: dark ? #171A1E : #FFFFFF;
+    out property <color> subtle: dark ? #1F2328 : #EEF0F3;
+    out property <color> hover: dark ? #23282E : #F2F4F7;
+    out property <color> selected: dark ? #1D2A45 : #E8EFFD;
+    out property <color> border: dark ? #2A2F36 : #E1E5EA;
+    out property <color> text-primary: dark ? #E7EAF0 : #1B1F24;
+    out property <color> text-secondary: dark ? #A3ACB8 : #59616C;
+    out property <color> text-tertiary: dark ? #75808C : #87909B;
+    out property <color> accent: dark ? #6E9BFF : #2E6BE6;
+}

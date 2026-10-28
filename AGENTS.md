@@ -145,7 +145,7 @@ Draft → Confirmed → In Progress → Done
 | 项 | 要求 |
 |---|---|
 | Edition | `edition = "2021"`，所有 crate 统一 |
-| MSRV | 1.80（写在本文件头部 `ARCH-01 §2.1` 也需同步） |
+| MSRV | 1.92（由 Slint 1.18.1 的最低版本要求决定；写在 ARCH-01 §2.1 也需同步） |
 | Target | **v1 开发只跑 Windows**（x64）。技术栈选择 Slint/winit 等跨平台方案是为了后续扩展到 macOS/Linux 时不需要重构，不是当前开发目标。 |
 | Release 优化 | `opt-level = 3`、`lto = "thin"`、`panic = "abort"`、`strip = true` |
 
@@ -349,10 +349,23 @@ unsafe {
 
 | 层级 | 位置 | 内容 | 要求 |
 |---|---|---|---|
-| 单元测试 | `src/file.rs` 内的 `#[cfg(test)]` | 纯函数、领域规则、派生计算 | **必须覆盖** §8、§9、§10 的全部分支 |
+| 单元测试 | `src/file.rs` 内的 `#[cfg(test)]` | 纯函数、领域规则、派生计算 | **必须覆盖** §8、§9、§10 的全部分支；用 `cargo test -p <crate>` 快速运行 |
 | 仓储集成测试 | `crates/fastnote-store/tests/` | 真实 SQLite 上的 CRUD、迁移、事务回滚、备份恢复 | 使用临时目录 + `:memory:` 或文件 |
-| UI 冒烟测试 | `crates/fastnote-ui/` | Slint 渲染是否崩溃、关键页面初始化 | CI 自动化 |
-| 端到端（手动） | 各模块验收标准 AC-* | 三平台冒烟测试 | 人工执行 + 截图存档 |
+| UI 冒烟测试 | `crates/fastnote-ui/` | Slint 组件编译、关键页面初始化与交互 | 构建检查自动化；UI 实际显示和鼠标/键盘交互按对应 AC 手工验证。稳定的 headless 测试接口确认后再自动化渲染测试 |
+| 端到端（手动） | 各模块验收标准 AC-* | 三平台冒烟测试 | 人工执行 + 按 QA-03 记录结果/截图 |
+
+#### 3.8.1 本地测试流程
+
+1. **快速验证单个 crate**：在项目根目录运行 `cargo test -p fastnote-app`（或替换为正在开发的 crate 名称）。失败时先看测试名和断言输出；不要用 `cargo clean` 作为常规排错步骤。
+2. **完整自动检查**：在 Windows PowerShell 中运行：
+
+   ```powershell
+   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\scripts\test.ps1
+   ```
+
+   脚本依次执行格式检查、Clippy、workspace 全量测试和 Debug 应用构建；任一步失败都会返回非零退出码。它不清理 `target/`。
+3. **手工启动桌面 UI**：运行 `cargo run -p fastnote-app`，窗口打开后按当前模块的验收标准操作，再关闭窗口结束程序。当前外壳阶段至少检查：启动进入“今日任务”、侧边导航标题/选中态同步、从“设置”返回来源页面、窗口可正常关闭。
+4. **明确自动化边界**：`scripts/test.ps1` 能验证 Rust 代码、Slint 文件编译、单元测试和应用链接成功；它不会替人判断 UI 是否美观，也不会自动点击窗口。UI 可见性、焦点、鼠标/键盘交互需按 AC 手工验收并记录。占位业务页不算业务功能通过。
 
 **测试编码规范**：
 - 测试函数以 `test_` 前缀开头（不用 `_` 后缀）。
@@ -376,6 +389,8 @@ cargo test --workspace --all-features
 - 每次提交前跑一遍 `cargo fmt` 和 `cargo clippy`。
 - 禁止提交带有 `clippy` 警告的代码。
 - `Cargo.lock` 纳入版本控制，禁止手动编辑。
+- `target/` 是本地增量编译缓存，由 `.gitignore` 忽略、不纳入版本控制；开发过程中默认保留，不得为了清理工作区或结束一次开发而运行 `cargo clean` 或手动删除。
+- 只有用户明确要求清理，或确认构建缓存损坏且已告知用户影响后，才可清理 `target/`。清理会导致依赖和项目重新编译，可能占用数 GB 并显著延长后续构建。
 
 ### 3.10 依赖管理规则
 
@@ -449,7 +464,8 @@ crossbeam-channel = "0.5"
   - [ ] 无不必要的 `unsafe` 块
   - [ ] 所有 `pub` API 有文档注释
 - [ ] **架构合规**：依赖方向正确，未出现反向依赖。
-- [ ] **测试覆盖**：新增/修改的逻辑有对应的单元测试。
+- [ ] **测试覆盖**：新增/修改的逻辑有对应的单元测试；Windows 本地 `scripts/test.ps1` 通过。
+- [ ] **UI 验收**：若改动影响界面交互，按对应 AC 手工启动应用验证并记录结果；不能以编译通过代替 UI 验收。
 - [ ] **错误处理**：所有 fallible 操作正确处理，错误码与 UI 映射已定义。
 - [ ] **跨模块一致性**：若有多个页面受影响，刷新矩阵中的所有相关页面都已处理。
 - [ ] **性能预算**：关键操作未超出 §5.1 目标（启动 ≤600ms、查询 p95 <10ms）。

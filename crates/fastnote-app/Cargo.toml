@@ -1,0 +1,11 @@
+[package]
+name = "fastnote-app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+fastnote-core.workspace = true
+fastnote-platform.workspace = true
+fastnote-store.workspace = true
+fastnote-ui.workspace = true

@@ -1,0 +1,8 @@
+[package]
+name = "fastnote-platform"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+fastnote-core.workspace = true
