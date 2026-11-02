@@ -1,0 +1,167 @@
+import { ShellPalette } from "../palette.slint";
+import { ActionButton } from "action-button.slint";
+
+/// SHELL-02 §6.1：对话框语义。破坏性操作的默认焦点在「取消」，且不可点击遮罩关闭。
+export enum DialogTone {
+    normal,
+    destructive,
+}
+
+export struct DialogData {
+    title: string,
+    body: string,
+    detail: string,
+    confirm-label: string,
+    tone: DialogTone,
+}
+
+/// SHELL-02 §6：模态确认对话框。
+///
+/// 结构固定为「标题 + 正文 + 可选补充 + 右下按钮区」，宽度随文案在 360–480 之间。
+/// 键盘规则：打开时聚焦主按钮（破坏性为「取消」）、Tab 在框内循环、Esc 等同取消。
+export component DialogHost inherits Rectangle {
+    in property <bool> open: false;
+    /// 每次打开（含排队对话框补位）自增，用来重新设置默认焦点。
+    in property <int> token: 0;
+    in property <DialogData> data;
+    /// 破坏性对话框为 true。
+    in property <bool> focus-cancel: true;
+    /// 非破坏性对话框才允许点击遮罩关闭。
+    in property <bool> scrim-closable: true;
+    callback confirmed();
+    callback cancelled();
+
+    visible: root.open;
+    background: transparent;
+
+    changed token => {
+        if (root.open) {
+            if (root.focus-cancel) {
+                cancel-button.focus-button();
+            } else {
+                confirm-button.focus-button();
+            }
+        }
+    }
+
+    trap := FocusScope {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: parent.height;
+        focus-on-tab-navigation: false;
+
+        key-pressed(event) => {
+            if (event.text == "\u{1b}") {
+                root.cancelled();
+                return accept;
+            }
+            // Tab = \u{9}，Shift+Tab 在部分平台上报为 Backtab \u{19}。
+            if (event.text == "\u{9}" || event.text == "\u{19}") {
+                // 焦点陷阱：只有两个按钮，Tab / Shift+Tab 在两者之间循环。
+                if (event.modifiers.shift || event.text == "\u{19}") {
+                    if (confirm-button.focused) {
+                        cancel-button.focus-button();
+                    } else {
+                        confirm-button.focus-button();
+                    }
+                } else {
+                    if (cancel-button.focused) {
+                        confirm-button.focus-button();
+                    } else {
+                        cancel-button.focus-button();
+                    }
+                }
+                return accept;
+            }
+            return reject;
+        }
+
+        scrim := Rectangle {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: parent.height;
+            background: ShellPalette.overlay;
+
+            scrim-touch := TouchArea {
+                clicked => {
+                    if (root.scrim-closable) {
+                        root.cancelled();
+                    }
+                }
+            }
+        }
+
+        card := Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: min(480px, max(360px, card-layout.preferred-width));
+            height: card-layout.preferred-height;
+            border-radius: 14px;
+            border-width: 1px;
+            border-color: ShellPalette.border;
+            background: ShellPalette.surface;
+            drop-shadow-color: ShellPalette.shadow;
+            drop-shadow-blur: 32px;
+            drop-shadow-offset-y: 12px;
+
+            // 吸收卡片内的点击，避免穿透到下方的遮罩；声明在内容之前，
+            // 这样按钮等交互元素仍然优先命中。
+            TouchArea { }
+
+            card-layout := VerticalLayout {
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                padding: 24px;
+                spacing: 8px;
+
+                Text {
+                    text: root.data.title;
+                    font-size: 16px;
+                    font-weight: 600;
+                    color: ShellPalette.text-primary;
+                    wrap: word-wrap;
+                }
+
+                Text {
+                    text: root.data.body;
+                    font-size: 13px;
+                    color: ShellPalette.text-secondary;
+                    wrap: word-wrap;
+                }
+
+                if root.data.detail != "": Text {
+                    text: root.data.detail;
+                    font-size: 13px;
+                    color: ShellPalette.text-tertiary;
+                    wrap: word-wrap;
+                }
+
+                Rectangle { height: 16px; }
+
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 8px;
+
+                    cancel-button := ActionButton {
+                        label: "取消";
+                        activated => {
+                            root.cancelled();
+                        }
+                    }
+
+                    confirm-button := ActionButton {
+                        label: root.data.confirm-label;
+                        primary: root.data.tone == DialogTone.normal;
+                        danger: root.data.tone == DialogTone.destructive;
+                        activated => {
+                            root.confirmed();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

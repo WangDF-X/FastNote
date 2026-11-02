@@ -1,4 +1,5 @@
 import { ShellPalette } from "../palette.slint";
+import { ShellFocus } from "../shell-focus.slint";
 
 export component ShellControl inherits Rectangle {
     in property <string> label;
@@ -6,10 +7,26 @@ export component ShellControl inherits Rectangle {
     in property <bool> navigation: false;
     in property <bool> selected: false;
     in property <bool> enabled: true;
+    /// 焦点锚点标识，用于对话框关闭后精确恢复焦点；空字符串表示不参与。
+    in property <string> focus-key: "";
     callback activated();
 
     private property <length> icon-size: navigation ? 18px : 16px;
     private property <color> foreground: selected ? ShellPalette.accent : ShellPalette.text-secondary;
+    private property <int> focus-tick: ShellFocus.restore-tick;
+    private property <bool> keyboard-focused: keyboard.has-focus;
+
+    changed keyboard-focused => {
+        if (keyboard-focused) {
+            ShellFocus.claim(root.focus-key);
+        }
+    }
+
+    changed focus-tick => {
+        if (root.focus-key != "" && ShellFocus.anchor == root.focus-key) {
+            keyboard.focus();
+        }
+    }
 
     height: navigation ? 40px : 32px;
     border-radius: navigation ? 8px : 6px;

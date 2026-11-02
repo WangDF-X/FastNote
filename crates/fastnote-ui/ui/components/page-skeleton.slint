@@ -1,0 +1,20 @@
+import { ShellPalette } from "../palette.slint";
+
+/// ARCH-05 §5.11：3 行静态骨架，没有闪烁或呼吸动画。
+export component PageSkeleton inherits Rectangle {
+    background: transparent;
+    accessible-role: none;
+
+    VerticalLayout {
+        padding: 24px;
+        spacing: 12px;
+        alignment: start;
+
+        for width-ratio in [1.0, 1.0, 0.6]: Rectangle {
+            height: 40px;
+            width: (root.width - 48px) * width-ratio;
+            border-radius: 8px;
+            background: ShellPalette.subtle;
+        }
+    }
+}

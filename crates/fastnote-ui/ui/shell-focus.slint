@@ -1,0 +1,24 @@
+/// SHELL-02 §8.4：对话框关闭后把焦点还给打开它的控件（AC-SHELL-17）。
+///
+/// Slint 没有焦点栈：焦点元素变不可见时只会清空焦点，不会回到上一个元素。
+/// 这里用一个窗口级锚点记录「最近获得键盘焦点的控件标识」：
+/// 可聚焦控件在获得焦点时调用 `claim`，对话框关闭时外壳调用 `restore`，
+/// 标识匹配的控件在下一次属性更新时把焦点取回来。
+export global ShellFocus {
+    /// 最近获得焦点的控件标识；空字符串表示焦点在外壳本身，没有具体控件。
+    in-out property <string> anchor: "";
+    /// 每次请求恢复焦点时自增，控件靠它的变化来重新取焦点。
+    in-out property <int> restore-tick: 0;
+
+    /// 记录当前获得焦点的控件。
+    public function claim(key: string) {
+        if (key != "" && anchor != key) {
+            anchor = key;
+        }
+    }
+
+    /// 请求把焦点还给锚点控件。
+    public function restore() {
+        restore-tick += 1;
+    }
+}

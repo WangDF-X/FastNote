@@ -1,0 +1,264 @@
+import { ShellPalette } from "../palette.slint";
+import { PageState } from "page-state.slint";
+import { ShellFocus } from "../shell-focus.slint";
+
+struct PreviewOption {
+    label: string,
+    state: PageState,
+}
+
+component PreviewChip inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected: false;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    // 预览条是当前唯一能打开对话框的入口，让它可聚焦，用来验证
+    // 「对话框关闭后焦点回到触发控件」（AC-SHELL-17）。
+    private property <string> focus-key: "preview:" + root.label;
+    private property <int> focus-tick: ShellFocus.restore-tick;
+    private property <bool> keyboard-focused: chip-keyboard.has-focus;
+
+    height: 24px;
+    width: chip-label.preferred-width + 20px;
+    border-radius: 6px;
+    background: selected ? ShellPalette.selected : chip-touch.has-hover && enabled ? ShellPalette.hover : transparent;
+    opacity: enabled ? 1 : 0.4;
+    accessible-role: button;
+    accessible-label: label;
+
+    changed keyboard-focused => {
+        if (keyboard-focused) {
+            ShellFocus.claim(root.focus-key);
+        }
+    }
+
+    changed focus-tick => {
+        if (ShellFocus.anchor == root.focus-key) {
+            chip-keyboard.focus();
+        }
+    }
+
+    chip-label := Text {
+        x: 10px;
+        y: (parent.height - self.height) / 2;
+        text: root.label;
+        font-size: 12px;
+        font-weight: root.selected ? 600 : 400;
+        color: root.selected ? ShellPalette.accent : ShellPalette.text-secondary;
+        accessible-role: none;
+    }
+
+    Rectangle {
+        x: -2px;
+        y: -2px;
+        width: parent.width + 4px;
+        height: parent.height + 4px;
+        border-radius: 8px;
+        border-width: 2px;
+        border-color: ShellPalette.accent;
+        background: transparent;
+        visible: chip-keyboard.has-focus;
+    }
+
+    chip-keyboard := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if (event.text == "\n" || event.text == " ") {
+                root.clicked();
+                return accept;
+            }
+            return reject;
+        }
+
+        chip-touch := TouchArea {
+            enabled: root.enabled;
+            mouse-cursor: pointer;
+            clicked => {
+                root.clicked();
+            }
+        }
+    }
+}
+
+/// 仅 debug 构建显示的预览条，用于人工验收页面状态与反馈组件。
+/// 它不属于产品界面，业务模块接入真实状态后可整体移除。
+export component DevPreviewBar inherits Rectangle {
+    in-out property <PageState> state: PageState.ready;
+    in property <bool> empty-available: true;
+    in property <string> route-debug;
+    /// 触发反馈组件预览，参数为预览项标识，由 Rust 侧解释。
+    callback preview(string);
+
+    height: 200px;
+    background: ShellPalette.surface;
+
+    private property <[PreviewOption]> options: [
+        { label: "正常", state: PageState.ready },
+        { label: "加载中", state: PageState.loading },
+        { label: "空态", state: PageState.empty },
+        { label: "错误", state: PageState.error },
+        { label: "只读", state: PageState.read-only },
+        { label: "刷新中", state: PageState.stale },
+    ];
+    private property <[[string]]> feedback-options: [
+        ["成功", "toast-success"],
+        ["信息", "toast-info"],
+        ["警告", "toast-warning"],
+        ["错误", "toast-error"],
+        ["带操作", "toast-action"],
+        ["连发 4 条", "toast-burst"],
+    ];
+    private property <[[string]]> dialog-options: [
+        ["普通确认", "dialog-normal"],
+        ["危险删除", "dialog-destructive"],
+        ["排队两个", "dialog-queue"],
+    ];
+    private property <[[string]]> banner-options: [
+        ["错误", "banner-error"],
+        ["警告", "banner-warning"],
+        ["信息", "banner-info"],
+        ["只读", "banner-readonly"],
+        ["多条递进", "banner-priority"],
+        ["清除", "banner-clear"],
+    ];
+    private property <[[string]]> route-options: [
+        ["指定日期", "route-calendar"],
+        ["指定小记", "route-notes"],
+        ["指定日记", "route-journal"],
+        ["归档计划", "route-plans"],
+        ["计划详情", "route-detail"],
+        ["备份设置", "route-settings"],
+        ["无效参数", "route-invalid"],
+    ];
+
+    Rectangle {
+        x: 0px;
+        y: 0px;
+        height: 1px;
+        width: parent.width;
+        background: ShellPalette.border;
+    }
+
+    VerticalLayout {
+        padding-left: 24px;
+        padding-right: 24px;
+        padding-top: 6px;
+        spacing: 0px;
+
+        HorizontalLayout {
+            height: 32px;
+            spacing: 8px;
+            alignment: start;
+
+            Text {
+                text: "开发预览 · 页面状态";
+                font-size: 12px;
+                color: ShellPalette.text-tertiary;
+                vertical-alignment: center;
+            }
+
+            for option in root.options: PreviewChip {
+                y: 4px;
+                label: option.label;
+                selected: root.state == option.state;
+                enabled: option.state != PageState.empty || root.empty-available;
+                clicked => {
+                    root.state = option.state;
+                }
+            }
+        }
+
+        HorizontalLayout {
+            height: 32px;
+            spacing: 8px;
+            alignment: start;
+
+            Text {
+                text: "开发预览 · 反馈组件";
+                font-size: 12px;
+                color: ShellPalette.text-tertiary;
+                vertical-alignment: center;
+            }
+
+            for option in root.feedback-options: PreviewChip {
+                y: 4px;
+                label: option[0];
+                clicked => {
+                    root.preview(option[1]);
+                }
+            }
+        }
+
+        HorizontalLayout {
+            height: 32px;
+            spacing: 8px;
+            alignment: start;
+
+            Text {
+                text: "开发预览 · 对话框";
+                font-size: 12px;
+                color: ShellPalette.text-tertiary;
+                vertical-alignment: center;
+            }
+
+            for option in root.dialog-options: PreviewChip {
+                y: 4px;
+                label: option[0];
+                clicked => {
+                    root.preview(option[1]);
+                }
+            }
+        }
+
+        HorizontalLayout {
+            height: 32px;
+            spacing: 8px;
+            alignment: start;
+
+            Text {
+                text: "开发预览 · 横幅";
+                font-size: 12px;
+                color: ShellPalette.text-tertiary;
+                vertical-alignment: center;
+            }
+
+            for option in root.banner-options: PreviewChip {
+                y: 4px;
+                label: option[0];
+                clicked => {
+                    root.preview(option[1]);
+                }
+            }
+        }
+
+        HorizontalLayout {
+            height: 32px;
+            spacing: 8px;
+            alignment: start;
+
+            Text {
+                text: "开发预览 · 路由";
+                font-size: 12px;
+                color: ShellPalette.text-tertiary;
+                vertical-alignment: center;
+            }
+
+            for option in root.route-options: PreviewChip {
+                y: 4px;
+                label: option[0];
+                clicked => { root.preview(option[1]); }
+            }
+        }
+
+        Text {
+            height: 32px;
+            text: "当前路由 · " + root.route-debug;
+            font-size: 11px;
+            color: ShellPalette.text-secondary;
+            wrap: word-wrap;
+            overflow: elide;
+            vertical-alignment: center;
+        }
+    }
+}

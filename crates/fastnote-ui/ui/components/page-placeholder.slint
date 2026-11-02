@@ -1,19 +1,20 @@
 import { ShellPalette } from "../palette.slint";
 
+/// 业务模块接入前的页面占位。自身填满父容器，并在其中垂直居中。
 export component PagePlaceholder inherits Rectangle {
     in property <image> icon;
     in property <string> title;
     in property <string> description;
 
-    height: 158px;
     background: transparent;
 
     VerticalLayout {
+        alignment: center;
+        padding-bottom: 32px;
         spacing: 0px;
 
         Rectangle {
             height: 56px;
-            background: transparent;
             Image {
                 x: (parent.width - self.width) / 2;
                 width: 40px;
@@ -34,7 +35,7 @@ export component PagePlaceholder inherits Rectangle {
             vertical-alignment: center;
         }
 
-        Rectangle { height: 8px; background: transparent; }
+        Rectangle { height: 8px; }
 
         Text {
             height: 40px;
@@ -46,7 +47,7 @@ export component PagePlaceholder inherits Rectangle {
             vertical-alignment: center;
         }
 
-        Rectangle { height: 16px; background: transparent; }
+        Rectangle { height: 16px; }
 
         Text {
             height: 16px;

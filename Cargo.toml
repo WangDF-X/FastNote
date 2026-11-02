@@ -20,6 +20,9 @@ fastnote-platform = { path = "crates/fastnote-platform" }
 fastnote-ui = { path = "crates/fastnote-ui" }
 slint = { version = "1.18", default-features = false, features = ["backend-winit", "renderer-femtovg", "compat-1-18"] }
 slint-build = "1.18"
+chrono = { version = "=0.4.45", default-features = false, features = ["std"] }
+uuid = { version = "=1.29.0", default-features = false, features = ["std", "v7"] }
+thiserror = "=2.0.21"
 
 [profile.release]
 opt-level = 3

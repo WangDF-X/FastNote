@@ -1,0 +1,180 @@
+import { ShellPalette } from "../palette.slint";
+import { ShellFocus } from "../shell-focus.slint";
+
+/// SHELL-02 §5：Banner 的四种类型。
+export enum BannerTone {
+    error,
+    warning,
+    info,
+    read-only,
+}
+
+export struct BannerData {
+    tone: BannerTone,
+    message: string,
+    action-label: string,
+    closable: bool,
+}
+
+/// 横幅内的文字按钮：操作链接或关闭按钮。不撑高横幅，键盘可达。
+component BannerButton inherits Rectangle {
+    in property <string> label;
+    /// 焦点锚点标识，用于对话框关闭后精确恢复焦点；空字符串表示不参与。
+    in property <string> focus-key: "";
+    /// 只显示一个字形（关闭按钮），不显示链接色。
+    in property <bool> glyph-only: false;
+    callback clicked();
+
+    private property <int> focus-tick: ShellFocus.restore-tick;
+    private property <bool> keyboard-focused: keyboard.has-focus;
+
+    height: 24px;
+    width: glyph-only ? 24px : label-text.preferred-width + 12px;
+    border-radius: 4px;
+    background: mouse-area.has-hover ? ShellPalette.hover : transparent;
+    forward-focus: keyboard;
+    accessible-role: button;
+    accessible-label: glyph-only ? "关闭提示" : label;
+
+    changed keyboard-focused => {
+        if (keyboard-focused) {
+            ShellFocus.claim(root.focus-key);
+        }
+    }
+
+    changed focus-tick => {
+        if (root.focus-key != "" && ShellFocus.anchor == root.focus-key) {
+            keyboard.focus();
+        }
+    }
+
+    label-text := Text {
+        x: glyph-only ? (parent.width - self.width) / 2 : 6px;
+        y: (parent.height - self.height) / 2;
+        text: root.label;
+        font-size: glyph-only ? 15px : 13px;
+        font-weight: glyph-only ? 400 : 500;
+        color: glyph-only ? ShellPalette.text-secondary : ShellPalette.accent;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+
+    Rectangle {
+        x: -2px;
+        y: -2px;
+        width: parent.width + 4px;
+        height: parent.height + 4px;
+        border-radius: 6px;
+        border-width: 2px;
+        border-color: ShellPalette.accent;
+        background: transparent;
+        visible: keyboard.has-focus;
+    }
+
+    keyboard := FocusScope {
+        key-pressed(event) => {
+            if (event.text == "\n" || event.text == " ") {
+                root.clicked();
+                return accept;
+            }
+            return reject;
+        }
+
+        mouse-area := TouchArea {
+            mouse-cursor: pointer;
+            clicked => {
+                keyboard.focus();
+                root.clicked();
+            }
+        }
+    }
+}
+
+/// SHELL-02 §5：页面顶部横幅，高 40、全宽、左右内边距 24。
+///
+/// Error 用 `danger-subtle` 背景且不可关闭；Warning 用 `warning` 文字；
+/// Info / Read-only 用次要文字色。是否显示、显示哪一条由 Rust 侧
+/// `feedback::banner::BannerSet` 决定。
+export component PageBanner inherits Rectangle {
+    in property <BannerTone> tone: BannerTone.info;
+    in property <string> text;
+    in property <string> action-label: "";
+    in property <bool> closable: false;
+    callback action();
+    callback dismissed();
+
+    private property <bool> is-error: tone == BannerTone.error;
+    private property <bool> is-warning: tone == BannerTone.warning;
+    private property <bool> has-action: action-label != "";
+    private property <color> icon-color: is-error ? ShellPalette.danger : is-warning ? ShellPalette.warning : ShellPalette.text-secondary;
+    private property <color> text-color: is-error ? ShellPalette.text-primary : is-warning ? ShellPalette.warning : ShellPalette.text-secondary;
+    private property <image> icon: tone == BannerTone.read-only ? @image-url("../../../../ui/icons/lock.svg") : tone == BannerTone.info ? @image-url("../../../../ui/icons/info.svg") : @image-url("../../../../ui/icons/alert.svg");
+
+    height: 40px;
+    background: is-error ? ShellPalette.danger-subtle : ShellPalette.subtle;
+
+    HorizontalLayout {
+        padding-left: 24px;
+        padding-right: 24px;
+        spacing: 8px;
+
+        // 图标槽：撑满高度后自行垂直居中，避免依赖布局的交叉轴对齐。
+        Rectangle {
+            width: 16px;
+
+            Image {
+                y: (parent.height - self.height) / 2;
+                width: 16px;
+                height: 16px;
+                source: root.icon;
+                colorize: root.icon-color;
+                accessible-role: none;
+            }
+        }
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.text;
+            font-size: 13px;
+            color: root.text-color;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        Rectangle {
+            visible: root.has-action;
+            width: root.has-action ? action-button.width : 0px;
+
+            action-button := BannerButton {
+                y: (parent.height - self.height) / 2;
+                label: root.action-label;
+                focus-key: "banner-action";
+                clicked => {
+                    root.action();
+                }
+            }
+        }
+
+        Rectangle {
+            visible: root.closable;
+            width: root.closable ? close-button.width : 0px;
+
+            close-button := BannerButton {
+                y: (parent.height - self.height) / 2;
+                glyph-only: true;
+                label: "×";
+                focus-key: "banner-close";
+                clicked => {
+                    root.dismissed();
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        width: parent.width;
+        background: ShellPalette.border;
+    }
+}

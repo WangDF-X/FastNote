@@ -1,0 +1,11 @@
+/// SHELL-01 §6：页面级状态。
+///
+/// `stale` 保留旧内容，仅在顶部显示细进度条；`read-only` 内容正常，顶部显示只读横幅。
+export enum PageState {
+    ready,
+    loading,
+    empty,
+    error,
+    read-only,
+    stale,
+}

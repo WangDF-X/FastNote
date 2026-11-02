@@ -9,3 +9,5 @@ fastnote-core.workspace = true
 fastnote-platform.workspace = true
 fastnote-store.workspace = true
 fastnote-ui.workspace = true
+chrono = { workspace = true, features = ["clock"] }
+thiserror.workspace = true
