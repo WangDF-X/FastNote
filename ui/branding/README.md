@@ -128,11 +128,19 @@ F 是**镂空**的（露出纸色），斜体：`skewX(-11)`，基线保持水�
 
    需要 Pillow。脚本会覆盖 `fastnote.ico` 与 `png/`。
 
-## 接入建议（尚未实施）
+## 接入现状
 
-图标已定稿，但还没有接进程序。接入按以下顺序，且每一项都需要单独确认：
+| 使用位置 | 接入方式 | 资源 |
+|---|---|---|
+| exe / 资源管理器文件图标 | `crates/fastnote-app/build.rs` 调用 Windows SDK 的 `rc.exe`，把图标编进 exe 资源 | `fastnote.ico`（16–256 九档） |
+| 窗口标题栏 | `MainWindow` 的 `icon` 属性，Slint 后端按 64pt 光栅化后设置 `ICON_SMALL` | `fastnote-app-icon.svg` |
+| 任务栏 / Alt+Tab | `fastnote-platform::set_window_big_icon` 从 exe 资源加载 ico 并设置 `ICON_BIG` | `fastnote.ico` |
+| 侧边栏品牌区（24px） | Slint `@image-url` | `fastnote-app-icon-small.svg` |
+| 悬浮球（32px） | Slint `@image-url` | `fastnote-app-icon-small.svg` |
+| 系统托盘 | `include_bytes!` + `png` 解码成 32px RGBA | `png/fastnote-32.png` |
 
-- **exe / 任务栏**：在 `crates/fastnote-app` 增加 `.rc`（`IDI_ICON1 ICON "…/fastnote.ico"`）并在 `build.rs` 里调用资源编译器，
-  或引入 `embed-resource` / `winres` 构建依赖。后者属于新增依赖，按 `AGENTS.md` §3.10 需要先确认。
-- **托盘**：`tray-icon` 在 Windows 上用 `Icon::from_path` 读取 `fastnote.ico`，或 `include_bytes!` 一个 32px PNG 解码成 RGBA。
-- **应用内品牌区**：`@image-url("../../ui/branding/fastnote-app-icon.svg")`，在 32–64px 显示。
+- exe 图标不引入新依赖，只调用 `rc.exe`。脚本按 `RC` 环境变量 → `PATH` → Windows SDK 的顺序查找，
+  找不到时构建失败并给出提示，不会静默生成没有图标的 exe。
+- 改完图标重新构建即可生效；`build.rs` 已监听 `fastnote.ico` 的变更。
+- 托盘没有复用 `fastnote.ico`：`tray-icon` 0.24 的 `Icon::from_rgba` 只接受单张位图，
+  而 32px 正好是 Windows 托盘的默认边长。

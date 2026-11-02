@@ -57,6 +57,8 @@ pub(super) struct Runtime {
     pub restore: Cell<Option<ResolvedGeometry>>,
     pub ball_position: RefCell<Option<BallPosition>>,
     pub geometry_timer: Timer,
+    /// 已设置过大图标的 HWND；窗口重建后 HWND 变化，用于避免每次 Resized 重复设置。
+    pub main_icon: Cell<isize>,
     pub menu_open: Cell<bool>,
     pub drag: RefCell<Option<BallDrag>>,
     pub next_id: Cell<u64>,
@@ -120,6 +122,7 @@ impl Runtime {
             restore: Cell::new(None),
             ball_position: RefCell::new(None),
             geometry_timer: Timer::default(),
+            main_icon: Cell::new(0),
             menu_open: Cell::new(false),
             drag: RefCell::new(None),
             next_id: Cell::new(1),

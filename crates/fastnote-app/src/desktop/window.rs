@@ -53,6 +53,8 @@ impl Runtime {
                         Timer::single_shot(Duration::ZERO, move || {
                             if let Some(runtime) = weak.upgrade() {
                                 runtime.sync_minimized_timers();
+                                // 窗口创建/重建后的首个 Resized，补齐任务栏大图标。
+                                runtime.apply_main_icon();
                             }
                         });
                     }

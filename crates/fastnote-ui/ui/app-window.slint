@@ -25,6 +25,9 @@ struct PagePresentation {
 
 export component MainWindow inherits Window {
     title: "FastNote";
+    // 标题栏图标（winit 只设置 ICON_SMALL）；任务栏/Alt+Tab 由
+    // fastnote-platform::set_window_big_icon 从 exe 资源补齐。
+    icon: @image-url("../../../ui/branding/fastnote-app-icon.svg");
     preferred-width: 1280px;
     preferred-height: 800px;
     min-width: 1024px;
@@ -207,8 +210,16 @@ export component MainWindow inherits Window {
                     Rectangle {
                         height: 64px;
                         background: transparent;
-                        Text {
+                        Image {
                             x: 20px;
+                            y: 20px;
+                            width: 24px;
+                            height: 24px;
+                            source: @image-url("../../../ui/branding/fastnote-app-icon-small.svg");
+                            accessible-role: none;
+                        }
+                        Text {
+                            x: 52px;
                             y: 20px;
                             height: 24px;
                             text: "FastNote";

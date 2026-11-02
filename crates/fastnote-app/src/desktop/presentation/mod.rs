@@ -9,6 +9,7 @@ use slint::winit_030::WinitWindowAccessor;
 use slint::{ComponentHandle, Timer};
 
 use super::runtime::{Completion, Runtime};
+use super::window::native_handle;
 use state::{switch, Surfaces};
 
 pub(super) use state::{entry_view, minimize_to_ball, Presentation, SwitchError};
@@ -139,6 +140,8 @@ impl Runtime {
         if recreating {
             window.set_minimized(false);
             window.set_maximized(false);
+            // 原生窗口会重建，HWND 可能复用；清空去重标记以便重设大图标。
+            self.main_icon.set(0);
             if let Some(geometry) = geometry {
                 window.set_size(slint::LogicalSize::new(
                     geometry.w as f32,
@@ -168,6 +171,33 @@ impl Runtime {
             }
         }
         Ok(())
+    }
+
+    /// 补齐任务栏和 Alt+Tab 使用的大图标（ICON_BIG）。
+    ///
+    /// winit 的窗口图标只设置 ICON_SMALL（标题栏）；Slint 的图标在窗口创建前写入
+    /// 属性，创建时不会再设置任务栏图标。这里在窗口真正创建后（首次 `Resized`）
+    /// 按 HWND 去重设置一次，隐藏后重建会再次触发。
+    pub(super) fn apply_main_icon(&self) {
+        self.shell
+            .component()
+            .window()
+            .with_winit_window(|winit_window| {
+                let Some(handle) = native_handle(winit_window) else {
+                    return;
+                };
+                if self.main_icon.get() == handle.0 {
+                    return;
+                }
+                match fastnote_platform::set_window_big_icon(handle) {
+                    Ok(()) => self.main_icon.set(handle.0),
+                    Err(error) => tracing::warn!(
+                        phase = "window_icon",
+                        code = error.native_code(),
+                        "failed to set the window big icon"
+                    ),
+                }
+            });
     }
 }
 

@@ -1,13 +1,19 @@
-use ::windows::core::Error;
-use ::windows::Win32::Foundation::{GetLastError, SetLastError, ERROR_SUCCESS, HWND, POINT, RECT};
+use std::sync::OnceLock;
+
+use ::windows::core::{Error, PCWSTR};
+use ::windows::Win32::Foundation::{
+    GetLastError, SetLastError, ERROR_SUCCESS, HINSTANCE, HWND, LPARAM, POINT, RECT, WPARAM,
+};
 use ::windows::Win32::Graphics::Gdi::{MonitorFromRect, MONITOR_DEFAULTTONEAREST};
+use ::windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use ::windows::Win32::UI::HiDpi::{AdjustWindowRectExForDpi, GetDpiForWindow};
 use ::windows::Win32::UI::WindowsAndMessaging::{
     GetClientRect, GetCursorPos, GetWindowLongPtrW, GetWindowPlacement, GetWindowRect, IsIconic,
-    IsZoomed, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, GWL_STYLE, HWND_TOPMOST,
-    SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SW_SHOWMAXIMIZED, WINDOWPLACEMENT,
-    WINDOW_EX_STYLE, WINDOW_STYLE, WPF_RESTORETOMAXIMIZED, WS_EX_APPWINDOW, WS_EX_NOACTIVATE,
-    WS_EX_TOOLWINDOW, WS_MAXIMIZE, WS_MINIMIZE,
+    IsZoomed, LoadImageW, SendMessageW, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, GWL_STYLE,
+    HWND_TOPMOST, ICON_BIG, IMAGE_ICON, LR_DEFAULTSIZE, SWP_FRAMECHANGED, SWP_NOACTIVATE,
+    SWP_NOMOVE, SWP_NOSIZE, SW_SHOWMAXIMIZED, WINDOWPLACEMENT, WINDOW_EX_STYLE, WINDOW_STYLE,
+    WM_SETICON, WPF_RESTORETOMAXIMIZED, WS_EX_APPWINDOW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+    WS_MAXIMIZE, WS_MINIMIZE,
 };
 use fastnote_core::WindowGeometry;
 
@@ -66,6 +72,55 @@ fn configure_tool_window(
         )?;
     }
     Ok(())
+}
+
+/// 品牌图标在 exe 资源里的编号，与 `crates/fastnote-app/build.rs` 的 `1 ICON` 一致。
+const BRAND_ICON_RESOURCE_ID: u16 = 1;
+
+/// 只加载一次的窗口大图标；进程退出时由系统回收。
+/// 窗口隐藏会销毁原生窗口，重新显示时需要再次把同一个 HICON 设置回去。
+static BRAND_BIG_ICON: OnceLock<Option<isize>> = OnceLock::new();
+
+/// 把 exe 资源里的品牌图标设为窗口大图标（任务栏、Alt+Tab）。
+///
+/// winit 的 `set_window_icon` 只写 ICON_SMALL（标题栏），任务栏读取的 ICON_BIG
+/// 依赖外壳回退到 exe 图标；这里显式设置，不依赖外壳的图标缓存与回退顺序。
+pub fn set_window_big_icon(handle: NativeWindowHandle) -> Result<(), PlatformError> {
+    let icon = brand_big_icon().ok_or(PlatformError::Icon)?;
+    // SAFETY: HWND 是不透明输入；HICON 由本模块持有到进程退出，窗口只保存引用。
+    unsafe {
+        SendMessageW(
+            handle.hwnd(),
+            WM_SETICON,
+            Some(WPARAM(ICON_BIG as usize)),
+            Some(LPARAM(icon)),
+        );
+    }
+    Ok(())
+}
+
+fn brand_big_icon() -> Option<isize> {
+    *BRAND_BIG_ICON.get_or_init(|| {
+        // SAFETY: 模块句柄与资源编号都是进程内不透明值；MAKEINTRESOURCE(1) 只是
+        // 指针大小的编号，LoadImageW 不会解引用它，返回的 HICON 由静态变量持有。
+        // LR_DEFAULTSIZE 让系统按当前 DPI 的图标尺寸挑选 ico 中最接近的一档，
+        // 不指定时 0×0 会退回 ico 的第一帧（16px），任务栏会发虚。
+        unsafe {
+            let module = GetModuleHandleW(PCWSTR::null()).ok()?;
+            let icon = LoadImageW(
+                Some(HINSTANCE(module.0)),
+                PCWSTR::from_raw(std::ptr::without_provenance(
+                    BRAND_ICON_RESOURCE_ID as usize,
+                )),
+                IMAGE_ICON,
+                0,
+                0,
+                LR_DEFAULTSIZE,
+            )
+            .ok()?;
+            Some(icon.0 as isize)
+        }
+    })
 }
 
 /// 在真实鼠标事件中读取指针物理坐标，用于计算拖动；不移动/模拟用户鼠标。

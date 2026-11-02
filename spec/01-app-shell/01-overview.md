@@ -55,7 +55,7 @@ FastNote 主窗口
 | --- | --- |
 | 宽度 | 208px 固定 |
 | 背景 | `bg.canvas`，右侧 1px `border.default` |
-| 品牌区 | 高 64，左侧 20 显示应用名 `FastNote`（16px semibold） |
+| 品牌区 | 高 64，左侧 20 显示 24px 应用图标 + 8px 间距 + 应用名 `FastNote`（16px semibold） |
 | 导航项 | 高 40，左侧 20；图标 18 + 8 间距 + 文字 14；圆角 8；左右内边距 12 |
 | 选中态 | `bg.selected` + `accent` 图标/文字 + 左侧 3px `accent` 竖条（圆角） |
 | hover | `bg.hover` |
@@ -228,6 +228,12 @@ pub enum Route {
 - 保存等待期间若窗口仍被系统移动/最大化，收到提交结果后再次校验并补交最终矩形，不能隐藏时保存过期位置。诊断日志采用已有 `tracing` + 有界后台写入，按日/5MB 滚动并保留 7 天；只写错误码、日志 ID、底层数字码等白名单字段，不写正文或任意 message。
 - 文件日志初始化/写入失败时，终端仍输出失败阶段、有效日志/数据库路径、错误类别、底层数字码和日志 ID；设置错误使用与界面相同的日志 ID。路径只在本机终端显示，不进入文件日志；原始错误字符串、SQL、绑定值和正文不得输出。
 - 悬浮球的自绘菜单为独立 Slint 工具小窗，按工作区翻转/夹取并在失焦或 Esc 时关闭；本轮透明度固定 90%（hover/press 恢复 100%），不接入闲置效果或其它额外动画。
+
+> **后续变更（2026-11-02）**：图标已接入应用内和 exe。`crates/fastnote-app/build.rs` 在构建时调用 Windows SDK 的
+> `rc.exe`，把 `ui/branding/fastnote.ico` 编成 exe 资源（资源管理器文件图标）；`MainWindow` 用 `icon:` 设置窗口级图标
+> （标题栏）；任务栏和 Alt+Tab 读取的 `ICON_BIG` 由 `fastnote-platform::set_window_big_icon` 从同一 exe 资源加载后补齐
+> （winit 只设置 `ICON_SMALL`）；侧边栏品牌区增加 24px 图标（SHELL-01 §3.2）。构建步骤不新增依赖，非 Windows 目标不执行；
+> 找不到 `rc.exe` 时构建直接失败，不会静默产出无图标的 exe。
 
 | 新增直接依赖 | 用途 / 许可 / 影响与替代 |
 | --- | --- |
