@@ -1,0 +1,98 @@
+import { ShellPalette } from "../palette.slint";
+import { ShellFocus } from "../shell-focus.slint";
+
+/// ARCH-05 §5.1：Primary / Secondary / Danger 按钮，高 32、圆角 6。
+export component ActionButton inherits Rectangle {
+    in property <string> label;
+    /// 强调色实心按钮。
+    in property <bool> primary: false;
+    /// 危险色实心按钮，用于删除等破坏性操作（SHELL-02 §6.1）。
+    in property <bool> danger: false;
+    in property <bool> enabled: true;
+    /// 焦点锚点标识，用于对话框关闭后精确恢复焦点；空字符串表示不参与。
+    in property <string> focus-key: "";
+    /// 供对话框做初始聚焦与 Tab 循环判断。
+    out property <bool> focused: keyboard.has-focus;
+    callback activated();
+
+    private property <bool> filled: primary || danger;
+    private property <color> fill-color: danger ? ShellPalette.danger : ShellPalette.accent;
+    private property <int> focus-tick: ShellFocus.restore-tick;
+    private property <bool> keyboard-focused: keyboard.has-focus;
+
+    changed keyboard-focused => {
+        if (keyboard-focused) {
+            ShellFocus.claim(root.focus-key);
+        }
+    }
+
+    changed focus-tick => {
+        if (root.focus-key != "" && ShellFocus.anchor == root.focus-key) {
+            keyboard.focus();
+        }
+    }
+
+    /// 让外部（如 DialogHost）把键盘焦点移到这个按钮上。
+    public function focus-button() {
+        keyboard.focus();
+    }
+
+    height: 32px;
+    width: max(72px, label-text.preferred-width + 32px);
+    border-radius: 6px;
+    border-width: filled ? 0px : 1px;
+    border-color: ShellPalette.border;
+    background: filled ? (mouse-area.pressed ? fill-color.darker(0.25) : mouse-area.has-hover ? fill-color.darker(0.1) : fill-color) : (mouse-area.pressed ? ShellPalette.subtle : mouse-area.has-hover ? ShellPalette.hover : ShellPalette.surface);
+    opacity: enabled ? 1 : 0.45;
+    forward-focus: keyboard;
+    accessible-role: button;
+    accessible-label: label;
+    accessible-action-default => {
+        if (root.enabled) {
+            root.activated();
+        }
+    }
+
+    label-text := Text {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        text: root.label;
+        font-size: 13px;
+        font-weight: 500;
+        color: root.filled ? ShellPalette.on-accent : ShellPalette.text-primary;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+
+    Rectangle {
+        x: -3px;
+        y: -3px;
+        width: parent.width + 6px;
+        height: parent.height + 6px;
+        border-radius: 8px;
+        border-width: 2px;
+        border-color: ShellPalette.accent;
+        background: transparent;
+        visible: keyboard.has-focus;
+    }
+
+    keyboard := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if (event.text == "\n" || event.text == " ") {
+                root.activated();
+                return accept;
+            }
+            return reject;
+        }
+
+        mouse-area := TouchArea {
+            enabled: root.enabled;
+            mouse-cursor: pointer;
+            clicked => {
+                keyboard.focus();
+                root.activated();
+            }
+        }
+    }
+}

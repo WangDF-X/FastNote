@@ -1,6 +1,6 @@
 # ARCH-01 技术栈与运行时
 
-> 文档编号：ARCH-01 ｜ 模块：00 总览与架构 ｜ 状态：已定稿 v0.1 ｜ 更新：2026-10-23
+> 文档编号：ARCH-01 ｜ 模块：00 总览与架构 ｜ 状态：已定稿 v0.2 ｜ 更新：2026-10-27
 > 上游：[product.md](../../product.md) §1.1、§8 ｜ 下游：[ARCH-02 架构](02-architecture.md)、[ARCH-06 平台](06-platform-integration.md)
 
 ---
@@ -20,7 +20,7 @@
 
 | 项 | 选型 | 说明 |
 | --- | --- | --- |
-| 语言 | Rust stable，Edition 2021，MSRV 1.80 | 稳定、单二进制、无 GC、跨平台。 |
+| 语言 | Rust stable，Edition 2021，MSRV 1.92 | Slint 1.18.1 的最低 Rust 版本为 1.92；当前开发环境为 Rust 1.99.1。 |
 | UI | Slint 1.x 最新稳定版 | 声明式 UI、编译期检查、原生渲染、内存占用低。 |
 | 存储 | SQLite 3（`rusqlite`，`bundled` + `backup`） | 本地单文件、WAL、事务、在线备份。 |
 | 平台集成 | `winit` 原生窗口 + `tray-icon` / `muda` / `global-hotkey` / `auto-launch` / `single-instance` | 与 Slint 的 winit 后端同源，避免引入第二套窗口系统。 |

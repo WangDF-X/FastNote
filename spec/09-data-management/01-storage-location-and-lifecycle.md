@@ -19,7 +19,7 @@
 | 编号 | 来源 | 需求 | 承载位置 |
 | --- | --- | --- | --- |
 | DATA-01 | ARCH-04 §2 | 单 SQLite 文件为主存储 | §3 |
-| DATA-02 | ARCH-04 §4 | app_meta.json 存储设置 | §3 |
+| DATA-02 | ARCH-04 §4 | SQLite app_settings 存储设置 | §3 |
 | DATA-03 | ARCH-04 §5 | 存储位置在设置中可见 | §4 |
 | DATA-04 | SHELL-02 §5 | 存储异常 Banner | §5 |
 
@@ -30,11 +30,11 @@
 ```
 {data_dir}/                          # 数据根目录（见 §4）
 ├── fastnote.db                      # SQLite 主数据库（WAL 模式）
-│   ├── fastnote.db-wal              # WAL 日志
-│   └── fastnote.db-shm              # Shared memory
-├── app_meta.json                    # 应用元数据（设置、窗口几何、入口位置等）
-└── backups/                         # 自动备份目录（DATA-02）
-    └── backup_YYYYMMDD_HHMMSS.db.copy
+├── fastnote.db-wal                  # WAL 日志
+├── fastnote.db-shm                  # Shared memory
+├── logs/                            # 诊断日志
+└── backups/                         # 预迁移备份目录（ARCH-04）
+    └── pre-migration-v1-YYYYMMDD-HHMMSS.fnsbackup
 ```
 
 ### 3.1 文件权限
@@ -42,7 +42,6 @@
 | 文件 | 权限 |
 | --- | --- |
 | `fastnote.db` | 用户可读可写；仅当前系统账户可访问 |
-| `app_meta.json` | 同左 |
 | `backups/` | 只由应用写入，用户可通过 UI 浏览和复制 |
 
 ---
@@ -51,7 +50,7 @@
 
 | 平台 | 默认路径 |
 | --- | --- |
-| Windows | `%APPDATA%\FastNote\` |
+| Windows | `%LOCALAPPDATA%\FastNote\` |
 | macOS | `$HOME/Library/Application Support/FastNote/` |
 | Linux | `$XDG_CONFIG_HOME/fastnote/` 或 `$HOME/.config/fastnote/` |
 
@@ -84,9 +83,9 @@
 
 | 阶段 | 行为 |
 | --- | --- |
-| 首次启动 | 创建 data_dir + fastnote.db（初始化 schema）+ app_meta.json（写入默认值） |
-| 日常运行 | DB 以 WAL 模式运行；meta JSON 防抖写入（5s 或事件驱动） |
-| 退出 | checkpoint 写 DB；flush meta JSON |
+| 首次启动 | 创建 data_dir + fastnote.db（正式 v2 schema，默认设置存入 app_settings） |
+| 日常运行 | DB 以 WAL 模式运行；窗口几何按 SHELL-01 的 500ms 防抖写入 app_settings |
+| 退出 | 提交最终几何与入口位置，然后 checkpoint；不创建 JSON 配置副本 |
 | 重新安装 | 保留旧 data_dir 不被删除（用户可选择清除） |
 
 ---

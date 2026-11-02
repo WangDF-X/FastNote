@@ -1,0 +1,96 @@
+import { ShellPalette } from "palette.slint";
+
+export component FloatingBall inherits Window {
+    title: "FastNote 悬浮球";
+    preferred-width: 48px;
+    preferred-height: 48px;
+    min-width: 48px;
+    max-width: 48px;
+    min-height: 48px;
+    max-height: 48px;
+    no-frame: true;
+    always-on-top: true;
+    background: transparent;
+    callback pointer-phase(int);
+    callback menu-requested();
+
+    Rectangle {
+        width: 48px; height: 48px;
+        border-radius: 24px;
+        background: ShellPalette.surface;
+        border-width: 1px;
+        border-color: ShellPalette.border;
+        opacity: ball-touch.has-hover || ball-touch.pressed ? 1 : 0.9;
+        Image {
+            x: 8px; y: 8px; width: 32px; height: 32px;
+            source: @image-url("../../../ui/branding/fastnote-app-icon-small.svg");
+            accessible-role: none;
+        }
+        ball-touch := TouchArea {
+            mouse-cursor: pointer;
+            pointer-event(event) => {
+                if (event.button == PointerEventButton.left) {
+                    if (event.kind == PointerEventKind.down) { root.pointer-phase(0); }
+                    if (event.kind == PointerEventKind.up) { root.pointer-phase(2); }
+                }
+                if (event.kind == PointerEventKind.cancel) { root.pointer-phase(3); }
+                if (event.button == PointerEventButton.right && event.kind == PointerEventKind.up) { root.menu-requested(); }
+            }
+            moved => { if (self.pressed) { root.pointer-phase(1); } }
+        }
+    }
+}
+
+struct EntryMenuItem { label: string, action: string }
+
+/// 自绘的独立小窗口：winit 的嵌入 PopupWindow 无法越过 48px 球体窗口边界。
+/// app 负责按工作区翻转/夹取位置、失焦关闭；不使用原生菜单。
+export component BallMenuWindow inherits Window {
+    title: "FastNote 入口菜单";
+    width: 232px;
+    height: 380px;
+    no-frame: true;
+    always-on-top: true;
+    background: ShellPalette.surface;
+    default-font-family: "Microsoft YaHei UI";
+    callback action(string);
+    callback dismissed();
+    private property <int> active-index: 0;
+    private property <[EntryMenuItem]> items: [
+        { label: "打开主界面", action: "desktop:show" },
+        { label: "今日任务", action: "navigate:今日任务" },
+        { label: "日历", action: "navigate:日历" },
+        { label: "小记", action: "navigate:小记" },
+        { label: "日记", action: "navigate:日记" },
+        { label: "计划板", action: "navigate:计划板" },
+        { label: "设置", action: "navigate:设置" },
+        { label: "切换到系统托盘", action: "desktop:entry:tray" },
+        { label: "退出 FastNote", action: "desktop:quit" },
+    ];
+
+    public function focus-menu() { root.active-index = 0; keyboard.focus(); }
+
+    keyboard := FocusScope {
+        focus-on-tab-navigation: false;
+        key-pressed(event) => {
+            if (event.text == Key.Escape) { root.dismissed(); }
+            else if (event.text == Key.DownArrow || (event.text == Key.Tab && !event.modifiers.shift)) { root.active-index = Math.mod(root.active-index + 1, 9); }
+            else if (event.text == Key.UpArrow || (event.text == Key.Tab && event.modifiers.shift)) { root.active-index = Math.mod(root.active-index + 8, 9); }
+            else if (event.text == "\n" || event.text == " ") { root.action(root.items[root.active-index].action); }
+            else { return reject; }
+            return accept;
+        }
+        for item[index] in root.items: Rectangle {
+            x: 8px; y: 8px + index * 40px; width: parent.width - 16px; height: 36px;
+            border-radius: 6px;
+            background: root.active-index == index || mouse.has-hover ? ShellPalette.hover : transparent;
+            border-width: root.active-index == index && keyboard.has-focus ? 1px : 0px;
+            border-color: ShellPalette.accent;
+            accessible-role: button;
+            accessible-label: item.label;
+            accessible-action-default => { root.action(item.action); }
+            Text { x: 12px; height: parent.height; text: item.label; color: ShellPalette.text-primary; font-size: 13px; vertical-alignment: center; }
+            mouse := TouchArea { mouse-cursor: pointer; clicked => { root.active-index = index; root.action(item.action); } }
+        }
+    }
+}

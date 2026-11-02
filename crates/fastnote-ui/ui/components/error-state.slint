@@ -1,0 +1,109 @@
+import { ShellPalette } from "../palette.slint";
+import { ActionButton } from "action-button.slint";
+
+/// SHELL-01 §6：页面内错误块。说明 + 「重试」 + 可复制的日志 ID，不展示内部错误详情。
+export component ErrorState inherits Rectangle {
+    in property <string> title;
+    in property <string> message;
+    in property <string> log-id;
+    callback retry();
+
+    background: transparent;
+
+    VerticalLayout {
+        alignment: center;
+        padding-bottom: 32px;
+        spacing: 0px;
+
+        Rectangle {
+            height: 56px;
+            Image {
+                x: (parent.width - self.width) / 2;
+                width: 40px;
+                height: 40px;
+                source: @image-url("../../../../ui/icons/alert.svg");
+                colorize: ShellPalette.danger;
+                accessible-role: none;
+            }
+        }
+
+        Text {
+            text: root.title;
+            font-size: 15px;
+            font-weight: 600;
+            color: ShellPalette.text-primary;
+            horizontal-alignment: center;
+        }
+
+        Rectangle { height: 6px; }
+
+        Text {
+            text: root.message;
+            font-size: 13px;
+            color: ShellPalette.text-secondary;
+            wrap: word-wrap;
+            horizontal-alignment: center;
+        }
+
+        Rectangle {
+            height: 52px;
+            HorizontalLayout {
+                x: 0px;
+                y: 20px;
+                width: parent.width;
+                height: 32px;
+                alignment: center;
+                spacing: 8px;
+
+                ActionButton {
+                    label: "重试";
+                    focus-key: "error-retry";
+                    activated => {
+                        root.retry();
+                    }
+                }
+
+                ActionButton {
+                    label: copied ? "已复制" : "复制日志 ID";
+                    focus-key: "error-copy";
+                    activated => {
+                        log-input.select-all();
+                        log-input.copy();
+                        log-input.clear-selection();
+                        copied = true;
+                    }
+                }
+            }
+        }
+
+        Rectangle { height: 12px; }
+
+        Rectangle {
+            height: 20px;
+            HorizontalLayout {
+                alignment: center;
+                spacing: 8px;
+
+                Text {
+                    text: "日志 ID";
+                    font-size: 12px;
+                    color: ShellPalette.text-tertiary;
+                    vertical-alignment: center;
+                }
+
+                log-input := TextInput {
+                    width: self.preferred-width;
+                    text: root.log-id;
+                    read-only: true;
+                    font-size: 12px;
+                    font-family: "Consolas";
+                    color: ShellPalette.text-secondary;
+                    vertical-alignment: center;
+                    accessible-label: "日志 ID";
+                }
+            }
+        }
+    }
+
+    private property <bool> copied: false;
+}

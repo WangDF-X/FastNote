@@ -1,0 +1,21 @@
+# Cargo build artifacts for the whole workspace
+/target/
+
+# Rust compiler backup files
+**/*.rs.bk
+
+# Local IDE metadata (shared project settings can be committed selectively)
+.idea/
+.vscode/
+
+# Operating-system metadata
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor temporary and backup files
+*.swp
+*.swo
+*~
+
+# Keep Cargo.lock tracked: this application workspace needs reproducible versions.

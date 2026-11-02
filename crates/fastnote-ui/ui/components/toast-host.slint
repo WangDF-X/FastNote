@@ -1,0 +1,130 @@
+import { ShellPalette } from "../palette.slint";
+
+export enum ToastTone {
+    success,
+    info,
+    warning,
+    error,
+}
+
+export struct ToastData {
+    id: int,
+    tone: ToastTone,
+    message: string,
+    action-label: string,
+}
+
+/// SHELL-02 §3：单条 Toast。宽度 320–420 随文案自适应，不进入 Tab 序列，不抢焦点。
+component ToastCard inherits Rectangle {
+    in property <ToastData> data;
+    callback hover-changed(bool);
+    callback action();
+
+    private property <bool> hovered: hover-area.has-hover;
+    private property <bool> has-action: data.action-label != "";
+    private property <length> action-width: has-action ? action-text.preferred-width + 12px : 0px;
+    private property <color> tone-color: data.tone == ToastTone.success ? ShellPalette.success : data.tone == ToastTone.warning ? ShellPalette.warning : data.tone == ToastTone.error ? ShellPalette.danger : ShellPalette.text-secondary;
+    private property <image> tone-icon: data.tone == ToastTone.success ? @image-url("../../../../ui/icons/check-circle.svg") : data.tone == ToastTone.info ? @image-url("../../../../ui/icons/info.svg") : @image-url("../../../../ui/icons/alert.svg");
+
+    height: 44px;
+    width: min(420px, max(320px, 40px + message-text.preferred-width + action-width + 16px));
+    border-radius: 10px;
+    border-width: 1px;
+    border-color: ShellPalette.border;
+    background: ShellPalette.surface;
+    drop-shadow-color: ShellPalette.shadow;
+    drop-shadow-blur: 24px;
+    drop-shadow-offset-y: 8px;
+
+    changed hovered => {
+        root.hover-changed(root.hovered);
+    }
+
+    hover-area := TouchArea { }
+
+    Image {
+        x: 16px;
+        y: (parent.height - self.height) / 2;
+        width: 16px;
+        height: 16px;
+        source: root.tone-icon;
+        colorize: root.tone-color;
+        accessible-role: none;
+    }
+
+    message-text := Text {
+        x: 40px;
+        y: (parent.height - self.height) / 2;
+        width: parent.width - 40px - root.action-width - 16px;
+        height: 20px;
+        text: root.data.message;
+        font-size: 14px;
+        color: ShellPalette.text-primary;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    Rectangle {
+        visible: root.has-action;
+        x: parent.width - root.action-width - 4px;
+        y: 8px;
+        width: root.action-width;
+        height: 28px;
+        border-radius: 6px;
+        background: action-touch.has-hover ? ShellPalette.hover : transparent;
+    }
+
+    action-text := Text {
+        visible: root.has-action;
+        x: parent.width - root.action-width + 2px;
+        y: (parent.height - self.height) / 2;
+        text: root.data.action-label;
+        font-size: 13px;
+        font-weight: 500;
+        color: ShellPalette.accent;
+        accessible-role: none;
+    }
+
+    action-touch := TouchArea {
+        enabled: root.has-action;
+        x: parent.width - root.action-width - 4px;
+        y: 8px;
+        width: root.action-width;
+        height: 28px;
+        mouse-cursor: pointer;
+        clicked => {
+            root.action();
+        }
+    }
+}
+
+/// 主窗口内容区底部居中的 Toast 堆叠区。空白处不拦截鼠标事件。
+export component ToastHost inherits Rectangle {
+    in property <[ToastData]> toasts;
+    in property <length> bottom-inset: 24px;
+    callback hover-changed(int, bool);
+    callback action(int);
+
+    background: transparent;
+
+    VerticalLayout {
+        alignment: end;
+        padding-bottom: root.bottom-inset;
+        spacing: 8px;
+
+        for toast in root.toasts: Rectangle {
+            height: 44px;
+
+            ToastCard {
+                x: (parent.width - self.width) / 2;
+                data: toast;
+                hover-changed(hovered) => {
+                    root.hover-changed(toast.id, hovered);
+                }
+                action => {
+                    root.action(toast.id);
+                }
+            }
+        }
+    }
+}

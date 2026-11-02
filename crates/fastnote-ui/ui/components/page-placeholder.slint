@@ -1,0 +1,61 @@
+import { ShellPalette } from "../palette.slint";
+
+/// 业务模块接入前的页面占位。自身填满父容器，并在其中垂直居中。
+export component PagePlaceholder inherits Rectangle {
+    in property <image> icon;
+    in property <string> title;
+    in property <string> description;
+
+    background: transparent;
+
+    VerticalLayout {
+        alignment: center;
+        padding-bottom: 32px;
+        spacing: 0px;
+
+        Rectangle {
+            height: 56px;
+            Image {
+                x: (parent.width - self.width) / 2;
+                width: 40px;
+                height: 40px;
+                source: root.icon;
+                colorize: ShellPalette.text-tertiary;
+                accessible-role: none;
+            }
+        }
+
+        Text {
+            height: 22px;
+            text: root.title;
+            font-size: 15px;
+            font-weight: 600;
+            color: ShellPalette.text-primary;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+
+        Rectangle { height: 8px; }
+
+        Text {
+            height: 40px;
+            text: root.description;
+            font-size: 13px;
+            color: ShellPalette.text-secondary;
+            wrap: word-wrap;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+
+        Rectangle { height: 16px; }
+
+        Text {
+            height: 16px;
+            text: "开发占位 · 尚未接入业务功能";
+            font-size: 11px;
+            color: ShellPalette.text-secondary;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}

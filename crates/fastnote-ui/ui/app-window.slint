@@ -1,0 +1,396 @@
+import { ShellPalette } from "palette.slint";
+import { ShellFocus } from "shell-focus.slint";
+import { ShellControl } from "components/shell-control.slint";
+import { PagePlaceholder } from "components/page-placeholder.slint";
+import { PageFrame } from "components/page-frame.slint";
+import { PageHeader } from "components/page-header.slint";
+import { PageState } from "components/page-state.slint";
+import { DevPreviewBar } from "components/dev-preview-bar.slint";
+import { ToastHost, ToastData, ToastTone } from "components/toast-host.slint";
+import { DialogHost, DialogData, DialogTone } from "components/dialog-host.slint";
+import { BannerData, BannerTone } from "components/page-banner.slint";
+import { GeneralSettings } from "components/general-settings.slint";
+import { FloatingBall, BallMenuWindow } from "floating-ball.slint";
+
+export { BannerData, BannerTone, DialogData, DialogTone, ToastData, ToastTone, FloatingBall, BallMenuWindow }
+
+struct PagePresentation {
+    label: string,
+    icon: image,
+    description: string,
+    empty-title: string,
+    empty-description: string,
+    empty-action: string,
+}
+
+export component MainWindow inherits Window {
+    title: "FastNote";
+    // 标题栏图标（winit 只设置 ICON_SMALL）；任务栏/Alt+Tab 由
+    // fastnote-platform::set_window_big_icon 从 exe 资源补齐。
+    icon: @image-url("../../../ui/branding/fastnote-app-icon.svg");
+    preferred-width: 1280px;
+    preferred-height: 800px;
+    min-width: 1024px;
+    min-height: 680px;
+    default-font-family: "Microsoft YaHei UI";
+    default-font-size: 14px;
+    background: ShellPalette.canvas;
+
+    in property <string> current_page: "今日任务";
+    in property <string> page-title: "今日任务";
+    in property <string> route-context;
+    in property <string> route-debug;
+    in property <bool> can-go-back: false;
+    in property <bool> plan-detail: false;
+    in property <bool> general-settings: false;
+    /// 0 读取配置中 / 1 可用 / 2 存储失败。
+    in property <int> desktop-state: 0;
+    in property <string> storage-error-message;
+    in property <string> storage-error-log-id;
+    in property <string> entry-mode: "ball";
+    in property <bool> entry-available: false;
+    in property <string> close-behavior: "entry";
+    in property <bool> desktop-busy: false;
+    in property <string> show-hotkey-status: "正在注册…";
+    /// 仅 debug 构建为 true，显示页面状态预览条。
+    in property <bool> dev_tools: false;
+    in property <[ToastData]> toasts;
+    /// SHELL-02 §6：对话框状态由 `feedback::dialog` 的队列计算后写入。
+    in property <bool> dialog-visible: false;
+    in property <DialogData> dialog;
+    in property <bool> dialog-focus-cancel: true;
+    in property <bool> dialog-scrim-closable: true;
+    in property <int> dialog-token: 0;
+    /// SHELL-02 §5：当前页横幅，由 `feedback::banner` 选出最高级的一条。
+    in property <bool> banner-visible: false;
+    in property <BannerData> banner;
+    callback route_action(string);
+    callback toast_hover(int, bool);
+    callback toast_action(int);
+    /// debug 预览条触发的反馈预览，参数为预览项标识。
+    callback preview_feedback(string);
+    callback dialog_confirm();
+    callback dialog_cancel();
+    callback banner_action();
+    callback banner_dismissed();
+    /// 后台线程只能通过 event loop 唤醒此回调。
+    callback desktop-wakeup();
+
+    /// SHELL-02 §8.1：切换路由后聚焦页头，但不抢走模态对话框的焦点。
+    public function focus-route-header() {
+        if (!root.dialog-visible) {
+            ShellFocus.anchor = "";
+            page-header.focus();
+        }
+    }
+
+    init => {
+        shortcuts.focus();
+    }
+
+    // AC-SHELL-17 / SHELL-02 §8.4：对话框关闭后把焦点还给打开它的控件。
+    // 锚点为空说明打开前焦点就在外壳上，直接回到外壳。
+    changed dialog-visible => {
+        if (!root.dialog-visible) {
+            ShellFocus.restore();
+        }
+    }
+
+    changed desktop-busy => {
+        if (!root.desktop-busy && !root.dialog-visible) { ShellFocus.restore(); }
+    }
+
+    private property <int> restore-tick: ShellFocus.restore-tick;
+
+    changed restore-tick => {
+        if (ShellFocus.anchor == "") {
+            shortcuts.focus();
+        }
+    }
+
+    // 横幅关闭后它自己的按钮随之消失，锚点已无对应控件，把焦点交回外壳。
+    changed banner-visible => {
+        if (!root.banner-visible && (ShellFocus.anchor == "banner-close" || ShellFocus.anchor == "banner-action")) {
+            ShellFocus.anchor = "";
+            shortcuts.focus();
+        }
+    }
+
+    private property <[PagePresentation]> pages: [
+        {
+            label: "今日任务",
+            icon: @image-url("../../../ui/icons/today.svg"),
+            description: "集中查看当天要做的事，逐项推进。\n任务列表与快速添加将在今日任务模块接入。",
+            empty-title: "今天还没有任务",
+            empty-description: "在下方输入框快速添加，按 Enter 保存。",
+            empty-action: "",
+        },
+        {
+            label: "日历",
+            icon: @image-url("../../../ui/icons/calendar.svg"),
+            description: "从时间维度查看和调整任务安排。\n月 / 周日历将在日历模块接入。",
+            empty-title: "这一天还没有安排",
+            empty-description: "点击「新建任务」为这一天添加任务。",
+            empty-action: "新建任务",
+        },
+        {
+            label: "小记",
+            icon: @image-url("../../../ui/icons/notes.svg"),
+            description: "快速记录临时想法，之后再整理。\n小记列表与编辑能力将在小记模块接入。",
+            empty-title: "还没有小记",
+            empty-description: "记录临时想法，之后可以转为任务。",
+            empty-action: "写第一条",
+        },
+        {
+            label: "日记",
+            icon: @image-url("../../../ui/icons/journal.svg"),
+            description: "按日期记录进展，留住每天的思考。\n日记编辑与回顾将在日记模块接入。",
+            empty-title: "这一天还没有日记",
+            empty-description: "写下今天的进展或感受，内容会自动保存。",
+            empty-action: "开始写",
+        },
+        {
+            label: "计划板",
+            icon: @image-url("../../../ui/icons/plan.svg"),
+            description: "将较大目标拆成阶段和任务。\n计划列表、路线图与任务树将在计划板模块接入。",
+            empty-title: "还没有计划",
+            empty-description: "把较大的目标拆成阶段和任务，跟踪整体进展。",
+            empty-action: "新建计划",
+        },
+    ];
+    private property <PageState> preview-state: PageState.ready;
+    private property <PageState> effective-state: root.desktop-state == 0 ? PageState.loading : root.desktop-state == 2 ? PageState.error : root.dev_tools ? (root.current_page == "设置" && root.preview-state == PageState.empty ? PageState.ready : root.preview-state) : PageState.ready;
+    private property <int> active-index: current_page == "日历" ? 1 : current_page == "小记" ? 2 : current_page == "日记" ? 3 : current_page == "计划板" ? 4 : 0;
+    private property <image> settings-icon: @image-url("../../../ui/icons/settings.svg");
+
+    // SHELL-02 §7.2: 应用级快捷键。子控件拒绝的按键会冒泡到这里，
+    // 所以焦点在导航项上或窗口空白处时都能生效。
+    shortcuts := FocusScope {
+        focus-on-tab-navigation: false;
+        key-pressed(event) => {
+            // SHELL-02 §6.1：对话框打开期间应用级快捷键不得穿透。
+            if (root.dialog-visible) {
+                return reject;
+            }
+            if (!event.modifiers.control || event.modifiers.alt || event.modifiers.shift) {
+                return reject;
+            }
+            if (event.text == "1") {
+                root.route_action("navigate:今日任务");
+            } else if (event.text == "2") {
+                root.route_action("navigate:日历");
+            } else if (event.text == "3") {
+                root.route_action("navigate:小记");
+            } else if (event.text == "4") {
+                root.route_action("navigate:日记");
+            } else if (event.text == "5") {
+                root.route_action("navigate:计划板");
+            } else if (event.text == ",") {
+                root.route_action("navigate:设置");
+            } else if (event.text == "w" || event.text == "W") {
+                root.route_action("desktop:close");
+            } else {
+                return reject;
+            }
+            return accept;
+        }
+
+        HorizontalLayout {
+            spacing: 0px;
+            padding: 0px;
+
+            Rectangle {
+                width: 208px;
+                background: ShellPalette.canvas;
+
+                VerticalLayout {
+                    spacing: 0px;
+                    padding: 0px;
+
+                    Rectangle {
+                        height: 64px;
+                        background: transparent;
+                        Image {
+                            x: 20px;
+                            y: 20px;
+                            width: 24px;
+                            height: 24px;
+                            source: @image-url("../../../ui/branding/fastnote-app-icon-small.svg");
+                            accessible-role: none;
+                        }
+                        Text {
+                            x: 52px;
+                            y: 20px;
+                            height: 24px;
+                            text: "FastNote";
+                            font-size: 16px;
+                            font-weight: 600;
+                            color: ShellPalette.text-primary;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    VerticalLayout {
+                        height: 232px;
+                        padding-top: 12px;
+                        padding-bottom: 4px;
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        spacing: 4px;
+
+                        for page in root.pages: ShellControl {
+                            navigation: true;
+                            label: page.label;
+                            icon: page.icon;
+                            focus-key: "nav:" + page.label;
+                            selected: root.current_page == page.label;
+                            activated => {
+                                root.route_action("navigate:" + page.label);
+                            }
+                        }
+                    }
+
+                    Rectangle { vertical-stretch: 1; background: transparent; }
+
+                    Rectangle {
+                        height: 1px;
+                        background: transparent;
+                        Rectangle {
+                            x: 12px;
+                            width: parent.width - 24px;
+                            height: 1px;
+                            background: ShellPalette.border;
+                        }
+                    }
+
+                    Rectangle {
+                        height: 64px;
+                        background: transparent;
+                        ShellControl {
+                            x: 12px;
+                            y: 12px;
+                            width: parent.width - 24px;
+                            navigation: true;
+                            label: "设置";
+                            icon: root.settings-icon;
+                            focus-key: "nav:设置";
+                            selected: root.current_page == "设置";
+                            activated => {
+                                root.route_action("navigate:设置");
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    x: parent.width - 1px;
+                    width: 1px;
+                    height: parent.height;
+                    background: ShellPalette.border;
+                }
+            }
+
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 0px;
+                padding: 0px;
+
+                page-header := PageHeader {
+                    title: root.page-title;
+                    context: root.desktop-busy ? (root.desktop-state == 0 ? "正在读取窗口配置…" : "正在保存窗口配置…") : root.route-context;
+                    can-go-back: root.can-go-back;
+                    back-focus-key: root.plan-detail ? "plan-back" : "settings-back";
+                    back => { root.route_action("back"); }
+                }
+
+                PageFrame {
+                    vertical-stretch: 1;
+                    state: root.effective-state;
+                    empty-icon: root.pages[root.active-index].icon;
+                    empty-title: root.plan-detail ? "这个计划还没有阶段" : root.pages[root.active-index].empty-title;
+                    empty-description: root.plan-detail ? "添加阶段来组织任务，或直接在计划下添加任务。" : root.pages[root.active-index].empty-description;
+                    empty-action: root.plan-detail ? "添加阶段" : root.pages[root.active-index].empty-action;
+                    error-title: "无法加载" + root.page-title;
+                    error-message: root.desktop-state == 2 ? root.storage-error-message : "请重试。如果问题持续出现，请提供下方的日志 ID。";
+                    error-log-id: root.desktop-state == 2 ? root.storage-error-log-id : "preview-0000-0000";
+                    read-only-text: "所属计划已归档，仅供查看。";
+                    banner-visible: root.banner-visible;
+                    banner: root.banner;
+                    banner-action => {
+                        root.banner_action();
+                    }
+                    banner-dismissed => {
+                        root.banner_dismissed();
+                    }
+                    retry => {
+                        if (root.desktop-state == 2) {
+                            root.route_action("desktop:retry");
+                        } else {
+                            root.preview-state = PageState.ready;
+                        }
+                        // 重试按钮随错误块消失，把焦点交回外壳，快捷键才不会失效。
+                        shortcuts.focus();
+                    }
+
+                    if root.general-settings: GeneralSettings {
+                        entry-mode: root.entry-mode;
+                        entry-available: root.entry-available;
+                        close-behavior: root.close-behavior;
+                        busy: root.desktop-busy;
+                        hotkey-status: root.show-hotkey-status;
+                        action(value) => { root.route_action(value); }
+                    }
+                    if !root.general-settings: PagePlaceholder {
+                        icon: root.current_page == "设置" ? root.settings-icon : root.pages[root.active-index].icon;
+                        title: root.page-title + "工作区";
+                        description: root.current_page == "设置" ? "外观、快捷键和数据管理将在这里统一设置。\n点击右上角返回，可回到进入设置前的页面。" : root.pages[root.active-index].description;
+                    }
+                }
+
+                if root.dev_tools: DevPreviewBar {
+                    state <=> root.preview-state;
+                    empty-available: root.current_page != "设置";
+                    route-debug: root.route-debug;
+                    preview(item) => {
+                        root.preview_feedback(item);
+                    }
+                }
+            }
+        }
+
+        // SHELL-02 §3.1：Toast 居中于内容区，距底 24。
+        ToastHost {
+            x: 208px;
+            y: 0px;
+            width: parent.width - 208px;
+            height: parent.height;
+            bottom-inset: root.dev_tools ? 224px : 24px;
+            toasts: root.toasts;
+            hover-changed(id, hovered) => {
+                root.toast_hover(id, hovered);
+            }
+            action(id) => {
+                root.toast_action(id);
+            }
+        }
+
+        // SHELL-02 §6：对话框覆盖整个窗口，在 Toast 之上，打开时抢走焦点。
+        DialogHost {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: parent.height;
+            open: root.dialog-visible;
+            token: root.dialog-token;
+            data: root.dialog;
+            focus-cancel: root.dialog-focus-cancel;
+            scrim-closable: root.dialog-scrim-closable;
+            confirmed => {
+                root.dialog_confirm();
+            }
+            cancelled => {
+                root.dialog_cancel();
+            }
+        }
+    }
+}

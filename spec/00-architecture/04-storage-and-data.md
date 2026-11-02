@@ -400,7 +400,7 @@ CREATE INDEX idx_journal_date      ON journal_entries(entry_date DESC);
 | --- | --- | --- | --- | --- | --- |
 | `appearance.theme` | enum | `system` | `system` / `light` / `dark` | SHELL | 主题；`system` 跟随系统。 |
 | `appearance.density` | enum | `comfortable` | `comfortable` / `compact` | SHELL | 列表行高与间距。 |
-| `appearance.ball_size` | int | `64` | 48–96（px） | ENTRY | 悬浮球直径。 |
+| `appearance.ball_size` | int | `48` | 48–96（px） | ENTRY | 悬浮球直径；本轮固定 48，无尺寸控件。 |
 | `appearance.ball_opacity` | int | `90` | 30–100（%） | ENTRY | 悬浮球不透明度，闲置 3s 后生效。 |
 | `appearance.ball_position` | json | 空 | `{x,y,monitor}` | ENTRY | 上次位置；恢复时按可见屏幕校正。 |
 | `appearance.week_starts_on` | enum | `monday` | `monday` / `sunday` | CAL | 日历周起始日。 |
@@ -421,7 +421,9 @@ CREATE INDEX idx_journal_date      ON journal_entries(entry_date DESC);
 | 键 | 类型 | 默认值 | 取值 | 归属 | 说明 |
 | --- | --- | --- | --- | --- | --- |
 | `data.backup_dir` | path | 空 | 绝对路径 | DATA | 空表示使用平台默认备份目录。 |
-| `window.main_geometry` | json | 空 | `{x,y,w,h}` | SHELL | 主窗口位置与尺寸；恢复时校正到可见区域。 |
+| `window.main_geometry` | json | 空 | `{x,y,w,h,maximized}` | SHELL | 逻辑坐标的还原矩形及最大化标记；恢复时校正到可见区域。旧值缺少 `maximized` 时为 `false`。 |
+
+> **已确认（2026-11-02）Q-SHELL-03/04：** 窗口/入口配置存放在本表对应的 SQLite `app_settings`，不另建 `app_meta.json` 副本。最大化不覆盖还原矩形；最小化状态不持久化。设置键不变，无需新增 schema 版本。
 
 **校验与变更**
 

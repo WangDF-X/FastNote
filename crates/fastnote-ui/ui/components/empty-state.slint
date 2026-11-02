@@ -1,0 +1,63 @@
+import { ShellPalette } from "../palette.slint";
+import { ActionButton } from "action-button.slint";
+
+/// ARCH-05 §5.10：页面级空态。单色线性图标 + 标题 + 说明 + 可选主操作。
+export component EmptyState inherits Rectangle {
+    in property <image> icon;
+    in property <string> title;
+    in property <string> description;
+    in property <string> action-label;
+    callback action();
+
+    background: transparent;
+
+    VerticalLayout {
+        alignment: center;
+        padding-bottom: 32px;
+        spacing: 0px;
+
+        Rectangle {
+            height: 56px;
+            Image {
+                x: (parent.width - self.width) / 2;
+                width: 40px;
+                height: 40px;
+                source: root.icon;
+                colorize: ShellPalette.text-tertiary;
+                accessible-role: none;
+            }
+        }
+
+        Text {
+            text: root.title;
+            font-size: 15px;
+            font-weight: 600;
+            color: ShellPalette.text-primary;
+            horizontal-alignment: center;
+        }
+
+        Rectangle { height: 6px; }
+
+        Text {
+            text: root.description;
+            font-size: 13px;
+            color: ShellPalette.text-secondary;
+            wrap: word-wrap;
+            horizontal-alignment: center;
+        }
+
+        if root.action-label != "": Rectangle {
+            height: 52px;
+            ActionButton {
+                x: (parent.width - self.width) / 2;
+                y: 20px;
+                primary: true;
+                focus-key: "empty-action";
+                label: root.action-label;
+                activated => {
+                    root.action();
+                }
+            }
+        }
+    }
+}

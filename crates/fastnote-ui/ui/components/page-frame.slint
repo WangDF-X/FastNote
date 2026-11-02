@@ -1,0 +1,127 @@
+import { ShellPalette } from "../palette.slint";
+import { PageState } from "page-state.slint";
+import { PageBanner, BannerData, BannerTone } from "page-banner.slint";
+import { PageSkeleton } from "page-skeleton.slint";
+import { EmptyState } from "empty-state.slint";
+import { ErrorState } from "error-state.slint";
+
+/// SHELL-01 §3.4 / §6：内容区容器与页面状态。
+///
+/// 子元素只在 `ready`、`stale`、`read-only` 状态显示；其余状态由外壳统一绘制。
+/// 同一时刻只有一种状态，错误优先于空态由调用方保证。
+export component PageFrame inherits Rectangle {
+    in property <PageState> state: PageState.ready;
+    in property <image> empty-icon;
+    in property <string> empty-title;
+    in property <string> empty-description;
+    in property <string> empty-action;
+    in property <string> error-title;
+    in property <string> error-message;
+    in property <string> error-log-id;
+    in property <string> read-only-text;
+    /// SHELL-02 §5：Rust 侧选出的最高级横幅；它优先于只读状态自带的横幅。
+    in property <bool> banner-visible: false;
+    in property <BannerData> banner;
+    callback retry();
+    callback empty-action-activated();
+    callback banner-action();
+    callback banner-dismissed();
+
+    private property <bool> shows-content: state == PageState.ready || state == PageState.stale || state == PageState.read-only;
+    private property <bool> shows-read-only-banner: state == PageState.read-only && !root.banner-visible;
+
+    background: ShellPalette.canvas;
+
+    VerticalLayout {
+        spacing: 0px;
+        padding: 0px;
+
+        if root.banner-visible: PageBanner {
+            tone: root.banner.tone;
+            text: root.banner.message;
+            action-label: root.banner.action-label;
+            closable: root.banner.closable;
+            action => {
+                root.banner-action();
+            }
+            dismissed => {
+                root.banner-dismissed();
+            }
+        }
+
+        if root.shows-read-only-banner: PageBanner {
+            tone: BannerTone.read-only;
+            text: root.read-only-text;
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+
+            Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: 24px;
+                width: min(1200px, parent.width - 48px);
+                height: parent.height - 48px;
+                border-radius: 10px;
+                border-width: 1px;
+                border-color: ShellPalette.border;
+                background: ShellPalette.surface;
+
+                VerticalLayout {
+                    visible: root.shows-content;
+                    @children
+                }
+
+                if root.state == PageState.loading: PageSkeleton {
+                    x: 0px;
+                    y: 0px;
+                    width: parent.width;
+                    height: parent.height;
+                }
+
+                if root.state == PageState.empty: EmptyState {
+                    x: 0px;
+                    y: 0px;
+                    width: parent.width;
+                    height: parent.height;
+                    icon: root.empty-icon;
+                    title: root.empty-title;
+                    description: root.empty-description;
+                    action-label: root.empty-action;
+                    action => {
+                        root.empty-action-activated();
+                    }
+                }
+
+                if root.state == PageState.error: ErrorState {
+                    x: 0px;
+                    y: 0px;
+                    width: parent.width;
+                    height: parent.height;
+                    title: root.error-title;
+                    message: root.error-message;
+                    log-id: root.error-log-id;
+                    retry => {
+                        root.retry();
+                    }
+                }
+            }
+        }
+    }
+
+    if root.state == PageState.stale: Rectangle {
+        x: 0px;
+        y: 0px;
+        height: 2px;
+        width: parent.width;
+        background: ShellPalette.subtle;
+
+        Rectangle {
+            x: 0px;
+            y: 0px;
+            height: parent.height;
+            width: parent.width * 0.35;
+            background: ShellPalette.accent;
+        }
+    }
+}
