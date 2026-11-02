@@ -1,17 +1,13 @@
 mod clock;
 mod controller;
+mod desktop;
+mod logging;
 mod routing;
 
-use clock::SystemClock;
-use controller::AppController;
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut controller = AppController::new(SystemClock);
-    let initial_view = controller.shell_view();
-
-    fastnote_ui::run(initial_view, move |action| {
-        controller.handle_action(&action)
-    })?;
-
-    Ok(())
+    let hidden = std::env::args()
+        .skip(1)
+        .any(|argument| argument == "--hidden");
+    let _logs = logging::start();
+    desktop::run(hidden)
 }

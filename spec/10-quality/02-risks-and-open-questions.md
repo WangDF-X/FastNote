@@ -105,7 +105,7 @@
 
 | 文档 | 局部待确认 |
 | --- | --- |
-| [SHELL-01](../01-app-shell/01-overview.md) | Q-SHELL-01（已确认，2026-11-02）：用户选择进行中 / 已归档两个 Tab；已完成但未归档的计划留在进行中显示完成进度。已同步 PLAN-01，不新增计划状态。 |
+| [SHELL-01](../01-app-shell/01-overview.md) | Q-SHELL-01 已确认：两个计划 Tab。Q-SHELL-02..04 已确认（2026-11-02）：双入口与 Ctrl+Alt+Space、SQLite、还原矩形 + maximized。Q-SHELL-05..07 已确认：48px 紧凑球、主窗/球互斥、仅左右吸附（保留高度、等距左侧优先）；实施范围见 SHELL-01 §5.4。 |
 | [ENTRY-01](../02-desktop-entry/01-floating-ball.md) | Q-ENTRY-01..03：Wayland 默认创建球、重置位置回主屏、全屏应用是否自动隐藏 |
 | [ENTRY-02](../02-desktop-entry/02-tray-and-lifecycle.md) | Q-ENTRY-04..06：macOS 自启传参、Linux 托盘不可用是否写设置、会话结束冲刷 |
 | [ENTRY-03](../02-desktop-entry/03-global-hotkeys.md) | Q-ENTRY-07..09：Shift 单修饰键、macOS 权限、全局与应用内组合相同 |

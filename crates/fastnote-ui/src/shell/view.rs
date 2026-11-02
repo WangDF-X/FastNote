@@ -17,6 +17,8 @@ pub struct ShellView {
     pub can_go_back: bool,
     /// 是否为计划详情，用于选择正确的占位空态。
     pub is_plan_detail: bool,
+    /// 是否显示本阶段的通用窗口设置，而不是其它设置分组的占位页。
+    pub is_general_settings: bool,
 }
 
 impl ShellView {
@@ -27,6 +29,7 @@ impl ShellView {
         window.set_route_debug(self.route_debug.clone().into());
         window.set_can_go_back(self.can_go_back);
         window.set_plan_detail(self.is_plan_detail);
+        window.set_general_settings(self.is_general_settings);
     }
 }
 

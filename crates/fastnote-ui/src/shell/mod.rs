@@ -1,15 +1,17 @@
-﻿//! 主窗口装配：把 Slint 回调接到应用动作入口和反馈组件的视图模型上。
+//! 主窗口装配：把 Slint 回调接到应用动作入口和反馈组件的视图模型上。
 
+mod handle;
 mod preview;
 mod view;
 
+pub use handle::ShellHandle;
 pub use view::{NavigationIssue, ShellUpdate, ShellView};
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use slint::{ComponentHandle, Model, ModelRc, Timer, TimerMode, VecModel};
+use slint::{Model, Timer, TimerMode, VecModel};
 
 use crate::feedback::banner::{BannerKind, BannerRequest, BannerSet};
 use crate::feedback::dialog::{DialogFocus, DialogKind, DialogOutcome, DialogQueue, DialogRequest};
@@ -30,6 +32,7 @@ struct Shell {
     toast_model: Rc<VecModel<ToastData>>,
     toast_timer: Timer,
     last_tick: Cell<Instant>,
+    visible: Cell<bool>,
     dialogs: RefCell<DialogQueue>,
     /// 每次显示对话框自增，用来让 Slint 侧重新聚焦默认按钮。
     dialog_token: Cell<i32>,
@@ -44,25 +47,11 @@ pub fn run(
     initial_view: ShellView,
     handle_action: impl FnMut(String) -> ShellUpdate + 'static,
 ) -> Result<(), slint::PlatformError> {
-    let window = MainWindow::new()?;
-    initial_view.apply(&window);
-    window.set_dev_tools(cfg!(debug_assertions));
-
-    let shell = Rc::new(Shell {
-        window: window.as_weak(),
-        handler: RefCell::new(Box::new(handle_action)),
-        toasts: RefCell::new(ToastQueue::new()),
-        toast_model: Rc::new(VecModel::default()),
-        toast_timer: Timer::default(),
-        last_tick: Cell::new(Instant::now()),
-        dialogs: RefCell::new(DialogQueue::new()),
-        dialog_token: Cell::new(0),
-        banners: RefCell::new(BannerSet::new()),
-    });
-    window.set_toasts(ModelRc::from(shell.toast_model.clone()));
-    connect(&window, &shell);
-
-    window.run()
+    use slint::ComponentHandle;
+    let shell = ShellHandle::new(initial_view, handle_action)?;
+    shell.component().set_desktop_state(1);
+    shell.resume_timers();
+    shell.component().run()
 }
 
 /// 回调只持有 `Shell` 的弱引用，避免窗口与 `Shell` 互相持有。
@@ -167,7 +156,7 @@ impl Shell {
     }
 
     fn ensure_toast_timer(self: &Rc<Self>) {
-        if self.toast_timer.running() || self.toasts.borrow().is_empty() {
+        if !self.visible.get() || self.toast_timer.running() || self.toasts.borrow().is_empty() {
             return;
         }
         self.last_tick.set(Instant::now());

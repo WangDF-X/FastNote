@@ -216,6 +216,12 @@ impl Route {
             route_debug: self.to_action(),
             can_go_back: matches!(self, Self::Settings { .. } | Self::PlanDetail { .. }),
             is_plan_detail: matches!(self, Self::PlanDetail { .. }),
+            is_general_settings: matches!(
+                self,
+                Self::Settings {
+                    section: SettingsSection::General
+                }
+            ),
         }
     }
 }

@@ -18,11 +18,21 @@ fastnote-core = { path = "crates/fastnote-core" }
 fastnote-store = { path = "crates/fastnote-store" }
 fastnote-platform = { path = "crates/fastnote-platform" }
 fastnote-ui = { path = "crates/fastnote-ui" }
-slint = { version = "1.18", default-features = false, features = ["backend-winit", "renderer-femtovg", "compat-1-18"] }
+slint = { version = "1.18", default-features = false, features = ["backend-winit", "renderer-femtovg", "compat-1-18", "unstable-winit-030"] }
 slint-build = "1.18"
 chrono = { version = "=0.4.45", default-features = false, features = ["std"] }
 uuid = { version = "=1.29.0", default-features = false, features = ["std", "v7"] }
 thiserror = "=2.0.21"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+rusqlite = { version = "=0.41.0", default-features = false, features = ["bundled", "backup"] }
+crossbeam-channel = "=0.5.17"
+tempfile = "=3.27.0"
+tray-icon = { version = "=0.24.1", default-features = false }
+global-hotkey = { version = "=0.9.0", default-features = false }
+windows = { version = "=0.62.2", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_HiDpi", "Win32_UI_WindowsAndMessaging"] }
+png = "=0.18.1"
+tracing = "=0.1.44"
 
 [profile.release]
 opt-level = 3

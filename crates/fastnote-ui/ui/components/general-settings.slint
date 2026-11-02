@@ -1,0 +1,73 @@
+import { ShellPalette } from "../palette.slint";
+import { ActionButton } from "action-button.slint";
+import { ScrollView } from "std-widgets.slint";
+
+/// SHELL-01 §5.4：只接入驻留/关闭设置，完整外观和业务设置继续占位。
+export component GeneralSettings inherits Rectangle {
+    in property <string> entry-mode;
+    in property <bool> entry-available;
+    in property <string> close-behavior;
+    in property <bool> busy;
+    in property <string> hotkey-status;
+    callback action(string);
+    background: transparent;
+
+    scroll := ScrollView {
+        horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+        content-width: self.visible-width;
+        content-height: max(self.visible-height, body.preferred-height);
+        body := VerticalLayout {
+        padding: 24px;
+        spacing: 16px;
+        Text { text: "窗口与桌面入口"; font-size: 16px; font-weight: 600; color: ShellPalette.text-primary; }
+        Text { text: "修改后即时生效，配置保存在本机 SQLite 数据库。"; color: ShellPalette.text-secondary; font-size: 13px; }
+        Rectangle { height: 8px; }
+
+        Rectangle {
+            height: 104px;
+            background: ShellPalette.surface;
+            border-width: 1px;
+            border-color: ShellPalette.border;
+            border-radius: 8px;
+            VerticalLayout {
+                padding: 16px;
+                spacing: 12px;
+                Text { text: root.entry-available ? "常驻入口 · 两种模式互斥" : "入口不可用 · 关闭窗口将退出应用"; font-size: 13px; color: root.entry-available ? ShellPalette.text-primary : ShellPalette.warning; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    ActionButton { label: "悬浮球"; primary: root.entry-mode == "ball"; enabled: !root.busy; focus-key: "entry-ball"; activated => { root.action("desktop:entry:ball"); } }
+                    ActionButton { label: "系统托盘"; primary: root.entry-mode == "tray"; enabled: !root.busy; focus-key: "entry-tray"; activated => { root.action("desktop:entry:tray"); } }
+                    Rectangle { horizontal-stretch: 1; background: transparent; }
+                }
+            }
+        }
+        Rectangle {
+            height: 104px;
+            background: ShellPalette.surface;
+            border-width: 1px;
+            border-color: ShellPalette.border;
+            border-radius: 8px;
+            VerticalLayout {
+                padding: 16px;
+                spacing: 12px;
+                Text { text: "关闭按钮 / Ctrl+W"; font-size: 13px; color: ShellPalette.text-primary; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    ActionButton { label: "隐藏到入口"; primary: root.close-behavior == "entry"; enabled: !root.busy; focus-key: "close-entry"; activated => { root.action("desktop:close-behavior:entry"); } }
+                    ActionButton { label: "退出应用"; primary: root.close-behavior == "quit"; enabled: !root.busy; focus-key: "close-quit"; activated => { root.action("desktop:close-behavior:quit"); } }
+                    Rectangle { horizontal-stretch: 1; background: transparent; }
+                }
+            }
+        }
+        Text { text: "全局唤起：" + root.hotkey-status; font-size: 13px; color: ShellPalette.text-secondary; wrap: word-wrap; }
+        Text { text: "新建快捷键、开机启动和其它设置将在对应模块接入。"; font-size: 12px; color: ShellPalette.text-secondary; }
+        HorizontalLayout {
+            spacing: 8px;
+            ActionButton { label: "退出 FastNote"; enabled: !root.busy; focus-key: "desktop-quit"; activated => { root.action("desktop:quit"); } }
+            Text { text: root.busy ? "正在保存…" : ""; color: ShellPalette.text-secondary; font-size: 12px; vertical-alignment: center; }
+            Rectangle { horizontal-stretch: 1; background: transparent; }
+        }
+        Rectangle { vertical-stretch: 1; background: transparent; }
+        }
+    }
+}

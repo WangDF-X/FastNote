@@ -9,8 +9,10 @@ import { DevPreviewBar } from "components/dev-preview-bar.slint";
 import { ToastHost, ToastData, ToastTone } from "components/toast-host.slint";
 import { DialogHost, DialogData, DialogTone } from "components/dialog-host.slint";
 import { BannerData, BannerTone } from "components/page-banner.slint";
+import { GeneralSettings } from "components/general-settings.slint";
+import { FloatingBall, BallMenuWindow } from "floating-ball.slint";
 
-export { BannerData, BannerTone, DialogData, DialogTone, ToastData, ToastTone }
+export { BannerData, BannerTone, DialogData, DialogTone, ToastData, ToastTone, FloatingBall, BallMenuWindow }
 
 struct PagePresentation {
     label: string,
@@ -37,6 +39,16 @@ export component MainWindow inherits Window {
     in property <string> route-debug;
     in property <bool> can-go-back: false;
     in property <bool> plan-detail: false;
+    in property <bool> general-settings: false;
+    /// 0 读取配置中 / 1 可用 / 2 存储失败。
+    in property <int> desktop-state: 0;
+    in property <string> storage-error-message;
+    in property <string> storage-error-log-id;
+    in property <string> entry-mode: "ball";
+    in property <bool> entry-available: false;
+    in property <string> close-behavior: "entry";
+    in property <bool> desktop-busy: false;
+    in property <string> show-hotkey-status: "正在注册…";
     /// 仅 debug 构建为 true，显示页面状态预览条。
     in property <bool> dev_tools: false;
     in property <[ToastData]> toasts;
@@ -58,6 +70,8 @@ export component MainWindow inherits Window {
     callback dialog_cancel();
     callback banner_action();
     callback banner_dismissed();
+    /// 后台线程只能通过 event loop 唤醒此回调。
+    callback desktop-wakeup();
 
     /// SHELL-02 §8.1：切换路由后聚焦页头，但不抢走模态对话框的焦点。
     public function focus-route-header() {
@@ -77,6 +91,10 @@ export component MainWindow inherits Window {
         if (!root.dialog-visible) {
             ShellFocus.restore();
         }
+    }
+
+    changed desktop-busy => {
+        if (!root.desktop-busy && !root.dialog-visible) { ShellFocus.restore(); }
     }
 
     private property <int> restore-tick: ShellFocus.restore-tick;
@@ -138,7 +156,7 @@ export component MainWindow inherits Window {
         },
     ];
     private property <PageState> preview-state: PageState.ready;
-    private property <PageState> effective-state: root.dev_tools ? (root.current_page == "设置" && root.preview-state == PageState.empty ? PageState.ready : root.preview-state) : PageState.ready;
+    private property <PageState> effective-state: root.desktop-state == 0 ? PageState.loading : root.desktop-state == 2 ? PageState.error : root.dev_tools ? (root.current_page == "设置" && root.preview-state == PageState.empty ? PageState.ready : root.preview-state) : PageState.ready;
     private property <int> active-index: current_page == "日历" ? 1 : current_page == "小记" ? 2 : current_page == "日记" ? 3 : current_page == "计划板" ? 4 : 0;
     private property <image> settings-icon: @image-url("../../../ui/icons/settings.svg");
 
@@ -166,6 +184,8 @@ export component MainWindow inherits Window {
                 root.route_action("navigate:计划板");
             } else if (event.text == ",") {
                 root.route_action("navigate:设置");
+            } else if (event.text == "w" || event.text == "W") {
+                root.route_action("desktop:close");
             } else {
                 return reject;
             }
@@ -266,7 +286,7 @@ export component MainWindow inherits Window {
 
                 page-header := PageHeader {
                     title: root.page-title;
-                    context: root.route-context;
+                    context: root.desktop-busy ? (root.desktop-state == 0 ? "正在读取窗口配置…" : "正在保存窗口配置…") : root.route-context;
                     can-go-back: root.can-go-back;
                     back-focus-key: root.plan-detail ? "plan-back" : "settings-back";
                     back => { root.route_action("back"); }
@@ -280,8 +300,8 @@ export component MainWindow inherits Window {
                     empty-description: root.plan-detail ? "添加阶段来组织任务，或直接在计划下添加任务。" : root.pages[root.active-index].empty-description;
                     empty-action: root.plan-detail ? "添加阶段" : root.pages[root.active-index].empty-action;
                     error-title: "无法加载" + root.page-title;
-                    error-message: "请重试。如果问题持续出现，请提供下方的日志 ID。";
-                    error-log-id: "preview-0000-0000";
+                    error-message: root.desktop-state == 2 ? root.storage-error-message : "请重试。如果问题持续出现，请提供下方的日志 ID。";
+                    error-log-id: root.desktop-state == 2 ? root.storage-error-log-id : "preview-0000-0000";
                     read-only-text: "所属计划已归档，仅供查看。";
                     banner-visible: root.banner-visible;
                     banner: root.banner;
@@ -292,12 +312,24 @@ export component MainWindow inherits Window {
                         root.banner_dismissed();
                     }
                     retry => {
-                        root.preview-state = PageState.ready;
+                        if (root.desktop-state == 2) {
+                            root.route_action("desktop:retry");
+                        } else {
+                            root.preview-state = PageState.ready;
+                        }
                         // 重试按钮随错误块消失，把焦点交回外壳，快捷键才不会失效。
                         shortcuts.focus();
                     }
 
-                    PagePlaceholder {
+                    if root.general-settings: GeneralSettings {
+                        entry-mode: root.entry-mode;
+                        entry-available: root.entry-available;
+                        close-behavior: root.close-behavior;
+                        busy: root.desktop-busy;
+                        hotkey-status: root.show-hotkey-status;
+                        action(value) => { root.route_action(value); }
+                    }
+                    if !root.general-settings: PagePlaceholder {
                         icon: root.current_page == "设置" ? root.settings-icon : root.pages[root.active-index].icon;
                         title: root.page-title + "工作区";
                         description: root.current_page == "设置" ? "外观、快捷键和数据管理将在这里统一设置。\n点击右上角返回，可回到进入设置前的页面。" : root.pages[root.active-index].description;
