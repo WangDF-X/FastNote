@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- FastNote 应用图标 · 单色版（印刷、雕刻、单色场景）
+
+       真正的单墨版：只有 #2C2823 一种墨，其余全部是"挖空"（透明），
+       浅色承印物上直接印这一版。底板不画，纸块与折角靠挖空分开：
+       折角的纸厚边在彩色版里是纸色，在这里变成一道透空细缝；
+       字母 F 同理挖空。纸块放大 1.2561（边:块:边 = 1:3:1），与母版构图一致。 -->
+  <defs>
+    <mask id="knockout">
+      <rect x="0" y="0" width="1024" height="1024" fill="#FFFFFF"/>
+      <path d="M580 236 L580 366 A30 30 0 0 0 610 396 L740 396" fill="none"
+            stroke="#000000" stroke-width="12" stroke-linecap="round"/>
+      <g transform="translate(512 512) skewX(-11) translate(-512 -512)" fill="#000000">
+        <rect x="396" y="444" width="56" height="256" rx="5"/>
+        <rect x="396" y="444" width="188" height="56" rx="5"/>
+        <rect x="396" y="562" width="147" height="56" rx="5"/>
+      </g>
+    </mask>
+  </defs>
+
+  <g transform="translate(512 512) scale(1.2561) translate(-526 -511)" mask="url(#knockout)">
+    <path d="M580 236 H382 A70 70 0 0 0 312 306 V716 A70 70 0 0 0 382 786 H670
+             A70 70 0 0 0 740 716 V396 L610 396 A30 30 0 0 1 580 366 Z" fill="#2C2823"/>
+
+    <path d="M580 236 L580 366 A30 30 0 0 0 610 396 L740 396 Z" fill="#2C2823"/>
+  </g>
+</svg>

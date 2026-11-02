@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- FastNote 应用图标 · 母版（40px 以上）
+
+       构成：米白底板 + 暖灰实心纸块 + 镂空字母 F + 蓝折角。
+
+       折角是图标里唯一有厚度的结构，五条规则：
+       1. 纸块右上角沿 45° 折痕折走，缺口露出底板（折角 = 折痕的镜像三角形）；
+       2. 折角落在纸面内，直角顶点 (580,396) 收圆角 30 —— 就是这 30 让“翻折”成立；
+       3. 折角的两条自由边是纸原来的上边和右边，用一道纸色细边表示纸的厚度
+          —— 实心纸块上缺这道边，折角会退化成贴上去的蓝色色块；
+       4. 折痕一侧压一道柔性暗部，表示折角朝上翘；
+       5. 折痕本身不加描边（折痕不是纸边）。
+
+       字母 F：斜体（skewX −11°，基线保持水平），收在折角下方。
+       前倾 + 折痕的 45° 对角线共同表达“快”，不使用速度线。
+
+       纸块整体放大 1.2561：底板四周原本留白过多，图形显得空。放大后 边:块:边 = 1:3:1。
+       缩放以纸块自身中心 (526,511) 为基准并落到画布中心，底板不动，
+       所以下面的坐标仍是"缩放前"的几何基准，与 README 一致。 -->
+  <defs>
+    <filter id="fold-shade" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="9"/>
+    </filter>
+    <clipPath id="flap-clip">
+      <path d="M580 236 L580 366 A30 30 0 0 0 610 396 L740 396 Z"/>
+    </clipPath>
+  </defs>
+
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="#E9DFC9"/>
+
+  <g transform="translate(512 512) scale(1.2561) translate(-526 -511)">
+    <!-- 纸块（右上角沿折痕折走） -->
+    <path d="M580 236 H382 A70 70 0 0 0 312 306 V716 A70 70 0 0 0 382 786 H670
+             A70 70 0 0 0 740 716 V396 L610 396 A30 30 0 0 1 580 366 Z" fill="#2C2823"/>
+
+    <!-- 折角（纸的背面，即折痕的镜像） -->
+    <path d="M580 236 L580 366 A30 30 0 0 0 610 396 L740 396 Z" fill="#2E6BE6"/>
+
+    <!-- 折痕一侧的柔性暗部：折角朝上翘 -->
+    <g clip-path="url(#flap-clip)">
+      <path d="M580 236 L740 396" stroke="#000000" stroke-opacity="0.38" stroke-width="26"
+            fill="none" filter="url(#fold-shade)"/>
+    </g>
+
+    <!-- 纸的厚度：折角两条自由边 -->
+    <path d="M580 236 L580 366 A30 30 0 0 0 610 396 L740 396" fill="none"
+          stroke="#F7F0DE" stroke-width="9" stroke-linecap="round"/>
+
+    <!-- 字母 F（镂空） -->
+    <g transform="translate(512 512) skewX(-11) translate(-512 -512)" fill="#F7F0DE">
+      <rect x="396" y="444" width="56" height="256" rx="5"/>
+      <rect x="396" y="444" width="188" height="56" rx="5"/>
+      <rect x="396" y="562" width="147" height="56" rx="5"/>
+    </g>
+  </g>
+</svg>
