@@ -71,6 +71,23 @@ export component TaskField inherits Rectangle {
             return reject;
         }
     }
+    // D-TODAY-07：Fluent 1.18.1 的两个文本控件在底部 2px 绘制焦点底线。
+    // 只覆盖这层装饰并补回中性边框；无输入处理，不改变文本引擎的真实 has-focus。
+    native-underline-cover := Rectangle {
+        x: 4px; y: parent.height - 2px;
+        width: parent.width - 8px; height: 2px;
+        background: ShellPalette.surface;
+        visible: !ShellFocus.show-indicators;
+        accessible-role: none;
+    }
+    neutral-frame := Rectangle {
+        width: parent.width; height: parent.height;
+        border-radius: TaskStyle.control-radius; border-width: 1px;
+        border-color: ShellPalette.border; background: transparent;
+        opacity: root.enabled ? 1 : 0.45;
+        visible: !ShellFocus.show-indicators;
+        accessible-role: none;
+    }
     if root.invalid: Rectangle {
         width: parent.width; height: parent.height;
         border-radius: TaskStyle.control-radius; border-width: 1.5px;

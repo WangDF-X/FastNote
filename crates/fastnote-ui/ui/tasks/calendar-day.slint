@@ -35,7 +35,7 @@ export component PickerDay inherits Rectangle {
     }
     Rectangle {
         x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - 2px;
-        visible: keyboard.has-focus;
+        visible: ShellFocus.show-indicators && keyboard.has-focus;
         border-width: 2px; border-radius: 5px;
         border-color: root.selected ? ShellPalette.on-accent : ShellPalette.accent;
         background: transparent;

@@ -31,7 +31,7 @@ component CaptionButton inherits Rectangle {
         x: 3px; y: 3px; width: parent.width - 6px; height: parent.height - 6px;
         background: transparent;
         border-width: 2px; border-color: ShellPalette.accent; border-radius: 4px;
-        visible: keyboard.has-focus;
+        visible: ShellFocus.show-indicators && keyboard.has-focus;
     }
     keyboard := FocusScope {
         key-pressed(event) => {

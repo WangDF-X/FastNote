@@ -24,7 +24,7 @@ export component TaskRow inherits Rectangle {
     animate background { duration: 120ms; }
     border-radius: TaskStyle.row-radius;
     border-width: 1px;
-    border-color: root.selected ? ShellPalette.accent : transparent;
+    border-color: ShellFocus.show-indicators && root.selected ? ShellPalette.accent : transparent;
     private property <int> focus-tick: ShellFocus.restore-tick;
     private property <bool> focused: body-keyboard.has-focus;
     private property <bool> status-focused: status-choice.has-focus;
@@ -85,7 +85,7 @@ export component TaskRow inherits Rectangle {
             Rectangle {
                 x: 0px; y: 2px; width: parent.width; height: parent.height - 4px;
                 border-width: 2px; border-radius: 4px; border-color: ShellPalette.accent;
-                background: transparent; visible: body-keyboard.has-focus;
+                background: transparent; visible: ShellFocus.show-indicators && body-keyboard.has-focus;
             }
             body-keyboard := FocusScope {
                 x: 0px; y: 0px;

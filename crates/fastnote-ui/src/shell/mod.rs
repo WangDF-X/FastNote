@@ -4,6 +4,9 @@ mod handle;
 mod preview;
 mod view;
 
+#[cfg(test)]
+mod focus_contract;
+
 pub use handle::ShellHandle;
 pub use view::{NavigationIssue, ShellUpdate, ShellView};
 

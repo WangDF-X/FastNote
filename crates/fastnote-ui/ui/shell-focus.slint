@@ -5,6 +5,8 @@
 /// 可聚焦控件在获得焦点时调用 `claim`，对话框关闭时外壳调用 `restore`，
 /// 标识匹配的控件在下一次属性更新时把焦点取回来。
 export global ShellFocus {
+    /// D-TODAY-07：只关闭焦点装饰，不能用来禁用实际聚焦或输入。
+    out property <bool> show-indicators: false;
     /// 最近获得焦点的控件标识；空字符串表示焦点在外壳本身，没有具体控件。
     in-out property <string> anchor: "";
     /// 每次请求恢复焦点时自增，控件靠它的变化来重新取焦点。

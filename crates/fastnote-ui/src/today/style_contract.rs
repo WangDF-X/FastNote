@@ -152,7 +152,7 @@ fn test_new_controls_share_palette_and_keep_focus_hover_pressed_and_disabled_sta
 }
 
 #[test]
-fn test_overdue_background_takes_priority_without_changing_status_text_or_selection_outline() {
+fn test_overdue_background_takes_priority_without_changing_status_text_or_adding_a_blue_outline() {
     let style = include_str!("../../ui/tasks/task-style.slint");
     for expression in [
         "status == 1 ? ShellPalette.task-progress",
@@ -172,7 +172,7 @@ fn test_overdue_background_takes_priority_without_changing_status_text_or_select
     assert!(row.contains(
         "background: TaskStyle.row-background(root.data.status-index, root.data.overdue,"
     ));
-    assert!(row.contains("border-color: root.selected ? ShellPalette.accent : transparent;"));
+    assert!(row.contains("border-color: ShellFocus.show-indicators && root.selected ? ShellPalette.accent : transparent;"));
     assert!(!row.contains("ShellPalette.selected"));
     assert!(!row.contains("root.data.done ? ShellPalette.text-"));
     assert!(row.contains("color: ShellPalette.text-primary;"));

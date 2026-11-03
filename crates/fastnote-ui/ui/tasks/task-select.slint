@@ -20,7 +20,7 @@ export component TaskSelect inherits Rectangle {
     horizontal-stretch: 1;
     border-radius: TaskStyle.control-radius;
     border-width: root.quiet ? 0px : 1px;
-    border-color: menu.is-open ? ShellPalette.accent : ShellPalette.border;
+    border-color: ShellFocus.show-indicators && menu.is-open ? ShellPalette.accent : ShellPalette.border;
     background: menu.is-open ? ShellPalette.selected : mouse.pressed ? ShellPalette.subtle : mouse.has-hover ? ShellPalette.hover : root.quiet ? transparent : ShellPalette.surface;
     animate background { duration: 120ms; }
     opacity: root.enabled ? 1 : 0.45;
@@ -60,7 +60,7 @@ export component TaskSelect inherits Rectangle {
     Rectangle {
         x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - 2px;
         background: transparent; border-radius: 5px; border-width: 2px; border-color: ShellPalette.accent;
-        visible: keyboard.has-focus;
+        visible: ShellFocus.show-indicators && keyboard.has-focus;
     }
     keyboard := FocusScope {
         width: parent.width; height: parent.height; enabled: root.enabled;

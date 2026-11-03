@@ -52,7 +52,7 @@ export component SectionHeader inherits Rectangle {
     Rectangle {
         x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - 2px;
         border-radius: 5px; border-width: 2px; border-color: ShellPalette.accent;
-        background: transparent; visible: keyboard.has-focus;
+        background: transparent; visible: ShellFocus.show-indicators && keyboard.has-focus;
     }
     keyboard := FocusScope {
         width: parent.width; height: parent.height;

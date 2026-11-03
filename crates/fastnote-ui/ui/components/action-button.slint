@@ -12,7 +12,7 @@ export component ActionButton inherits Rectangle {
     in property <color> text-color: ShellPalette.text-primary;
     /// 语义色可只作用于图标，不必改变按钮文字。
     in property <color> icon-color: root.text-color;
-    /// 低强调行操作，保留 hover / focus 而不绘制常驻按钮边框。
+    /// 低强调行操作，保留 hover 和实际焦点，不绘制常驻按钮边框。
     in property <bool> ghost: false;
     in property <bool> left-aligned: false;
     /// 强调色实心按钮。
@@ -100,7 +100,7 @@ export component ActionButton inherits Rectangle {
         border-width: 2px;
         border-color: ShellPalette.accent;
         background: transparent;
-        visible: keyboard.has-focus;
+        visible: ShellFocus.show-indicators && keyboard.has-focus;
     }
 
     keyboard := FocusScope {

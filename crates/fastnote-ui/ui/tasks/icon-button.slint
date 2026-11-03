@@ -61,7 +61,7 @@ export component TaskIconButton inherits Rectangle {
     Rectangle {
         x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - 2px;
         border-width: 2px; border-radius: 5px; border-color: ShellPalette.accent;
-        background: transparent; visible: keyboard.has-focus;
+        background: transparent; visible: ShellFocus.show-indicators && keyboard.has-focus;
     }
     keyboard := FocusScope {
         x: 0px; y: 0px;

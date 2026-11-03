@@ -58,7 +58,7 @@ component PreviewChip inherits Rectangle {
         border-width: 2px;
         border-color: ShellPalette.accent;
         background: transparent;
-        visible: chip-keyboard.has-focus;
+        visible: ShellFocus.show-indicators && chip-keyboard.has-focus;
     }
 
     chip-keyboard := FocusScope {
