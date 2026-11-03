@@ -7,6 +7,7 @@ use fastnote_store::TaskStoreError;
 use fastnote_ui::{DialogKind, DialogRequest, ToastKind};
 
 use crate::desktop::runtime::Runtime;
+use crate::desktop::task_preferences::hidden_task_created;
 use crate::tasks::{DetailPurpose, EditorSession, PendingTask};
 
 use super::view::error_message;
@@ -85,8 +86,14 @@ impl Runtime {
                 if self.shell.component().get_task_quick_title() == title {
                     self.shell.component().set_task_quick_title("".into());
                 }
-                self.tasks.borrow_mut().collapsed[TodaySectionKind::Unscheduled as usize] =
-                    Some(false);
+                let preferences = self.settings.borrow().today_preferences;
+                if preferences.show_unscheduled {
+                    self.tasks.borrow_mut().collapsed[TodaySectionKind::Unscheduled as usize] =
+                        Some(false);
+                }
+                if let Some(request) = hidden_task_created(preferences) {
+                    self.shell.show_toast(request);
+                }
             }
             PendingTask::Status { status, .. } => {
                 if !result.affected_tasks.is_empty() {
@@ -168,6 +175,14 @@ impl Runtime {
                     self.shell.component().set_today_error("".into());
                     self.shell.component().set_today_error_log_id("".into());
                     self.apply_today();
+                    if self.shell.component().get_current_page() == "今日任务" {
+                        let reveal = self.tasks.borrow_mut().take_unscheduled_reveal();
+                        if reveal {
+                            self.shell
+                                .component()
+                                .invoke_reveal_task_section(TodaySectionKind::Unscheduled as i32);
+                        }
+                    }
                 }
                 Err(error) => {
                     self.shell.component().set_today_state(2);

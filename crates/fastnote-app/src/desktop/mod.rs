@@ -7,6 +7,7 @@ mod gesture;
 mod lifecycle;
 mod presentation;
 mod runtime;
+mod task_preferences;
 mod tasks;
 mod theme;
 mod window;

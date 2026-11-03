@@ -7,6 +7,8 @@ mod view;
 #[cfg(test)]
 mod focus_contract;
 #[cfg(test)]
+mod task_preferences_contract;
+#[cfg(test)]
 mod window_contract;
 
 pub use handle::ShellHandle;

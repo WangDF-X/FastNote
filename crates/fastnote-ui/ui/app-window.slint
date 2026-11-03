@@ -10,6 +10,8 @@ import { ToastHost, ToastData, ToastTone } from "components/toast-host.slint";
 import { DialogHost, DialogData, DialogTone } from "components/dialog-host.slint";
 import { BannerData, BannerTone } from "components/page-banner.slint";
 import { GeneralSettings } from "components/general-settings.slint";
+import { SettingsWorkspace } from "settings/workspace.slint";
+import { TaskPreferences } from "settings/task-preferences.slint";
 import { FloatingBall, BallMenuWindow } from "floating-ball.slint";
 import { TitleBar } from "components/title-bar.slint";
 import { WindowOutline } from "components/window-outline.slint";
@@ -56,6 +58,16 @@ export component MainWindow inherits Window {
     in property <bool> can-go-back: false;
     in property <bool> plan-detail: false;
     in property <bool> general-settings: false;
+    in property <string> settings-section;
+    in property <bool> task-preferences-enabled: false;
+    in property <string> task-preferences-error;
+    in property <int> task-sort-index;
+    in property <bool> task-show-in-progress: true;
+    in property <bool> task-show-waiting: true;
+    in property <bool> task-show-unscheduled: true;
+    in property <bool> task-show-completed: true;
+    private property <int> today-reveal-kind: -1;
+    private property <int> today-reveal-version: 0;
     /// 0 读取配置中 / 1 可用 / 2 存储失败。
     in property <int> desktop-state: 0;
     in property <string> storage-error-message;
@@ -167,6 +179,13 @@ export component MainWindow inherits Window {
         ShellFocus.restore();
     }
     public function restore-task-focus() { ShellFocus.restore(); }
+    /// Q-SET-10：只响应用户的快捷恢复，正常查询不滚动或展开分组。
+    public function reveal-task-section(kind: int) {
+        if (root.current_page == "今日任务" && kind >= 0 && kind < 8) {
+            root.today-reveal-kind = kind;
+            root.today-reveal-version += 1;
+        }
+    }
 
     /// SHELL-02 §8.1：切换路由后聚焦页头，但不抢走模态对话框的焦点。
     public function focus-route-header() {
@@ -424,8 +443,8 @@ export component MainWindow inherits Window {
 
                 page-header := PageHeader {
                     title: root.page-title;
-                    context: root.desktop-busy ? (root.desktop-state == 0 ? "正在读取窗口配置…" : "正在保存窗口配置…") : root.current_page == "今日任务" ? root.today-date : root.route-context;
-                    placeholder: root.current_page != "今日任务";
+                    context: root.desktop-busy ? (root.desktop-state == 0 ? "正在读取配置…" : "正在保存设置…") : root.current_page == "今日任务" ? root.today-date : root.route-context;
+                    placeholder: root.current_page != "今日任务" && !(root.current_page == "设置" && (root.general-settings || root.settings-section == "task-preferences"));
                     can-go-back: root.can-go-back;
                     back-focus-key: root.plan-detail ? "plan-back" : "settings-back";
                     back => { root.route_action("back"); }
@@ -460,13 +479,34 @@ export component MainWindow inherits Window {
                         shortcuts.focus();
                     }
 
-                    if root.general-settings: GeneralSettings {
-                        entry-mode: root.entry-mode;
-                        entry-available: root.entry-available;
-                        close-behavior: root.close-behavior;
-                        busy: root.desktop-busy;
-                        hotkey-status: root.show-hotkey-status;
-                        action(value) => { root.route_action(value); }
+                    if root.current_page == "设置": SettingsWorkspace {
+                        section: root.settings-section;
+                        enabled: !root.desktop-busy && !root.dialog-visible;
+                        selected(section) => { root.route_action("navigate:设置?section=" + section); }
+                        if root.general-settings: GeneralSettings {
+                            entry-mode: root.entry-mode;
+                            entry-available: root.entry-available;
+                            close-behavior: root.close-behavior;
+                            busy: root.desktop-busy;
+                            hotkey-status: root.show-hotkey-status;
+                            action(value) => { root.route_action(value); }
+                        }
+                        if root.settings-section == "task-preferences": TaskPreferences {
+                            sort-index: root.task-sort-index;
+                            show-in-progress: root.task-show-in-progress;
+                            show-waiting: root.task-show-waiting;
+                            show-unscheduled: root.task-show-unscheduled;
+                            show-completed: root.task-show-completed;
+                            enabled: root.task-preferences-enabled && !root.dialog-visible;
+                            busy: root.desktop-busy;
+                            error-message: root.task-preferences-error;
+                            action(value) => { root.route_action(value); }
+                        }
+                        if !root.general-settings && root.settings-section != "task-preferences": PagePlaceholder {
+                            icon: root.settings-icon;
+                            title: root.route-context;
+                            description: "此设置分组尚未接入。";
+                        }
                     }
                     if root.current_page == "今日任务": today-page := TodayPage {
                         sections: root.today-sections;
@@ -481,6 +521,8 @@ export component MainWindow inherits Window {
                         error-log-id: root.today-error-log-id;
                         create-error: root.task-create-error;
                         quick-title <=> root.task-quick-title;
+                        reveal-kind <=> root.today-reveal-kind;
+                        reveal-version: root.today-reveal-version;
                         created(value) => { root.task-create(value); }
                         opened(id) => { root.task-open(id); }
                         dates-requested(id) => { root.task-open-dates(id); }
@@ -494,7 +536,7 @@ export component MainWindow inherits Window {
                         retry => { root.today-retry(); }
                         escaped => { root.focus-route-header(); }
                     }
-                    if !root.general-settings && root.current_page != "今日任务": PagePlaceholder {
+                    if root.current_page != "设置" && root.current_page != "今日任务": PagePlaceholder {
                         icon: root.current_page == "设置" ? root.settings-icon : root.pages[root.active-index].icon;
                         title: root.page-title + "工作区";
                         description: root.current_page == "设置" ? "外观、快捷键和数据管理将在这里统一设置。\n点击右上角返回，可回到进入设置前的页面。" : root.pages[root.active-index].description;

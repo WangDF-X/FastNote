@@ -222,6 +222,10 @@ impl Route {
                     section: SettingsSection::General
                 }
             ),
+            settings_section: match self {
+                Self::Settings { section } => section.value().to_owned(),
+                _ => String::new(),
+            },
         }
     }
 }
@@ -279,7 +283,14 @@ mod tests {
         ] {
             assert_eq!(SettingsSection::from_value(section.value()), Some(section));
             assert!(!section.label().is_empty());
+            let view = Route::Settings { section }.shell_view();
+            assert_eq!(view.settings_section, section.value());
+            assert_eq!(
+                view.is_general_settings,
+                section == SettingsSection::General
+            );
         }
+        assert!(Route::Today.shell_view().settings_section.is_empty());
     }
 
     #[test]

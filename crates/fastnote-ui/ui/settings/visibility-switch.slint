@@ -1,0 +1,76 @@
+import { ShellPalette } from "../palette.slint";
+import { ShellFocus } from "../shell-focus.slint";
+import { TaskStyle } from "../tasks/task-style.slint";
+
+/// SET-03：受控开关，成功保存后的父级快照决定 checked，不自改确认值。
+export component VisibilitySwitch inherits Rectangle {
+    in property <string> label;
+    in property <string> description;
+    in property <string> focus-key;
+    in property <bool> checked;
+    in property <bool> enabled: true;
+    callback toggled(bool);
+    height: 56px;
+    border-radius: TaskStyle.control-radius;
+    background: mouse.pressed ? ShellPalette.subtle : mouse.has-hover ? ShellPalette.hover : transparent;
+    animate background { duration: 120ms; }
+    opacity: root.enabled ? 1 : 0.45;
+    forward-focus: keyboard;
+    accessible-role: checkbox;
+    accessible-checkable: true;
+    accessible-enabled: root.enabled;
+    accessible-checked: root.checked;
+    accessible-label: root.label + (root.checked ? "，显示" : "，隐藏");
+    accessible-action-default => { root.activate(); }
+    private property <bool> focused: keyboard.has-focus;
+    private property <int> focus-tick: ShellFocus.restore-tick;
+    changed focused => { if (focused) { ShellFocus.claim(root.focus-key); } }
+    changed focus-tick => {
+        if (root.enabled && ShellFocus.anchor == root.focus-key) { keyboard.focus(); }
+    }
+    function activate() {
+        if (root.enabled) {
+            keyboard.focus();
+            ShellFocus.claim(root.focus-key);
+            root.toggled(!root.checked);
+        }
+    }
+    Text {
+        x: 12px; y: 8px; width: parent.width - 88px; height: 20px;
+        text: root.label; font-size: TaskStyle.body; font-family: TaskStyle.font-family;
+        color: ShellPalette.text-primary; vertical-alignment: center;
+    }
+    Text {
+        x: 12px; y: 30px; width: parent.width - 88px; height: 16px;
+        text: root.description; font-size: TaskStyle.caption; font-family: TaskStyle.font-family;
+        color: ShellPalette.text-secondary; overflow: elide;
+    }
+    Rectangle {
+        x: parent.width - 56px; y: 16px; width: 44px; height: 24px;
+        border-radius: 12px; border-width: root.checked ? 0px : 1px;
+        border-color: ShellPalette.border-strong;
+        background: root.checked ? ShellPalette.accent : ShellPalette.subtle;
+        animate background { duration: 120ms; }
+        Rectangle {
+            x: root.checked ? 22px : 2px; y: 2px; width: 20px; height: 20px;
+            border-radius: 10px;
+            background: root.checked ? ShellPalette.on-accent : ShellPalette.text-tertiary;
+            animate x { duration: 120ms; }
+        }
+    }
+    // D-TODAY-07：保留实际键盘焦点，不绘制焦点框。
+    keyboard := FocusScope {
+        width: parent.width; height: parent.height;
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if (!event.modifiers.control && !event.modifiers.alt && (event.text == Key.Return || event.text == " ")) {
+                root.activate(); return accept;
+            }
+            return reject;
+        }
+        mouse := TouchArea {
+            enabled: root.enabled; mouse-cursor: pointer;
+            clicked => { root.activate(); }
+        }
+    }
+}

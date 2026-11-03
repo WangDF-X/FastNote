@@ -4,6 +4,7 @@ import { TaskField } from "task-field.slint";
 import { TaskRow } from "task-row.slint";
 import { SectionHeader } from "section-header.slint";
 import { ShellPalette } from "../palette.slint";
+import { ShellFocus } from "../shell-focus.slint";
 import { ActionButton } from "../components/action-button.slint";
 import { EmptyState } from "../components/empty-state.slint";
 import { ErrorState } from "../components/error-state.slint";
@@ -24,6 +25,8 @@ export component TodayPage inherits Rectangle {
     in property <string> error-log-id;
     in property <string> create-error;
     in-out property <string> quick-title;
+    in-out property <int> reveal-kind: -1;
+    in property <int> reveal-version;
     callback created(string);
     callback opened(string);
     callback dates-requested(string);
@@ -110,9 +113,22 @@ export component TodayPage inherits Rectangle {
                 if root.open-count == 0: EmptyState {
                     height: 180px;
                     icon: @image-url("../../../../ui/icons/today.svg");
-                    title: "暂无待处理任务";
+                    title: "当前没有显示的待处理任务";
                 }
                 for section in root.sections: Rectangle {
+                    // 新建重复项先持有空数据；目标就绪后从 0 变为请求版本，不能错过首次恢复。
+                    private property <int> reveal-tick: root.reveal-kind == section.kind && section.total > 0 ? root.reveal-version : 0;
+                    changed reveal-tick => {
+                        if (reveal-tick > 0) {
+                            tasks-scroll.content-y = -clamp(self.y, 0px, max(0px, task-list.preferred-height - tasks-scroll.visible-height));
+                            // 一次性用户请求，后续刷新/重建不能再次自动跳动列表。
+                            root.reveal-kind = -1;
+                            if (root.enabled && !root.busy) {
+                                ShellFocus.claim("today:section:" + section.kind);
+                                ShellFocus.restore();
+                            }
+                        }
+                    }
                     height: section-content.preferred-height;
                     background: ShellPalette.surface;
                     border-radius: TaskStyle.card-radius;

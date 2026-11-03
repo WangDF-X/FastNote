@@ -264,7 +264,7 @@ UI:  "Segoe UI Variable", "Microsoft YaHei UI", "PingFang SC",
 - 标题单行省略；双击或 Enter 打开详情（单击行也打开，勾选区域除外）。
 - 已完成标题加删除线，颜色 `text.tertiary`。
 - 行内操作默认隐藏，hover/键盘聚焦时显示，避免视觉噪音。
-- 分组头（Section Header）：高 36，粘性吸顶，左侧折叠箭头，右侧计数；计数为 0 时整组隐藏（今日页除外，见 TODAY）。
+- 分组头（Section Header）：高 36，左侧折叠箭头，右侧计数；是否吸顶由模块定义。今日任务按 D-TODAY-08 随内容滚动，不吸顶；空组按 TODAY-01 隐藏。
 
 ### 5.7 日期显示
 

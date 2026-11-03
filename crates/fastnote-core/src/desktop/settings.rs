@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::{TodayPreferences, TodaySort};
+
 use super::{BallPosition, WindowGeometry};
 
 /// ARCH-04 §7.1：常驻入口形态，两者互斥。
@@ -109,7 +111,7 @@ impl ThemeMode {
     }
 }
 
-/// 由设置仓储读取、应用层拥有的桌面配置快照。
+/// 由设置仓储读取、应用层拥有的桌面与今日偏好已确认快照。
 #[derive(Clone, Debug, PartialEq)]
 pub struct DesktopSettings {
     /// 用户选择的入口模式。
@@ -128,6 +130,8 @@ pub struct DesktopSettings {
     pub ball_position: Option<BallPosition>,
     /// 首次手动启动已完成。
     pub first_run_done: bool,
+    /// 今日排序/显示偏好；与任务查询读取相同的规范配置键。
+    pub today_preferences: TodayPreferences,
 }
 
 impl Default for DesktopSettings {
@@ -141,6 +145,7 @@ impl Default for DesktopSettings {
             geometry: None,
             ball_position: None,
             first_run_done: false,
+            today_preferences: TodayPreferences::default(),
         }
     }
 }
@@ -160,6 +165,16 @@ pub enum DesktopSetting {
     BallPosition(Option<BallPosition>),
     /// 首次启动标记。
     FirstRunDone(bool),
+    /// 今日四个日期类分组的排序。
+    TodaySort(TodaySort),
+    /// 显示进行中分组。
+    TodayShowInProgress(bool),
+    /// 显示等待中分组。
+    TodayShowWaiting(bool),
+    /// 显示未安排分组。
+    TodayShowUnscheduled(bool),
+    /// 显示今日已完成分组。
+    TodayShowCompleted(bool),
 }
 
 impl DesktopSetting {
@@ -172,6 +187,11 @@ impl DesktopSetting {
             Self::MainGeometry(_) => "window.main_geometry",
             Self::BallPosition(_) => "appearance.ball_position",
             Self::FirstRunDone(_) => "general.first_run_done",
+            Self::TodaySort(_) => "tasks.default_sort",
+            Self::TodayShowInProgress(_) => "today.show_in_progress",
+            Self::TodayShowWaiting(_) => "today.show_waiting",
+            Self::TodayShowUnscheduled(_) => "today.show_unscheduled",
+            Self::TodayShowCompleted(_) => "today.show_completed",
         }
     }
 }
@@ -186,9 +206,23 @@ impl DesktopSettings {
             DesktopSetting::MainGeometry(value) => self.geometry = *value,
             DesktopSetting::BallPosition(value) => self.ball_position = value.clone(),
             DesktopSetting::FirstRunDone(value) => self.first_run_done = *value,
+            DesktopSetting::TodaySort(value) => self.today_preferences.sort = *value,
+            DesktopSetting::TodayShowInProgress(value) => {
+                self.today_preferences.show_in_progress = *value
+            }
+            DesktopSetting::TodayShowWaiting(value) => self.today_preferences.show_waiting = *value,
+            DesktopSetting::TodayShowUnscheduled(value) => {
+                self.today_preferences.show_unscheduled = *value
+            }
+            DesktopSetting::TodayShowCompleted(value) => {
+                self.today_preferences.show_completed = *value
+            }
         }
     }
 }
+
+#[cfg(test)]
+mod task_preferences_tests;
 
 #[cfg(test)]
 mod tests {
@@ -202,6 +236,7 @@ mod tests {
         assert_eq!(settings.close_behavior, CloseBehavior::Entry);
         assert_eq!(settings.show_hotkey, "Ctrl+Alt+Space");
         assert!(!settings.first_run_done);
+        assert_eq!(settings.today_preferences, TodayPreferences::default());
     }
     #[test]
     fn test_enum_values_round_trip_without_unknown_fallback() {

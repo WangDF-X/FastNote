@@ -1,0 +1,53 @@
+import { ScrollView } from "std-widgets.slint";
+import { ShellControl } from "../components/shell-control.slint";
+import { ShellPalette } from "../palette.slint";
+import { TaskStyle } from "../tasks/task-style.slint";
+
+struct SettingsPage { key: string, label: string, icon: image }
+
+/// SET-01：导航只发出既有分组键，实际路由与返回来源由应用层持有。
+export component SettingsWorkspace inherits Rectangle {
+    in property <string> section;
+    in property <bool> enabled: true;
+    callback selected(string);
+    horizontal-stretch: 1;
+    vertical-stretch: 1;
+    background: transparent;
+    private property <[SettingsPage]> pages: [
+        { key: "general", label: "通用与外观", icon: @image-url("../../../../ui/icons/settings.svg") },
+        { key: "hotkeys", label: "全局快捷键", icon: @image-url("../../../../ui/icons/keyboard.svg") },
+        { key: "task-preferences", label: "任务偏好", icon: @image-url("../../../../ui/icons/today.svg") },
+        { key: "about", label: "关于", icon: @image-url("../../../../ui/icons/info.svg") },
+        { key: "storage", label: "存储位置", icon: @image-url("../../../../ui/icons/notes.svg") },
+        { key: "backup", label: "备份与恢复", icon: @image-url("../../../../ui/icons/refresh.svg") },
+        { key: "import-export", label: "导入导出", icon: @image-url("../../../../ui/icons/plan.svg") },
+    ];
+    HorizontalLayout {
+        padding: 0px; spacing: 0px;
+        navigation := ScrollView {
+            width: 200px;
+            horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+            content-width: self.visible-width;
+            content-height: max(self.visible-height, links.preferred-height);
+            links := VerticalLayout {
+                width: navigation.visible-width;
+                padding: 16px; spacing: 8px;
+                Text { text: "设置"; font-size: TaskStyle.heading; font-family: TaskStyle.font-family; font-weight: 600; color: ShellPalette.text-primary; }
+                for page in root.pages: ShellControl {
+                    navigation: true;
+                    label: page.label; icon: page.icon;
+                    selected: root.section == page.key;
+                    enabled: root.enabled;
+                    focus-key: "settings:section:" + page.key;
+                    activated => { root.selected(page.key); }
+                }
+                Rectangle { vertical-stretch: 1; }
+            }
+        }
+        Rectangle { width: 1px; background: ShellPalette.border; }
+        Rectangle {
+            horizontal-stretch: 1;
+            VerticalLayout { padding: 0px; spacing: 0px; @children }
+        }
+    }
+}

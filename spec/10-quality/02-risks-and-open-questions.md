@@ -106,6 +106,8 @@
 
 > **已确认（2026-11-03）D-TODAY-02：** Q-TODAY-13 选择开始/到期时间而非系统提醒，Q-TODAY-14 选择按具体时分逾期；用户明确行右侧为状态下拉、设置日期、优先级、删除，详情不重复状态/优先级，外部点击保存后关闭。规格同步 ARCH-03/04、TODAY-01/02/03；schema v3 先备份再增加可空时分，旧全天排期保留。自动检查不代替用户界面验收，不主动提交。
 
+> **已确认（2026-11-03）D-TODAY-08 / Q-SET-10：** 用户取消今日分组头吸顶，并要求接入排序及四个既有分组显示偏好。隐藏未安排后新增仍保持隐藏，成功提示附「撤销隐藏分组」按钮；点击后通过设置事务保存恢复显示，成功才展开并定位该组，其他隐藏偏好不变。无新增配置键、依赖、线程或系统提醒范围。
+
 > 模块内的问题编号为 `Q-<模块>-xx`，正文含「当前默认处理」；下表只做索引，避免全局表过长。
 
 | 文档 | 局部待确认 |
@@ -130,7 +132,7 @@
 | [PLAN-05](../07-plan-board/05-dependencies.md) | Q-PLAN-12..13：反向添加后继、大任务选择器（Q-PLAN-14 已确认：服务层以 `E_DEP_LIMIT` 强制上限 20） |
 | [SET-01](../08-settings/01-overview.md) | Q-SET-01..02：设置搜索、数据管理子页形态 |
 | [SET-02](../08-settings/02-general-and-appearance.md) | Q-SET-03..05：球尺寸上限、quit 二次确认、透明度预览 |
-| [SET-03](../08-settings/03-hotkeys-task-prefs-and-about.md) | Q-SET-06..09：明日预告排序、周起始跟随系统、组合交换、隐藏分组后的快速添加 |
+| [SET-03](../08-settings/03-hotkeys-task-prefs-and-about.md) | Q-SET-06..09：明日预告排序、周起始跟随系统、组合交换、快速添加。Q-SET-10 已确认：隐藏未安排后新增保持隐藏，提示附快捷恢复按钮，点击成功后保存恢复显示并定位该组。 |
 | [DATA-01](../09-data-management/01-storage-location-and-lifecycle.md) | Q-DATA-01..03：手动完整性检查、备份到同步盘、>200MB 提示 |
 | [DATA-02](../09-data-management/02-backup-and-restore.md) | Q-DATA-11..13：用户备份保留、恢复摘要、备份哈希 |
 | [DATA-03](../09-data-management/03-import-export.md) | Q-DATA-21..23：导出 app_meta、同名计划合并、Markdown/CSV |

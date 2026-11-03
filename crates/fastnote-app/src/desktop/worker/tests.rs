@@ -141,3 +141,125 @@ fn test_settings_and_task_commands_share_one_fifo_connection_and_committed_query
     assert_eq!(detail.task.title, "假任务");
     drop(worker);
 }
+
+#[test]
+fn test_committed_preference_save_precedes_today_query_and_survives_reload() {
+    use fastnote_core::TodaySort;
+
+    let directory = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+    let worker = DbWorker::spawn(Some(directory.path().join("fake.db")), Arc::new(|| {})).unwrap();
+    assert!(matches!(receive(&worker), Reply::Loaded(Ok(_))));
+    let id = "019a0fff-aaaa-7000-8000-000000000001".parse().unwrap();
+    worker
+        .execute(
+            1,
+            TaskCommand::CreateTask {
+                id,
+                title: "假任务".to_owned(),
+            },
+            "test",
+        )
+        .unwrap();
+    worker
+        .save(
+            2,
+            vec![
+                DesktopSetting::TodaySort(TodaySort::CreatedDescending),
+                DesktopSetting::TodayShowUnscheduled(false),
+            ],
+            false,
+        )
+        .unwrap();
+    worker
+        .query(
+            3,
+            Query::Today {
+                date: "2026-11-03".parse().unwrap(),
+                limits: [200; 8],
+            },
+        )
+        .unwrap();
+    assert!(matches!(
+        receive(&worker),
+        Reply::Executed {
+            id: 1,
+            result: Ok(_)
+        }
+    ));
+    assert!(matches!(
+        receive(&worker),
+        Reply::Saved {
+            id: 2,
+            result: Ok(())
+        }
+    ));
+    let Reply::Queried {
+        id: 3,
+        result: Ok(QueryResult::Today(view)),
+    } = receive(&worker)
+    else {
+        panic!("committed today query expected");
+    };
+    assert_eq!(view.open_count, 0);
+    assert!(view.sections.is_empty());
+    worker.reload().unwrap();
+    let Reply::Loaded(Ok(settings)) = receive(&worker) else {
+        panic!("settings reload expected");
+    };
+    assert_eq!(
+        settings.today_preferences.sort,
+        TodaySort::CreatedDescending
+    );
+    assert!(!settings.today_preferences.show_unscheduled);
+    worker.query(4, Query::TaskDetail(id)).unwrap();
+    assert!(matches!(
+        receive(&worker),
+        Reply::Queried {
+            id: 4,
+            result: Ok(QueryResult::TaskDetail(_))
+        }
+    ));
+}
+
+#[test]
+fn test_failed_preference_save_keeps_database_snapshot_and_can_be_retried() {
+    let directory = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+    let path = directory.path().join("fake.db");
+    let worker = DbWorker::spawn(Some(path.clone()), Arc::new(|| {})).unwrap();
+    assert!(matches!(receive(&worker), Reply::Loaded(Ok(_))));
+    let connection = rusqlite::Connection::open(&path).unwrap();
+    connection.execute_batch("CREATE TRIGGER reject_fake_preference BEFORE UPDATE ON app_settings WHEN NEW.key='today.show_unscheduled' BEGIN SELECT RAISE(ABORT,'fake constraint'); END;").unwrap();
+    worker
+        .save(5, vec![DesktopSetting::TodayShowUnscheduled(false)], false)
+        .unwrap();
+    assert!(matches!(
+        receive(&worker),
+        Reply::Saved {
+            id: 5,
+            result: Err(_)
+        }
+    ));
+    worker.reload().unwrap();
+    let Reply::Loaded(Ok(settings)) = receive(&worker) else {
+        panic!("settings reload expected");
+    };
+    assert!(settings.today_preferences.show_unscheduled);
+    connection
+        .execute_batch("DROP TRIGGER reject_fake_preference")
+        .unwrap();
+    worker
+        .save(6, vec![DesktopSetting::TodayShowUnscheduled(false)], false)
+        .unwrap();
+    assert!(matches!(
+        receive(&worker),
+        Reply::Saved {
+            id: 6,
+            result: Ok(())
+        }
+    ));
+    worker.reload().unwrap();
+    let Reply::Loaded(Ok(settings)) = receive(&worker) else {
+        panic!("retried settings reload expected");
+    };
+    assert!(!settings.today_preferences.show_unscheduled);
+}

@@ -38,7 +38,10 @@ impl Runtime {
                     .editor
                     .as_ref()
                     .is_some_and(|editor| editor.in_flight.is_some());
-            let enabled = self.ready.get() && !self.closing.get() && !tasks.non_text_pending();
+            let enabled = self.ready.get()
+                && !self.closing.get()
+                && !self.busy.get()
+                && !tasks.non_text_pending();
             let editor = tasks.editor.as_ref().map(|editor| {
                 (
                     editor.detail.task.id,

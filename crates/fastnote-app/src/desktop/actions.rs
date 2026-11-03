@@ -10,7 +10,7 @@ use crate::tasks::Transition;
 
 impl Runtime {
     pub(super) fn handle_action(self: &Rc<Self>, action: &str) -> ShellUpdate {
-        if self.handle_task_action(action) {
+        if self.handle_task_preferences_action(action) || self.handle_task_action(action) {
             return ShellUpdate {
                 view: self.controller.borrow().shell_view(),
                 route_changed: false,
@@ -76,7 +76,7 @@ impl Runtime {
     }
 
     fn preference(self: &Rc<Self>, change: DesktopSetting) {
-        if !self.ready.get() || self.busy.get() {
+        if !self.can_task_interact() {
             return;
         }
         let previous = match &change {

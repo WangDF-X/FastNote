@@ -5,7 +5,7 @@ pub trait SettingsRepository {
     /// 实现提供的可追溯错误，不要求 core 依赖 IO 库。
     type Error: std::error::Error;
 
-    /// 读取并校验桌面配置，缺失/非法值按 ARCH-04 回退默认。
+    /// 读取并校验桌面与今日偏好配置，缺失/非法值按 ARCH-04 回退默认。
     fn load_desktop(&self) -> Result<DesktopSettings, Self::Error>;
 
     /// 一个批次一个 IMMEDIATE 事务，失败时整批回滚。
