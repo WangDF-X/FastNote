@@ -2,6 +2,8 @@
 
 mod clock;
 mod settings;
+mod task;
 
-pub use clock::Clock;
+pub use clock::{Clock, TaskClock};
 pub use settings::{SettingsRepository, StorageErrorCode};
+pub use task::TaskRepository;

@@ -1,0 +1,86 @@
+import { ListView } from "std-widgets.slint";
+import { ShellPalette } from "../palette.slint";
+import { TaskStyle } from "task-style.slint";
+
+/// 只实例化可见菜单项；年份、分钟与状态菜单共用同一排版。
+export component TaskSelectPopup inherits PopupWindow {
+    in property <[string]> model;
+    in property <int> selected-index;
+    in property <int> open-version;
+    in-out property <int> active-index;
+    callback chosen(int);
+
+    width: TaskStyle.menu-min-width;
+    height: min(TaskStyle.menu-visible-rows, root.model.length) * TaskStyle.control-height + 8px;
+    close-policy: close-on-click-outside;
+    forward-focus: menu-keys;
+
+    /// 滚轮会解除 content-y 的绑定；每次打开显式复位，不能依赖上次的滚动位置。
+    changed open-version => {
+        if (root.open-version > 0) {
+            list.content-y = -clamp(root.active-index - 3, 0, max(0, root.model.length - TaskStyle.menu-visible-rows)) * TaskStyle.control-height;
+        }
+    }
+    function ensure-visible() {
+        let top = root.active-index * TaskStyle.control-height;
+        if (top < -list.content-y) { list.content-y = -top; }
+        else if (top + TaskStyle.control-height > -list.content-y + list.visible-height) {
+            list.content-y = list.visible-height - top - TaskStyle.control-height;
+        }
+    }
+    function move-selection(delta: int) {
+        root.active-index = clamp(root.active-index + delta, 0, root.model.length - 1);
+        root.ensure-visible();
+    }
+
+    Rectangle {
+        width: parent.width; height: parent.height;
+        border-radius: TaskStyle.control-radius;
+        border-width: 1px; border-color: ShellPalette.border;
+        background: ShellPalette.surface;
+    }
+    menu-keys := FocusScope {
+        width: parent.width; height: parent.height;
+        key-pressed(event) => {
+            if (event.text == Key.UpArrow) { root.move-selection(-1); return accept; }
+            if (event.text == Key.DownArrow) { root.move-selection(1); return accept; }
+            if (event.text == Key.PageUp) { root.move-selection(-TaskStyle.menu-visible-rows); return accept; }
+            if (event.text == Key.PageDown) { root.move-selection(TaskStyle.menu-visible-rows); return accept; }
+            if (event.text == Key.Home) { root.active-index = 0; root.ensure-visible(); return accept; }
+            if (event.text == Key.End) { root.active-index = root.model.length - 1; root.ensure-visible(); return accept; }
+            if (event.text == Key.Return || event.text == " ") {
+                root.close(); root.chosen(root.active-index); return accept;
+            }
+            if (event.text == Key.Escape || event.text == Key.Tab) { root.close(); return accept; }
+            return reject;
+        }
+        list := ListView {
+            x: 4px; y: 4px;
+            width: parent.width - 8px; height: parent.height - 8px;
+            content-width: self.visible-width;
+            content-y: 0px;
+            for label[index] in root.model: Rectangle {
+                width: list.visible-width; height: TaskStyle.control-height;
+                border-radius: 4px;
+                background: index == root.active-index ? ShellPalette.selected : row-mouse.has-hover ? ShellPalette.hover : transparent;
+                accessible-role: button;
+                accessible-label: label;
+                accessible-action-default => { root.close(); root.chosen(index); }
+                if index == root.selected-index: Image {
+                    x: 8px; y: 8px; width: TaskStyle.icon-size; height: TaskStyle.icon-size;
+                    source: @image-url("../../../../ui/icons/check.svg"); colorize: ShellPalette.accent;
+                    accessible-role: none;
+                }
+                Text {
+                    x: 30px; width: parent.width - 38px; height: parent.height;
+                    text: label; font-size: TaskStyle.body; font-family: TaskStyle.font-family;
+                    color: ShellPalette.text-primary; vertical-alignment: center; overflow: elide;
+                }
+                row-mouse := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.close(); root.chosen(index); }
+                }
+            }
+        }
+    }
+}

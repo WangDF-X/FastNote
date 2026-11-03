@@ -129,3 +129,14 @@ pub(crate) fn check_integrity(connection: &Connection, full: bool) -> Result<(),
     }
     Ok(())
 }
+
+pub(crate) fn check_write_version(connection: &Connection) -> Result<(), StoreError> {
+    let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    if version > CURRENT_VERSION {
+        return Err(StoreError::newer(version, CURRENT_VERSION));
+    }
+    if version != CURRENT_VERSION {
+        return Err(StoreError::integrity());
+    }
+    Ok(())
+}

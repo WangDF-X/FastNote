@@ -1,4 +1,4 @@
-//! Windows 驻留闭环；UI 线程拥有窗口/句柄，设置线程拥有唯一 SQLite 写连接。
+//! Windows 驻留闭环；UI 线程拥有窗口/句柄，DB worker 拥有设置与任务的唯一 SQLite 写连接。
 
 mod actions;
 mod ball;
@@ -7,6 +7,7 @@ mod gesture;
 mod lifecycle;
 mod presentation;
 mod runtime;
+mod tasks;
 mod theme;
 mod window;
 mod worker;

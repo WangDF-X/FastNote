@@ -44,6 +44,14 @@ impl Runtime {
                 if let Some(runtime) = weak.upgrade() {
                     if let WindowEvent::Focused(active) = event {
                         runtime.shell.component().set_window_active(*active);
+                        if !active {
+                            let weak = Rc::downgrade(&runtime);
+                            Timer::single_shot(Duration::ZERO, move || {
+                                if let Some(runtime) = weak.upgrade() {
+                                    runtime.flush_task_editor();
+                                }
+                            });
+                        }
                     }
                     if matches!(
                         event,
@@ -173,6 +181,7 @@ impl Runtime {
                 EventResult::Propagate
             }
         });
+        self.connect_tasks();
     }
 
     pub(super) fn sync_window_state(&self) {
@@ -191,6 +200,9 @@ impl Runtime {
         if self.entry.get() == Some(fastnote_core::EntryMode::Ball) {
             self.request_minimize();
         } else {
+            if self.defer_task_transition(crate::tasks::Transition::Minimize) {
+                return;
+            }
             self.shell.component().window().set_minimized(true);
             self.shell.pause_timers();
         }

@@ -5,9 +5,18 @@ use fastnote_platform::{EntryAction, NativeEvent};
 use fastnote_ui::{ShellUpdate, ToastKind};
 
 use super::runtime::{Completion, Runtime};
+use crate::routing::parse_action;
+use crate::tasks::Transition;
 
 impl Runtime {
     pub(super) fn handle_action(self: &Rc<Self>, action: &str) -> ShellUpdate {
+        if self.handle_task_action(action) {
+            return ShellUpdate {
+                view: self.controller.borrow().shell_view(),
+                route_changed: false,
+                issue: None,
+            };
+        }
         match action {
             "desktop:show" => self.show_main(),
             "desktop:minimize" => self.minimize_window(),
@@ -36,7 +45,28 @@ impl Runtime {
             "desktop:close-behavior:quit" => {
                 self.preference(DesktopSetting::CloseBehavior(CloseBehavior::Quit))
             }
-            _ => return self.controller.borrow_mut().handle_action(action),
+            _ => {
+                let navigation = action.starts_with("navigate:") || action == "back";
+                if navigation
+                    && (self.shell.component().get_dialog_visible()
+                        || (parse_action(action).is_ok()
+                            && self.defer_task_transition(Transition::Navigate(action.to_owned()))))
+                {
+                    return ShellUpdate {
+                        view: self.controller.borrow().shell_view(),
+                        route_changed: false,
+                        issue: None,
+                    };
+                }
+                let update = self.controller.borrow_mut().handle_action(action);
+                if update.route_changed {
+                    self.close_task_editor();
+                    if update.view.page_label == "今日任务" {
+                        self.request_today();
+                    }
+                }
+                return update;
+            }
         }
         ShellUpdate {
             view: self.controller.borrow().shell_view(),

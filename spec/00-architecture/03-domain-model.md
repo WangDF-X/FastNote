@@ -1,6 +1,6 @@
 # ARCH-03 领域模型与业务规则
 
-> 文档编号：ARCH-03 ｜ 模块：00 总览与架构 ｜ 状态：已定稿 v0.1 ｜ 更新：2026-10-23
+> 文档编号：ARCH-03 ｜ 模块：00 总览与架构 ｜ 状态：Confirmed ｜ 更新：2026-11-03
 > 上游：[ARCH-02](02-architecture.md) ｜ 下游：全部功能模块（**唯一事实来源**）
 
 ---
@@ -109,6 +109,8 @@ erDiagram
 | `priority` | `Priority` | 是 | `none` | 阶段固定 `none`，UI 不展示 |
 | `start_date` | `Option<NaiveDate>` | 否 | `NULL` | 计划开始日期 |
 | `due_date` | `Option<NaiveDate>` | 否 | `NULL` | 计划完成日期 |
+| `start_time` | `Option<NaiveTime>` | 否 | `NULL` | 开始日期的本地时分，分钟精度；只能随开始日期存在 |
+| `due_time` | `Option<NaiveTime>` | 否 | `NULL` | 到期日期的本地时分，分钟精度；只能随到期日期存在 |
 | `completed_at` | `Option<DateTime<Utc>>` | 否 | `NULL` | 仅 `status=done` 时有值 |
 | `status_changed_at` | `DateTime<Utc>` | 是 | now | 状态变更时更新，用于「等待 N 天」 |
 | `sort_order` | i64 | 是 | 追加 | 同父节点内手动排序 |
@@ -250,10 +252,11 @@ erDiagram
 
 ## 6. 日期与时间规则
 
-1. **业务日期无时区**：`start_date`、`due_date`、`entry_date` 均为 `NaiveDate`，按设备本地日历理解。
+1. **业务排期使用设备本地日历/墙上时间**：日期保持 `NaiveDate`，普通任务可另有 `start_time/due_time: Option<NaiveTime>`（秒和纳秒为 0）；计划、阶段和日记仍只有日期。设备换时区后所选本地日期时分不变，不把排期转换成 UTC 规则。
 2. **时间戳统一 UTC**：`created_at`、`updated_at`、`completed_at`、`status_changed_at` 存 RFC 3339 UTC；界面显示本地时间。
 3. **今天**：由注入的 `Clock` 返回本地日期；应用每 30s 检查日期是否变化，变化时广播 `TodayChanged` 并刷新「今日」「日历」。
-4. **逾期**：`due_date < today && status != done && 所属计划未归档`。
+4. **逾期（D-TODAY-02）**：未完成且未归档的普通任务，有时分则本地当前时刻严格超过 `due_date + due_time` 即逾期；旧全天任务仍在 `due_date < today` 时逾期。无到期日期不逾期；开始时间不自动切状态。每 30s 检查到期边界和时钟变化。
+5. **日期时间约束**：时间不能脱离对应日期；同一天且双方均有时间时 `start_time ≤ due_time`。旧全天开始相当于当日起点，旧全天到期到次日才逾期；新选择保存日期与时分组合，清除时一并清除。
 5. **等待天数**：`today - local_date(status_changed_at)`，最小 0；仅当 `status=waiting` 时展示。
 6. **完成于今日**：`status=done && local_date(completed_at) == today`。
 7. **夏令时**：日期加减使用 `chrono` 的日历运算，不假设每天 24 小时；跨时区不改变已存日期。
@@ -334,6 +337,8 @@ erDiagram
 
 所有派生函数集中在 `fastnote-core::derive`，输入为实体 + `today`，输出稳定、可单测。
 
+> **已确认（2026-11-03）D-TODAY-01：** 今日任务以本文和 ARCH-04 为唯一规则来源；TODAY-01/02/03 与 SET-03 中旧的四分组、隐藏全部已完成、两态流转、2,000 字描述和 `general.default_sort` 表述已同步纠正。首个业务里程碑范围见 TODAY-01 §11。
+
 ### 8.1 逾期
 
 ```text
@@ -341,11 +346,12 @@ is_overdue(task, today) =
   task.kind == task
   && task.status != done
   && task.due_date.is_some()
-  && task.due_date < today
+   && (有 due_time 时本地 now > due_date + due_time；否则 due_date < today)
   && plan_of(task) 未归档
 ```
 
 - 无截止日期永不逾期。
+- **已确认 D-TODAY-02（2026-11-03）：** 开始/到期加入分钟精度时分，逾期按具体时分计算，排序同日比较时分；旧 date-only 数据保留全天。`TaskClock` 提供 UTC 到本地日期时间的统一转换，UI 不自行计算逾期。
 - 阶段逾期（路线图健康度）：`stage.due_date < today && stage 进度 < 100% && stage 有叶子任务`。
 
 ### 8.2 今日视图（TodayView）
@@ -559,6 +565,8 @@ progress(nodes) = { done: 叶子任务中 status=done 的数量,
 
 > DTO 由 core 定义，store 负责组装；UI 不得直接持有实体后自行派生。
 
+> **首个业务里程碑的接口落地（2026-11-03）：** 下列结构展示完整产品契约；本轮按 TODAY-01 §11 实现任务/今日子集。关联名称、子任务/后代/依赖计数和只读标记归并于 `TaskContext`，由 `TaskSummary`/`TaskDetail` 共用；列表保留创建/状态变更时间与可空排期时分供统一排序。`TodayView` 另含本地 `evaluated_at` 和完整候选集的 `next_overdue_at`，用于到期边界/回拨刷新。移动、依赖选择、日历读模型随后续模块扩展，不通过 UI 自行补算。字段补丁携带 `expected_updated_at`，仓储另在事务中比较完整原实体，冲突保留编辑草稿。
+
 ### 11.1 任务
 
 ```rust
@@ -569,7 +577,9 @@ pub struct TaskSummary {
     pub status: Option<TaskStatus>,   // stage 为 None
     pub priority: Priority,
     pub start_date: Option<NaiveDate>,
+    pub start_time: Option<NaiveTime>, // 普通任务的本地时分，旧全天为空
     pub due_date: Option<NaiveDate>,
+    pub due_time: Option<NaiveTime>,
     pub plan_id: Option<PlanId>,
     pub plan_name: Option<String>,
     pub stage_name: Option<String>,

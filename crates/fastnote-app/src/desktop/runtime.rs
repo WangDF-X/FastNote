@@ -11,16 +11,17 @@ use fastnote_platform::{
     install_event_handlers, NativeEvent, WindowsHotkey, WindowsThemeMonitor, WindowsTray,
 };
 use fastnote_ui::{
-    BallMenuWindow, FloatingBall, ShellHandle, ShellUpdate, ToastKind, ToastRequest,
+    BallMenuWindow, FloatingBall, ShellHandle, ShellUpdate, ToastKind, ToastRequest, TodayPresenter,
 };
 use slint::{ComponentHandle, Timer};
 
+use crate::tasks::TaskSession;
 use crate::{clock::SystemClock, controller::AppController};
 
 use super::gesture::BallDrag;
 use super::presentation::Presentation;
 use super::theme::ThemeState;
-use super::worker::{Reply, SettingsWorker};
+use super::worker::{DbWorker, Reply};
 
 pub(super) enum Completion {
     Background,
@@ -42,7 +43,7 @@ pub(super) struct Runtime {
     pub settings: RefCell<DesktopSettings>,
     pub theme: RefCell<ThemeState>,
     pub theme_monitor: RefCell<Option<WindowsThemeMonitor>>,
-    pub worker: SettingsWorker,
+    pub worker: DbWorker,
     pub native: Receiver<NativeEvent>,
     pub tray: RefCell<Option<WindowsTray>>,
     pub hotkey: RefCell<Option<WindowsHotkey>>,
@@ -69,6 +70,13 @@ pub(super) struct Runtime {
     pub drag: RefCell<Option<BallDrag>>,
     pub next_id: Cell<u64>,
     pub pending: RefCell<HashMap<u64, PendingWrite>>,
+    pub tasks: RefCell<TaskSession>,
+    pub today_presenter: TodayPresenter,
+    pub task_save_timer: Timer,
+    pub task_day_timer: Timer,
+    pub task_feedback_timer: Timer,
+    pub task_saving_visible: Cell<bool>,
+    pub task_syncing: Cell<bool>,
 }
 
 impl Runtime {
@@ -99,7 +107,7 @@ impl Runtime {
                 tracing::debug!("UI loop unavailable during settings wakeup");
             }
         });
-        let worker = SettingsWorker::spawn(None, wake.clone())?;
+        let worker = DbWorker::spawn(None, wake.clone())?;
         let (native_tx, native_rx) = bounded(256);
         install_event_handlers(native_tx.clone(), wake.clone());
         let theme_monitor = WindowsThemeMonitor::new(native_tx, wake)
@@ -111,6 +119,7 @@ impl Runtime {
                 );
             })
             .ok();
+        let today_presenter = TodayPresenter::new(shell.component());
         let runtime = Rc::new(Self {
             shell,
             ball: FloatingBall::new()?,
@@ -145,6 +154,13 @@ impl Runtime {
             drag: RefCell::new(None),
             next_id: Cell::new(1),
             pending: RefCell::new(HashMap::new()),
+            tasks: RefCell::new(TaskSession::new()),
+            today_presenter,
+            task_save_timer: Timer::default(),
+            task_day_timer: Timer::default(),
+            task_feedback_timer: Timer::default(),
+            task_saving_visible: Cell::new(false),
+            task_syncing: Cell::new(false),
         });
         *target.borrow_mut() = Rc::downgrade(&runtime);
         runtime.connect();
@@ -157,6 +173,8 @@ impl Runtime {
             match reply {
                 Reply::Loaded(result) => self.loaded(result),
                 Reply::Saved { id, result } => self.saved(id, result),
+                Reply::Executed { id, result } => self.task_executed(id, result),
+                Reply::Queried { id, result } => self.task_queried(id, result),
             }
         }
         while let Ok(event) = self.native.try_recv() {

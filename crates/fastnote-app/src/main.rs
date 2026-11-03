@@ -3,6 +3,7 @@ mod controller;
 mod desktop;
 mod logging;
 mod routing;
+mod tasks;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let hidden = std::env::args()

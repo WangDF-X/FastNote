@@ -1,0 +1,21 @@
+import { TaskStyle } from "task-style.slint";
+import { ShellPalette } from "../palette.slint";
+
+export component TaskCounter inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    in property <int> value;
+    /// 0 中性 / 1 逾期 / 2 已完成；仅显示映射，不推导业务统计。
+    in property <int> tone;
+    width: 140px; height: 32px;
+    border-radius: TaskStyle.control-radius;
+    background: root.tone == 1 && root.value > 0 ? ShellPalette.danger-subtle : ShellPalette.surface;
+    private property <color> foreground: root.tone == 1 && root.value > 0 ? ShellPalette.danger : root.tone == 2 && root.value > 0 ? ShellPalette.success : ShellPalette.text-secondary;
+    HorizontalLayout {
+        padding-left: 10px; padding-right: 10px; spacing: 8px;
+        cross-axis-alignment: center;
+        Image { width: TaskStyle.icon-size; height: TaskStyle.icon-size; source: root.icon; colorize: root.foreground; accessible-role: none; }
+        Text { text: root.label; font-size: TaskStyle.caption; font-family: TaskStyle.font-family; color: ShellPalette.text-secondary; vertical-alignment: center; horizontal-stretch: 1; }
+        Text { text: root.value; font-size: TaskStyle.body; font-family: TaskStyle.font-family; font-weight: 600; color: root.foreground; vertical-alignment: center; }
+    }
+}

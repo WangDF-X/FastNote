@@ -4,10 +4,11 @@ use rusqlite::{params, Connection, TransactionBehavior};
 use crate::database::check_integrity;
 use crate::StoreError;
 
-pub(crate) const CURRENT_VERSION: i64 = 2;
-const SCRIPTS: [&str; 2] = [
+pub(crate) const CURRENT_VERSION: i64 = 3;
+const SCRIPTS: [&str; 3] = [
     include_str!("../migrations/m0001_init.sql"),
     include_str!("../migrations/m0002_reminders.sql"),
+    include_str!("../migrations/m0003_task_times.sql"),
 ];
 
 const DEFAULTS: &[(&str, &str)] = &[

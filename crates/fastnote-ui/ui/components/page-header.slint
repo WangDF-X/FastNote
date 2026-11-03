@@ -7,6 +7,7 @@ export component PageHeader inherits Rectangle {
     in property <string> context;
     in property <bool> can-go-back: false;
     in property <string> back-focus-key;
+    in property <bool> placeholder: true;
     callback back();
 
     height: 64px;
@@ -47,7 +48,7 @@ export component PageHeader inherits Rectangle {
     }
 
     Text {
-        visible: !root.can-go-back;
+        visible: !root.can-go-back && root.placeholder;
         x: parent.width - 84px;
         y: 24px;
         width: 60px;

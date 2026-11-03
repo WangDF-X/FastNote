@@ -9,9 +9,9 @@ use rusqlite::{params, Connection, TransactionBehavior};
 
 use crate::{database, StoreError};
 
-/// SQLite 设置仓储；实例及其唯一写连接只在 DB 工作线程使用。
+/// SQLite 设置与任务仓储；实例及其唯一写连接只在 DB 工作线程使用。
 pub struct SqliteSettings {
-    connection: Connection,
+    pub(crate) connection: Connection,
 }
 
 impl SqliteSettings {
@@ -118,16 +118,7 @@ impl SettingsRepository for SqliteSettings {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let version: i64 = tx.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        if version > crate::migrations::CURRENT_VERSION {
-            return Err(StoreError::newer(
-                version,
-                crate::migrations::CURRENT_VERSION,
-            ));
-        }
-        if version != crate::migrations::CURRENT_VERSION {
-            return Err(StoreError::integrity());
-        }
+        database::check_write_version(&tx)?;
         for (key, value) in values {
             tx.execute("INSERT INTO app_settings(key, value, updated_at) VALUES (?1, ?2, ?3)
                 ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
@@ -138,7 +129,7 @@ impl SettingsRepository for SqliteSettings {
     }
 }
 
-fn parse_bool(value: &str) -> Option<bool> {
+pub(crate) fn parse_bool(value: &str) -> Option<bool> {
     match value {
         "true" => Some(true),
         "false" => Some(false),
@@ -146,7 +137,7 @@ fn parse_bool(value: &str) -> Option<bool> {
     }
 }
 
-fn read<T>(
+pub(crate) fn read<T>(
     values: &HashMap<String, String>,
     key: &'static str,
     default: T,

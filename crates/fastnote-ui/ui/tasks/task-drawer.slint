@@ -1,0 +1,199 @@
+import { ScrollView, Date } from "std-widgets.slint";
+import { TaskField } from "task-field.slint";
+import { TaskDateTimeField } from "datetime-field.slint";
+import { TaskIconButton } from "icon-button.slint";
+import { ActionButton } from "../components/action-button.slint";
+import { PageSkeleton } from "../components/page-skeleton.slint";
+import { ShellPalette } from "../palette.slint";
+import { CalendarDayData } from "types.slint";
+import { TaskStyle } from "task-style.slint";
+
+export component TaskDrawer inherits Rectangle {
+    in property <bool> loading: false;
+    in property <bool> enabled: true;
+    in property <bool> read-only: false;
+    in property <string> save-label;
+    in property <string> error-message;
+    in property <string> context-label;
+    in property <int> description-count;
+    in-out property <string> title;
+    in-out property <string> description;
+    in-out property <string> start-date;
+    in property <string> start-time;
+    in-out property <string> due-date;
+    in property <string> due-time;
+    in property <Date> start-seed-date;
+    in property <Date> due-seed-date;
+    in property <int> start-seed-hour;
+    in property <int> start-seed-minute;
+    in property <int> due-seed-hour;
+    in property <int> due-seed-minute;
+    in property <[string]> hours;
+    in property <[string]> minutes;
+    in property <[string]> years;
+    in property <Date> picker-today;
+    callback edited(string, string);
+    callback datetime-selected(string, Date, int, int);
+    callback datetime-cleared(string);
+    callback picker-changed(bool);
+    pure callback calendar-month(int, int, Date) -> [CalendarDayData];
+    pure callback calendar-day(Date, int) -> Date;
+    pure callback calendar-month-move(Date, int) -> Date;
+    callback flush();
+    callback closed();
+    callback deleted();
+    callback retry();
+    callback reload();
+
+    width: 400px;
+    background: ShellPalette.surface;
+    border-width: 1px; border-color: ShellPalette.border;
+    drop-shadow-color: ShellPalette.shadow;
+    drop-shadow-blur: 16px;
+    drop-shadow-offset-x: -4px;
+    // 非模态：只吸收抽屉范围的点击，不覆盖列表或侧栏。
+    TouchArea { }
+    FocusScope {
+        x: 0px; y: 0px;
+        width: parent.width; height: parent.height;
+        focus-on-tab-navigation: false;
+        key-pressed(event) => {
+            if (event.text == Key.Escape) { root.closed(); return accept; }
+            return reject;
+        }
+        VerticalLayout {
+            padding: 0px; spacing: 0px;
+            Rectangle {
+                height: 56px;
+                HorizontalLayout {
+                    padding-left: 24px; padding-right: 16px; spacing: 12px;
+                    alignment: stretch;
+                    cross-axis-alignment: center;
+                    Image {
+                        width: TaskStyle.icon-size; height: TaskStyle.icon-size;
+                        source: @image-url("../../../../ui/icons/notes.svg"); colorize: ShellPalette.text-secondary;
+                        accessible-role: none;
+                    }
+                    Text {
+                        text: "任务详情"; font-size: TaskStyle.heading; font-family: TaskStyle.font-family; font-weight: 600;
+                        color: ShellPalette.text-primary; horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: root.save-label; font-size: TaskStyle.caption; font-family: TaskStyle.font-family;
+                        color: root.error-message == "" ? ShellPalette.text-secondary : ShellPalette.danger;
+                        vertical-alignment: center;
+                    }
+                    TaskIconButton {
+                        icon: @image-url("../../../../ui/icons/window-close.svg");
+                        label: "关闭任务详情"; focus-key: "editor:close";
+                        activated => { root.closed(); }
+                    }
+                }
+            }
+            Rectangle { height: 1px; background: ShellPalette.border; }
+            if root.loading: PageSkeleton { vertical-stretch: 1; }
+            if !root.loading: scroll := ScrollView {
+                vertical-stretch: 1;
+                content-width: self.visible-width;
+                content-height: fields.preferred-height;
+                fields := VerticalLayout {
+                    width: scroll.visible-width;
+                    padding: 24px; spacing: 16px;
+                    if root.read-only: Text {
+                        text: "所属计划已归档，仅供查看。";
+                        color: ShellPalette.text-secondary; font-size: TaskStyle.caption; font-family: TaskStyle.font-family; wrap: word-wrap;
+                    }
+                    if root.error-message != "": VerticalLayout {
+                        spacing: 8px;
+                        Text { text: root.error-message; color: ShellPalette.danger; font-size: TaskStyle.caption; font-family: TaskStyle.font-family; wrap: word-wrap; }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            ActionButton {
+                                label: "重试保存"; icon: @image-url("../../../../ui/icons/refresh.svg"); with-icon: true;
+                                text-size: TaskStyle.body; text-family: TaskStyle.font-family;
+                                enabled: root.enabled && !root.read-only; activated => { root.retry(); }
+                            }
+                            ActionButton {
+                                label: "重新加载"; icon: @image-url("../../../../ui/icons/refresh.svg"); with-icon: true;
+                                text-size: TaskStyle.body; text-family: TaskStyle.font-family;
+                                enabled: root.enabled; activated => { root.reload(); }
+                            }
+                        }
+                    }
+                    Text { text: "任务标题"; font-size: TaskStyle.caption; font-family: TaskStyle.font-family; color: ShellPalette.text-secondary; }
+                    title-field := TaskField {
+                        text <=> root.title; label: "任务标题";
+                        placeholder: "请输入任务标题"; focus-key: "editor:title";
+                        enabled: root.enabled && !root.read-only;
+                        edited(value) => { root.edited("title", value); }
+                        commit => { root.flush(); }
+                        accepted => { root.flush(); }
+                        escaped => { root.closed(); }
+                    }
+                    Text { text: "开始日期和时间"; font-size: TaskStyle.caption; font-family: TaskStyle.font-family; color: ShellPalette.text-secondary; }
+                    TaskDateTimeField {
+                        label: "开始"; focus-key: "editor:start";
+                        date-text: root.start-date; time-text: root.start-time;
+                        initial-date: root.start-seed-date;
+                        initial-hour: root.start-seed-hour; initial-minute: root.start-seed-minute;
+                        hours: root.hours; minutes: root.minutes;
+                        years: root.years; today: root.picker-today;
+                        enabled: root.enabled && !root.read-only;
+                        selected(date, hour, minute) => { root.datetime-selected("start", date, hour, minute); }
+                        cleared => { root.datetime-cleared("start"); }
+                        picker-changed(open) => { root.picker-changed(open); }
+                        month-days(year, month, today) => { return root.calendar-month(year, month, today); }
+                        shift-day(date, offset) => { return root.calendar-day(date, offset); }
+                        shift-month(date, offset) => { return root.calendar-month-move(date, offset); }
+                    }
+                    Text { text: "到期日期和时间"; font-size: TaskStyle.caption; font-family: TaskStyle.font-family; color: ShellPalette.text-secondary; }
+                    TaskDateTimeField {
+                        label: "到期"; focus-key: "editor:due";
+                        date-text: root.due-date; time-text: root.due-time;
+                        initial-date: root.due-seed-date;
+                        initial-hour: root.due-seed-hour; initial-minute: root.due-seed-minute;
+                        hours: root.hours; minutes: root.minutes;
+                        years: root.years; today: root.picker-today;
+                        enabled: root.enabled && !root.read-only;
+                        selected(date, hour, minute) => { root.datetime-selected("due", date, hour, minute); }
+                        cleared => { root.datetime-cleared("due"); }
+                        picker-changed(open) => { root.picker-changed(open); }
+                        month-days(year, month, today) => { return root.calendar-month(year, month, today); }
+                        shift-day(date, offset) => { return root.calendar-day(date, offset); }
+                        shift-month(date, offset) => { return root.calendar-month-move(date, offset); }
+                    }
+                    Text {
+                        text: "24 小时制 · 日期与时间一起确认，不自动提醒。";
+                        color: ShellPalette.text-secondary; font-size: TaskStyle.caption; font-family: TaskStyle.font-family;
+                        wrap: word-wrap;
+                    }
+                    Rectangle { height: 1px; background: ShellPalette.border; }
+                    Text { text: root.context-label; color: ShellPalette.text-secondary; font-size: TaskStyle.caption; font-family: TaskStyle.font-family; wrap: word-wrap; }
+                    HorizontalLayout {
+                        Text { text: "描述"; color: ShellPalette.text-secondary; font-size: TaskStyle.caption; font-family: TaskStyle.font-family; horizontal-stretch: 1; }
+                        Text { text: root.description-count + " / 10,000"; color: root.description-count > 10000 ? ShellPalette.danger : ShellPalette.text-secondary; font-size: TaskStyle.caption; font-family: TaskStyle.font-family; }
+                    }
+                    TaskField {
+                        text <=> root.description; label: "任务描述";
+                        placeholder: "补充说明，让下一次开始更轻松。";
+                        focus-key: "editor:description"; multiline: true;
+                        enabled: root.enabled && !root.read-only;
+                        invalid: root.description-count > 10000;
+                        edited(value) => { root.edited("description", value); }
+                        commit => { root.flush(); }
+                        escaped => { root.closed(); }
+                    }
+                    Text { text: "自动保存 · 点击详情外部，保存后关闭"; color: ShellPalette.text-secondary; font-size: TaskStyle.caption; font-family: TaskStyle.font-family; wrap: word-wrap; }
+                    ActionButton {
+                        label: "删除任务"; focus-key: "editor:delete";
+                        icon: @image-url("../../../../ui/icons/trash.svg"); with-icon: true; ghost: true;
+                        text-size: TaskStyle.body; text-family: TaskStyle.font-family; text-color: ShellPalette.danger;
+                        enabled: root.enabled && !root.read-only;
+                        activated => { root.deleted(); }
+                    }
+                }
+            }
+        }
+    }
+}

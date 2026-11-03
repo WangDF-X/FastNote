@@ -1,0 +1,57 @@
+import { TodaySectionData } from "types.slint";
+import { ShellPalette } from "../palette.slint";
+import { ShellFocus } from "../shell-focus.slint";
+import { TaskStyle } from "task-style.slint";
+
+export component SectionHeader inherits Rectangle {
+    in property <TodaySectionData> data;
+    callback toggled();
+    height: 36px;
+    border-radius: 6px;
+    background: mouse.has-hover ? ShellPalette.hover : transparent;
+    forward-focus: keyboard;
+    accessible-role: button;
+    accessible-label: root.data.label + "，" + root.data.total + " 项，" + (root.data.collapsed ? "展开" : "折叠");
+    accessible-action-default => { root.toggled(); }
+    private property <int> focus-tick: ShellFocus.restore-tick;
+    private property <bool> focused: keyboard.has-focus;
+    changed focused => { if (focused) { ShellFocus.claim("today:section:" + root.data.kind); } }
+    changed focus-tick => { if (ShellFocus.anchor == "today:section:" + root.data.kind) { keyboard.focus(); } }
+    Image {
+        x: 8px; y: 10px; width: 16px; height: 16px;
+        source: root.data.collapsed ? @image-url("../../../../ui/icons/chevron-right.svg") : @image-url("../../../../ui/icons/chevron-down.svg");
+        colorize: ShellPalette.text-secondary;
+    }
+    heading := Text {
+        x: 32px; y: 8px; height: 20px; text: root.data.label;
+        width: min(self.preferred-width, parent.width - 104px);
+        font-size: TaskStyle.heading; font-family: TaskStyle.font-family; font-weight: 600;
+        color: root.data.kind == 0 ? ShellPalette.danger : ShellPalette.text-primary;
+        vertical-alignment: center;
+    }
+    Rectangle {
+        x: heading.x + heading.width + 10px; y: 8px;
+        width: max(28px, count.preferred-width + 12px); height: 20px;
+        border-radius: 6px;
+        background: root.data.kind == 0 ? ShellPalette.danger-subtle : ShellPalette.subtle;
+        count := Text {
+            text: root.data.total;
+            font-size: TaskStyle.caption; font-family: TaskStyle.font-family;
+            color: root.data.kind == 0 ? ShellPalette.danger : ShellPalette.text-secondary;
+            horizontal-alignment: center; vertical-alignment: center;
+        }
+    }
+    Rectangle {
+        x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - 2px;
+        border-radius: 5px; border-width: 2px; border-color: ShellPalette.accent;
+        background: transparent; visible: keyboard.has-focus;
+    }
+    keyboard := FocusScope {
+        width: parent.width; height: parent.height;
+        key-pressed(event) => {
+            if (event.text == Key.Return || event.text == " ") { root.toggled(); return accept; }
+            return reject;
+        }
+        mouse := TouchArea { mouse-cursor: pointer; clicked => { keyboard.focus(); root.toggled(); } }
+    }
+}

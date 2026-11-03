@@ -1,0 +1,79 @@
+import { LineEdit, TextEdit } from "std-widgets.slint";
+import { ShellPalette } from "../palette.slint";
+import { ShellFocus } from "../shell-focus.slint";
+import { TaskStyle } from "task-style.slint";
+
+/// 使用 Slint 原生文本控件保留 IME、选择、撤销和剪贴板行为。
+export component TaskField inherits Rectangle {
+    in-out property <string> text;
+    in property <string> placeholder;
+    in property <string> label;
+    in property <string> focus-key;
+    in property <bool> multiline: false;
+    in property <bool> enabled: true;
+    in property <bool> invalid: false;
+    callback edited(string);
+    callback commit();
+    callback accepted();
+    callback escaped();
+
+    preferred-height: root.multiline ? 200px : 36px;
+    min-height: root.multiline ? 200px : 36px;
+    max-height: root.multiline ? 200px : 36px;
+    horizontal-stretch: 1;
+    preferred-width: 200px;
+    background: ShellPalette.surface;
+    border-radius: TaskStyle.control-radius;
+    clip: true;
+    private property <bool> focused: root.multiline ? multi.has-focus : single.has-focus;
+    private property <int> focus-tick: ShellFocus.restore-tick;
+    changed focused => {
+        if (root.focused) { ShellFocus.claim(root.focus-key); }
+        else { root.commit(); }
+    }
+    changed focus-tick => {
+        if (root.focus-key != "" && ShellFocus.anchor == root.focus-key) { root.focus-input(); }
+    }
+    public function focus-input() {
+        if (root.multiline) { multi.focus(); } else { single.focus(); }
+    }
+    single := LineEdit {
+        visible: !root.multiline;
+        x: 0px; y: 0px;
+        width: parent.width; height: parent.height;
+        text <=> root.text;
+        enabled: root.enabled && !root.multiline;
+        font-size: TaskStyle.body;
+        font-family: TaskStyle.font-family;
+        placeholder-text: root.placeholder;
+        accessible-label: root.label;
+        edited(value) => { root.edited(value); }
+        accepted(value) => { root.accepted(); }
+        key-pressed(event) => {
+            if (event.text == Key.Escape) { root.escaped(); return accept; }
+            return reject;
+        }
+    }
+    multi := TextEdit {
+        visible: root.multiline;
+        x: 0px; y: 0px;
+        width: parent.width; height: parent.height;
+        text <=> root.text;
+        enabled: root.enabled && root.multiline;
+        font-size: TaskStyle.body;
+        font-family: TaskStyle.font-family;
+        placeholder-text: root.placeholder;
+        accessible-label: root.label;
+        wrap: word-wrap;
+        edited(value) => { root.edited(value); }
+        key-pressed(event) => {
+            if (event.text == Key.Escape) { root.escaped(); return accept; }
+            return reject;
+        }
+    }
+    if root.invalid: Rectangle {
+        width: parent.width; height: parent.height;
+        border-radius: TaskStyle.control-radius; border-width: 1.5px;
+        border-color: ShellPalette.danger; background: transparent;
+    }
+}

@@ -1,0 +1,161 @@
+import { ScrollView } from "std-widgets.slint";
+import { TodaySectionData } from "types.slint";
+import { TaskField } from "task-field.slint";
+import { TaskRow } from "task-row.slint";
+import { SectionHeader } from "section-header.slint";
+import { ShellPalette } from "../palette.slint";
+import { ActionButton } from "../components/action-button.slint";
+import { EmptyState } from "../components/empty-state.slint";
+import { ErrorState } from "../components/error-state.slint";
+import { PageSkeleton } from "../components/page-skeleton.slint";
+import { TaskCounter } from "task-counter.slint";
+import { TaskStyle } from "task-style.slint";
+
+export component TodayPage inherits Rectangle {
+    in property <[TodaySectionData]> sections;
+    in property <int> state: 0;
+    in property <bool> busy: false;
+    in property <bool> enabled: true;
+    in property <int> open-count;
+    in property <int> overdue-count;
+    in property <int> completed-count;
+    in property <string> selected-id;
+    in property <string> error-message;
+    in property <string> error-log-id;
+    in property <string> create-error;
+    in-out property <string> quick-title;
+    callback created(string);
+    callback opened(string);
+    callback dates-requested(string);
+    callback toggled(string);
+    callback deleted(string);
+    callback priority-changed(string);
+    callback status-changed(string, int);
+    callback focus-moved(string, int);
+    callback section-toggled(int);
+    callback more(int);
+    callback retry();
+    callback escaped();
+
+    background: transparent;
+    public function focus-quick-add() { quick.focus-input(); }
+    VerticalLayout {
+        padding: 24px; spacing: 16px;
+        HorizontalLayout {
+            height: 32px; spacing: 8px;
+            TaskCounter {
+                icon: @image-url("../../../../ui/icons/today.svg");
+                label: "待处理"; value: root.open-count;
+            }
+            TaskCounter {
+                icon: @image-url("../../../../ui/icons/alert.svg");
+                label: "逾期"; value: root.overdue-count; tone: 1;
+            }
+            TaskCounter {
+                icon: @image-url("../../../../ui/icons/check-circle.svg");
+                label: "今日完成"; value: root.completed-count; tone: 2;
+            }
+            Rectangle { horizontal-stretch: 1; }
+        }
+        Rectangle {
+            height: 60px;
+            background: ShellPalette.surface;
+            border-width: 1px; border-color: ShellPalette.border;
+            border-radius: TaskStyle.card-radius;
+            HorizontalLayout {
+                padding: 12px; spacing: 12px;
+                cross-axis-alignment: center;
+                quick := TaskField {
+                    horizontal-stretch: 1;
+                    text <=> root.quick-title;
+                    placeholder: "记下要做的事，按 Enter 添加";
+                    label: "快速添加任务";
+                    focus-key: "today:quick";
+                    enabled: root.enabled && !root.busy && root.state == 1;
+                    invalid: root.create-error != "";
+                    accepted => { root.created(root.quick-title); }
+                    escaped => { root.quick-title = ""; root.escaped(); }
+                }
+                ActionButton {
+                    label: root.busy ? "正在处理…" : "添加任务";
+                    primary: true; icon: @image-url("../../../../ui/icons/plus.svg"); with-icon: true;
+                    text-size: TaskStyle.body; text-family: TaskStyle.font-family;
+                    height: 36px;
+                    enabled: root.enabled && !root.busy && root.state == 1;
+                    focus-key: "today:add";
+                    activated => { root.created(root.quick-title); }
+                }
+            }
+        }
+        if root.create-error != "": Text {
+            text: root.create-error;
+            font-size: TaskStyle.caption; font-family: TaskStyle.font-family; color: ShellPalette.danger; wrap: word-wrap;
+        }
+        Text {
+            text: "回车添加 · 点击标题编辑详情 · 右侧调整状态、日期与优先级";
+            font-size: TaskStyle.caption; font-family: TaskStyle.font-family;
+            color: ShellPalette.text-secondary;
+            wrap: word-wrap;
+        }
+        if root.state == 0: PageSkeleton { vertical-stretch: 1; }
+        if root.state == 2: ErrorState {
+            vertical-stretch: 1;
+            title: "无法加载任务";
+            message: root.error-message;
+            log-id: root.error-log-id;
+            retry => { root.retry(); }
+        }
+        if root.state == 1: tasks-scroll := ScrollView {
+            vertical-stretch: 1;
+            content-width: self.visible-width;
+            content-height: task-list.preferred-height;
+            task-list := VerticalLayout {
+                width: tasks-scroll.visible-width;
+                spacing: 12px;
+                padding-right: 4px;
+                if root.open-count == 0: EmptyState {
+                    height: 180px;
+                    icon: @image-url("../../../../ui/icons/today.svg");
+                    title: "今天的待办已经处理完了";
+                    description: "随时在上方记下一件事，让安排从这里开始。";
+                }
+                for section in root.sections: Rectangle {
+                    height: section-content.preferred-height;
+                    background: ShellPalette.surface;
+                    border-radius: TaskStyle.card-radius;
+                    border-width: 1px; border-color: ShellPalette.border;
+                    section-content := VerticalLayout {
+                        padding: 8px; spacing: 4px;
+                        SectionHeader {
+                            data: section;
+                            toggled => { root.section-toggled(section.kind); }
+                        }
+                        if !section.collapsed: VerticalLayout {
+                            spacing: 4px;
+                            for task in section.items: TaskRow {
+                                data: task;
+                                selected: root.selected-id == task.id;
+                                enabled: root.enabled && !root.busy;
+                                opened => { root.opened(task.id); }
+                                dates-requested => { root.dates-requested(task.id); }
+                                toggled => { root.toggled(task.id); }
+                                deleted => { root.deleted(task.id); }
+                                priority-changed => { root.priority-changed(task.id); }
+                                status-changed(index) => { root.status-changed(task.id, index); }
+                                focus-moved(direction) => { root.focus-moved(task.id, direction); }
+                            }
+                            if section.has-more: ActionButton {
+                                label: section.more-label; ghost: true;
+                                icon: @image-url("../../../../ui/icons/chevron-down.svg"); with-icon: true;
+                                text-size: TaskStyle.body; text-family: TaskStyle.font-family;
+                                enabled: section.can-load-more;
+                                focus-key: "today:more:" + section.kind;
+                                activated => { root.more(section.kind); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

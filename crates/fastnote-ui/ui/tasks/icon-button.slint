@@ -1,0 +1,80 @@
+import { ShellPalette } from "../palette.slint";
+import { ShellFocus } from "../shell-focus.slint";
+import { TaskStyle } from "task-style.slint";
+
+export component TaskIconButton inherits Rectangle {
+    in property <image> icon;
+    in property <string> glyph;
+    in property <string> label;
+    in property <string> focus-key;
+    in property <bool> enabled: true;
+    in property <bool> checkbox: false;
+    in property <bool> checked: false;
+    in property <bool> glyph-with-icon: false;
+    in property <color> foreground: ShellPalette.text-secondary;
+    callback activated();
+    width: root.glyph-with-icon ? 48px : 32px;
+    height: TaskStyle.control-height;
+    border-radius: TaskStyle.control-radius;
+    background: mouse.pressed ? ShellPalette.subtle : mouse.has-hover ? ShellPalette.hover : transparent;
+    animate background { duration: 120ms; }
+    opacity: root.enabled ? 1 : 0.45;
+    forward-focus: keyboard;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { if (root.enabled) { root.activated(); } }
+
+    private property <int> focus-tick: ShellFocus.restore-tick;
+    private property <bool> focused: keyboard.has-focus;
+    changed focused => { if (focused) { ShellFocus.claim(root.focus-key); } }
+    changed focus-tick => { if (root.focus-key != "" && ShellFocus.anchor == root.focus-key) { keyboard.focus(); } }
+
+    if root.checkbox: Rectangle {
+        x: 7px; y: 7px; width: 18px; height: 18px;
+        border-radius: 9px;
+        border-width: 1.5px;
+        border-color: root.checked ? ShellPalette.success : root.foreground;
+        background: root.checked ? ShellPalette.success : transparent;
+        if root.checked: Image {
+            x: 2px; y: 2px; width: 14px; height: 14px;
+            source: @image-url("../../../../ui/icons/check.svg");
+            colorize: ShellPalette.on-accent;
+        }
+    }
+    if !root.checkbox && (root.glyph == "" || root.glyph-with-icon): Image {
+        x: 8px; y: 8px; width: 16px; height: 16px;
+        source: root.icon;
+        colorize: root.foreground;
+    }
+    if root.glyph != "": Text {
+        x: root.glyph-with-icon ? 26px : 0px;
+        width: root.glyph-with-icon ? 16px : parent.width;
+        height: parent.height;
+        text: root.glyph;
+        color: root.foreground;
+        font-size: TaskStyle.body;
+        font-family: TaskStyle.font-family;
+        font-weight: 500;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    Rectangle {
+        x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - 2px;
+        border-width: 2px; border-radius: 5px; border-color: ShellPalette.accent;
+        background: transparent; visible: keyboard.has-focus;
+    }
+    keyboard := FocusScope {
+        x: 0px; y: 0px;
+        width: parent.width; height: parent.height;
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if (event.text == Key.Return || event.text == " ") { root.activated(); return accept; }
+            return reject;
+        }
+        mouse := TouchArea {
+            enabled: root.enabled;
+            mouse-cursor: pointer;
+            clicked => { keyboard.focus(); root.activated(); }
+        }
+    }
+}

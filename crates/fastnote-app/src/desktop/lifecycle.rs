@@ -68,6 +68,7 @@ impl Runtime {
                         elapsed_ms = self.started.elapsed().as_millis() as u64
                     );
                 }
+                self.start_tasks();
             }
             Err(error) => {
                 self.ready.set(false);
@@ -192,6 +193,9 @@ impl Runtime {
     pub(super) fn cleanup(&self) {
         self.theme_monitor.borrow_mut().take();
         self.geometry_timer.stop();
+        self.task_save_timer.stop();
+        self.task_day_timer.stop();
+        self.task_feedback_timer.stop();
         self.shell.pause_timers();
         self.hide_menu();
         if self.ball.hide().is_err() {

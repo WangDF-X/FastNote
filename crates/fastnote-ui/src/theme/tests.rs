@@ -82,6 +82,28 @@ fn test_filled_button_labels_remain_legible_in_default_hover_and_pressed_states(
 }
 
 #[test]
+fn test_task_calendar_and_counter_text_meet_contrast_in_both_themes() {
+    for dark in [false, true] {
+        for (foreground, background) in [
+            ("text-primary", "surface"),
+            ("text-primary", "selected"),
+            ("text-secondary", "danger-subtle"),
+            ("danger", "danger-subtle"),
+            ("success", "surface"),
+            ("warning", "surface"),
+            ("on-accent", "accent"),
+            ("on-accent", "success"),
+        ] {
+            let ratio = contrast(token(foreground, dark), token(background, dark));
+            assert!(
+                ratio >= 4.5,
+                "dark={dark}, {foreground}/{background}: {ratio:.2}"
+            );
+        }
+    }
+}
+
+#[test]
 fn test_caption_close_pressed_label_meets_contrast_in_both_themes() {
     for dark in [false, true] {
         assert!(contrast(token("on-accent", dark), token("danger", dark).darker(0.15)) >= 4.5);

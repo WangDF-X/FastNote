@@ -5,6 +5,7 @@ use fastnote_ui::{DialogKind, DialogRequest, ToastKind};
 
 use super::presentation::minimize_to_ball;
 use super::runtime::{Completion, Runtime};
+use crate::tasks::Transition;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ClosePlan {
@@ -25,8 +26,16 @@ impl Runtime {
         if self.finished.get() || self.closing.get() {
             return;
         }
+        if self.shell.component().get_dialog_visible() {
+            return;
+        }
         if self.busy.get() {
             self.notice(ToastKind::Info, "正在保存设置，请稍候再关闭。");
+            return;
+        }
+        if self.defer_task_transition(Transition::Close {
+            exit: explicit_exit,
+        }) {
             return;
         }
         let plan = close_plan(
@@ -52,6 +61,9 @@ impl Runtime {
         }
         if !self.ready.get() {
             self.show_main();
+            return;
+        }
+        if self.defer_task_transition(Transition::Minimize) {
             return;
         }
         self.begin_close(ClosePlan::Hide);

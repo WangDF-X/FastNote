@@ -52,12 +52,12 @@ fn create_v1(path: &Path) {
 }
 
 #[test]
-fn test_fresh_database_has_v2_schema_indexes_wal_and_audit() {
+fn test_fresh_database_has_v3_schema_indexes_wal_and_audit() {
     let directory = tempdir();
     let path = directory.path().join("nested/fake.db");
     let store = SqliteSettings::open(&path, now()).unwrap();
     let connection = Connection::open(&path).unwrap();
-    assert_eq!(version(&connection), 2);
+    assert_eq!(version(&connection), 3);
     let mode: String = connection
         .pragma_query_value(None, "journal_mode", |row| row.get(0))
         .unwrap();
@@ -107,7 +107,7 @@ fn test_fresh_database_has_v2_schema_indexes_wal_and_audit() {
             .query_row::<i64, _, _>("SELECT count(*) FROM schema_migrations", [], |row| row
                 .get(0))
             .unwrap(),
-        2
+        3
     );
     drop(connection);
     store.checkpoint().unwrap();
@@ -132,7 +132,7 @@ fn test_v1_upgrade_preserves_data_and_produces_complete_v1_backup() {
     assert_eq!(store.load_desktop().unwrap().entry_mode.as_str(), "tray");
     assert_eq!(store.load_desktop().unwrap().theme.as_str(), "dark");
     let connection = Connection::open(&path).unwrap();
-    assert_eq!(version(&connection), 2);
+    assert_eq!(version(&connection), 3);
     let plan: String = connection
         .query_row("SELECT name FROM plans", [], |row| row.get(0))
         .unwrap();

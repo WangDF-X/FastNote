@@ -1,0 +1,87 @@
+import { Date } from "std-widgets.slint";
+import { ActionButton } from "../components/action-button.slint";
+import { TaskIconButton } from "icon-button.slint";
+import { TaskDateTimePopup } from "datetime-popup.slint";
+import { CalendarDayData } from "types.slint";
+import { TaskStyle } from "task-style.slint";
+
+/// 日期和时分通过选择组件组合确认；取消任一步都不改原值。
+export component TaskDateTimeField inherits Rectangle {
+    in property <string> label;
+    in property <string> focus-key;
+    in property <string> date-text;
+    in property <string> time-text;
+    in property <Date> initial-date;
+    in property <Date> today;
+    in property <int> initial-hour;
+    in property <int> initial-minute;
+    in property <[string]> hours;
+    in property <[string]> minutes;
+    in property <[string]> years;
+    in property <bool> enabled: true;
+    out property <bool> picker-open: picker.is-open;
+    callback selected(Date, int, int);
+    callback cleared();
+    callback picker-changed(bool);
+    pure callback month-days(int, int, Date) -> [CalendarDayData];
+    pure callback shift-day(Date, int) -> Date;
+    pure callback shift-month(Date, int) -> Date;
+
+    preferred-height: 36px;
+    min-height: 36px;
+    max-height: 36px;
+    horizontal-stretch: 1;
+    private property <Date> snapshot-date;
+    private property <int> snapshot-hour;
+    private property <int> snapshot-minute;
+    private property <int> open-version: 0;
+
+    changed picker-open => {
+        root.picker-changed(root.picker-open);
+        if (!root.picker-open) { choose.focus-button(); }
+    }
+
+    HorizontalLayout {
+        spacing: 8px;
+        alignment: stretch;
+        cross-axis-alignment: center;
+        choose := ActionButton {
+            horizontal-stretch: 1;
+            width: parent.width - 40px;
+            height: 36px;
+            icon: @image-url("../../../../ui/icons/calendar.svg"); with-icon: true;
+            text-size: TaskStyle.body; text-family: TaskStyle.font-family; left-aligned: true;
+            label: root.date-text == "" ? "选择日期和时间" : root.date-text + (root.time-text == "" ? " · 全天" : "  " + root.time-text);
+            enabled: root.enabled;
+            focus-key: root.focus-key;
+            activated => {
+                root.snapshot-date = root.initial-date;
+                root.snapshot-hour = root.initial-hour;
+                root.snapshot-minute = root.initial-minute;
+                root.open-version += 1;
+                picker.show();
+            }
+        }
+        TaskIconButton {
+            icon: @image-url("../../../../ui/icons/window-close.svg");
+            label: "清除" + root.label + "日期和时间";
+            focus-key: root.focus-key + ":clear";
+            enabled: root.enabled && root.date-text != "";
+            activated => { root.cleared(); }
+        }
+    }
+
+    picker := TaskDateTimePopup {
+        x: 0px;
+        y: root.height + 8px;
+        label: root.label; focus-key: root.focus-key;
+        initial-date: root.snapshot-date; today: root.today;
+        initial-hour: root.snapshot-hour; initial-minute: root.snapshot-minute;
+        open-version: root.open-version;
+        years: root.years; hours: root.hours; minutes: root.minutes;
+        month-days(year, month, today) => { return root.month-days(year, month, today); }
+        shift-day(date, offset) => { return root.shift-day(date, offset); }
+        shift-month(date, offset) => { return root.shift-month(date, offset); }
+        confirmed(date, hour, minute) => { root.selected(date, hour, minute); }
+    }
+}
