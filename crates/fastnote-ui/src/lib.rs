@@ -5,6 +5,7 @@ slint::include_modules!();
 mod desktop;
 mod feedback;
 mod shell;
+mod theme;
 
 pub use desktop::storage_message;
 pub use feedback::banner::{BannerAction, BannerKind, BannerRequest, BannerSet};
@@ -17,3 +18,4 @@ pub use feedback::toast::{
     MAX_VISIBLE_TOASTS,
 };
 pub use shell::{run, NavigationIssue, ShellHandle, ShellUpdate, ShellView};
+pub use theme::apply_theme;

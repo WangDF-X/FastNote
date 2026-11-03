@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use fastnote_core::{CloseBehavior, DesktopSetting, EntryMode};
+use fastnote_core::{CloseBehavior, DesktopSetting, EntryMode, ThemeMode};
 use fastnote_platform::{EntryAction, NativeEvent};
 use fastnote_ui::{ShellUpdate, ToastKind};
 
@@ -10,6 +10,8 @@ impl Runtime {
     pub(super) fn handle_action(self: &Rc<Self>, action: &str) -> ShellUpdate {
         match action {
             "desktop:show" => self.show_main(),
+            "desktop:minimize" => self.minimize_window(),
+            "desktop:maximize" => self.maximize_window(),
             "desktop:close" => self.request_close(false),
             "desktop:quit" => self.request_close(true),
             "desktop:force-quit" if self.force_allowed.get() => self.finish_exit(),
@@ -21,6 +23,13 @@ impl Runtime {
             }
             "desktop:entry:ball" => self.preference(DesktopSetting::EntryMode(EntryMode::Ball)),
             "desktop:entry:tray" => self.preference(DesktopSetting::EntryMode(EntryMode::Tray)),
+            "desktop:theme:cycle" => {
+                let next = self.settings.borrow().theme.next_mode();
+                self.preference(DesktopSetting::Theme(next));
+            }
+            "desktop:theme:system" => self.preference(DesktopSetting::Theme(ThemeMode::System)),
+            "desktop:theme:light" => self.preference(DesktopSetting::Theme(ThemeMode::Light)),
+            "desktop:theme:dark" => self.preference(DesktopSetting::Theme(ThemeMode::Dark)),
             "desktop:close-behavior:entry" => {
                 self.preference(DesktopSetting::CloseBehavior(CloseBehavior::Entry))
             }
@@ -47,6 +56,7 @@ impl Runtime {
             DesktopSetting::CloseBehavior(_) => {
                 DesktopSetting::CloseBehavior(self.settings.borrow().close_behavior)
             }
+            DesktopSetting::Theme(_) => DesktopSetting::Theme(self.settings.borrow().theme),
             _ => return,
         };
         if !should_write_preference(
@@ -57,13 +67,24 @@ impl Runtime {
         ) {
             return;
         }
+        let theme = match change {
+            DesktopSetting::Theme(mode) => Some(mode),
+            _ => None,
+        };
         if self.queue(vec![change], Completion::Preference { previous }, false) {
+            if let Some(mode) = theme {
+                self.preview_theme(mode);
+            }
             self.set_busy(true);
         }
     }
 
     pub(super) fn native_action(self: &Rc<Self>, event: NativeEvent) {
         let action = match event {
+            NativeEvent::SystemThemeChanged => {
+                self.refresh_system_theme();
+                None
+            }
             NativeEvent::TrayShow(id) => self
                 .tray
                 .borrow()
@@ -174,5 +195,20 @@ mod tests {
             None,
             false
         ));
+    }
+
+    #[test]
+    fn test_theme_preference_only_writes_changes_or_repairs() {
+        let previous = DesktopSetting::Theme(ThemeMode::System);
+        assert!(!should_write_preference(&previous, &previous, None, false));
+        assert!(should_write_preference(&previous, &previous, None, true));
+        for mode in [ThemeMode::Light, ThemeMode::Dark] {
+            assert!(should_write_preference(
+                &DesktopSetting::Theme(mode),
+                &previous,
+                None,
+                false
+            ));
+        }
     }
 }

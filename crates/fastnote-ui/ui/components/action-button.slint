@@ -42,7 +42,7 @@ export component ActionButton inherits Rectangle {
     border-radius: 6px;
     border-width: filled ? 0px : 1px;
     border-color: ShellPalette.border;
-    background: filled ? (mouse-area.pressed ? fill-color.darker(0.25) : mouse-area.has-hover ? fill-color.darker(0.1) : fill-color) : (mouse-area.pressed ? ShellPalette.subtle : mouse-area.has-hover ? ShellPalette.hover : ShellPalette.surface);
+    background: filled ? (mouse-area.pressed ? fill-color.darker(ShellPalette.dark ? 0.1 : 0.25) : mouse-area.has-hover ? fill-color.darker(ShellPalette.dark ? 0.05 : 0.1) : fill-color) : (mouse-area.pressed ? ShellPalette.subtle : mouse-area.has-hover ? ShellPalette.hover : ShellPalette.surface);
     opacity: enabled ? 1 : 0.45;
     forward-focus: keyboard;
     accessible-role: button;

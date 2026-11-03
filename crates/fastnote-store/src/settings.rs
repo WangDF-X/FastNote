@@ -3,7 +3,7 @@ use std::path::Path;
 
 use fastnote_core::{
     BallPosition, CloseBehavior, DateTime, DesktopSetting, DesktopSettings, EntryMode,
-    SettingsRepository, Utc, WindowGeometry,
+    SettingsRepository, ThemeMode, Utc, WindowGeometry,
 };
 use rusqlite::{params, Connection, TransactionBehavior};
 
@@ -47,7 +47,7 @@ impl SettingsRepository for SqliteSettings {
             CASE WHEN length(CAST(value AS BLOB)) <= 4096 THEN value ELSE char(0) END
             FROM app_settings WHERE key IN ('general.entry_mode', 'general.close_behavior',
             'hotkeys.enabled', 'general.first_run_done', 'hotkeys.show_app',
-            'window.main_geometry', 'appearance.ball_position')",
+            'window.main_geometry', 'appearance.ball_position', 'appearance.theme')",
         )?;
         let values: HashMap<String, String> = statement
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
@@ -59,6 +59,7 @@ impl SettingsRepository for SqliteSettings {
             result.entry_mode,
             EntryMode::parse,
         );
+        result.theme = read(&values, "appearance.theme", result.theme, ThemeMode::parse);
         result.close_behavior = read(
             &values,
             "general.close_behavior",
@@ -166,6 +167,7 @@ fn read<T>(
 fn encode(change: &DesktopSetting) -> Result<String, StoreError> {
     let value = match change {
         DesktopSetting::EntryMode(value) => value.as_str().to_owned(),
+        DesktopSetting::Theme(value) => value.as_str().to_owned(),
         DesktopSetting::CloseBehavior(value) => value.as_str().to_owned(),
         DesktopSetting::FirstRunDone(value) => value.to_string(),
         DesktopSetting::MainGeometry(Some(value)) => {

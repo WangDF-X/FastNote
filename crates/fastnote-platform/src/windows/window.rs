@@ -25,7 +25,7 @@ use super::PlatformError;
 pub struct NativeWindowHandle(pub isize);
 
 impl NativeWindowHandle {
-    fn hwnd(self) -> HWND {
+    pub(super) fn hwnd(self) -> HWND {
         HWND(self.0 as *mut _)
     }
 }
@@ -136,6 +136,20 @@ pub fn cursor_position() -> Result<(i32, i32), PlatformError> {
 /// 读取普通还原矩形，即使窗口最大化/最小化也不会保存整个屏幕或 (-32000,-32000)。
 /// `w/h` 换算成客户区逻辑尺寸，与 Slint set_size 对应。
 pub fn capture_geometry(handle: NativeWindowHandle) -> Result<WindowGeometry, PlatformError> {
+    capture_window_geometry(handle, true)
+}
+
+/// 读取自绘标题栏窗口的还原矩形；不扣除并不存在的原生标题栏/边框。
+pub fn capture_frameless_geometry(
+    handle: NativeWindowHandle,
+) -> Result<WindowGeometry, PlatformError> {
+    capture_window_geometry(handle, false)
+}
+
+fn capture_window_geometry(
+    handle: NativeWindowHandle,
+    decorated: bool,
+) -> Result<WindowGeometry, PlatformError> {
     let hwnd = handle.hwnd();
     let mut placement = WINDOWPLACEMENT {
         length: std::mem::size_of::<WINDOWPLACEMENT>() as u32,
@@ -169,16 +183,19 @@ pub fn capture_geometry(handle: NativeWindowHandle) -> Result<WindowGeometry, Pl
     }
     let scale = f64::from(dpi) / 96.0;
     let mut frame = RECT::default();
-    // SAFETY: 样式按值输入，frame 是独占且尺寸正确的输出 RECT。
-    unsafe {
-        let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32 & !(WS_MAXIMIZE.0 | WS_MINIMIZE.0);
-        AdjustWindowRectExForDpi(
-            &mut frame,
-            WINDOW_STYLE(style),
-            false,
-            WINDOW_EX_STYLE(GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32),
-            dpi,
-        )?;
+    if decorated {
+        // SAFETY: 样式按值输入，frame 是独占且尺寸正确的输出 RECT。
+        unsafe {
+            let style =
+                GetWindowLongPtrW(hwnd, GWL_STYLE) as u32 & !(WS_MAXIMIZE.0 | WS_MINIMIZE.0);
+            AdjustWindowRectExForDpi(
+                &mut frame,
+                WINDOW_STYLE(style),
+                false,
+                WINDOW_EX_STYLE(GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32),
+                dpi,
+            )?;
+        }
     }
     // 主窗不是 tool window：rcNormalPosition 为工作区坐标，补回左/上任务栏偏移。
     let workspace_coordinates = minimized || zoomed;
@@ -195,14 +212,7 @@ pub fn capture_geometry(handle: NativeWindowHandle) -> Result<WindowGeometry, Pl
             0.0
         };
     let (width, height) = if workspace_coordinates {
-        (
-            f64::from(normal.right)
-                - f64::from(normal.left)
-                - (f64::from(frame.right) - f64::from(frame.left)),
-            f64::from(normal.bottom)
-                - f64::from(normal.top)
-                - (f64::from(frame.bottom) - f64::from(frame.top)),
-        )
+        restored_client_size(&normal, &frame, decorated)
     } else {
         (f64::from(client.right), f64::from(client.bottom))
     };
@@ -218,6 +228,19 @@ pub fn capture_geometry(handle: NativeWindowHandle) -> Result<WindowGeometry, Pl
         scale,
         maximized,
     ))
+}
+
+fn restored_client_size(normal: &RECT, frame: &RECT, decorated: bool) -> (f64, f64) {
+    let width = f64::from(normal.right) - f64::from(normal.left);
+    let height = f64::from(normal.bottom) - f64::from(normal.top);
+    if decorated {
+        (
+            width - (f64::from(frame.right) - f64::from(frame.left)),
+            height - (f64::from(frame.bottom) - f64::from(frame.top)),
+        )
+    } else {
+        (width, height)
+    }
 }
 
 fn from_physical(
@@ -239,6 +262,27 @@ fn from_physical(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_frameless_restore_does_not_subtract_a_native_caption() {
+        let normal = RECT {
+            left: 100,
+            top: 100,
+            right: 1380,
+            bottom: 900,
+        };
+        let frame = RECT {
+            left: -8,
+            top: -31,
+            right: 8,
+            bottom: 8,
+        };
+        assert_eq!(
+            restored_client_size(&normal, &frame, false),
+            (1280.0, 800.0)
+        );
+        assert_eq!(restored_client_size(&normal, &frame, true), (1264.0, 761.0));
+    }
 
     #[test]
     fn test_native_geometry_conversion_preserves_normal_client_size_and_negative_origin() {

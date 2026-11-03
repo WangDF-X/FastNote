@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use fastnote_core::{
     BallPosition, CloseBehavior, DateTime, DesktopSetting, DesktopSettings, EntryMode,
-    SettingsRepository, Utc, WindowGeometry,
+    SettingsRepository, ThemeMode, Utc, WindowGeometry,
 };
 use fastnote_store::SqliteSettings;
 use rusqlite::{params, Connection};
@@ -78,6 +78,7 @@ fn test_all_desktop_values_round_trip_and_can_clear_geometry() {
         .save_desktop(
             &[
                 DesktopSetting::EntryMode(EntryMode::Tray),
+                DesktopSetting::Theme(ThemeMode::Dark),
                 DesktopSetting::CloseBehavior(CloseBehavior::Quit),
                 DesktopSetting::MainGeometry(Some(geometry)),
                 DesktopSetting::BallPosition(Some(position.clone())),
@@ -88,6 +89,7 @@ fn test_all_desktop_values_round_trip_and_can_clear_geometry() {
         .unwrap();
     let snapshot = store.load_desktop().unwrap();
     assert_eq!(snapshot.entry_mode, EntryMode::Tray);
+    assert_eq!(snapshot.theme, ThemeMode::Dark);
     assert_eq!(snapshot.close_behavior, CloseBehavior::Quit);
     assert_eq!(snapshot.geometry, Some(geometry));
     assert_eq!(snapshot.ball_position, Some(position));
@@ -127,6 +129,7 @@ fn test_invalid_values_fall_back_without_changing_unknown_or_invalid_rows() {
     for (key, value) in [
         ("general.entry_mode", "none"),
         ("general.close_behavior", "invalid"),
+        ("appearance.theme", "auto"),
         ("hotkeys.enabled", "1"),
         ("general.first_run_done", "yes"),
         ("window.main_geometry", "{broken"),

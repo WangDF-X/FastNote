@@ -118,6 +118,7 @@ impl Runtime {
             changes.push(DesktopSetting::BallPosition(Some(position)));
         }
         if self.preference_repair.get() {
+            changes.push(DesktopSetting::Theme(self.settings.borrow().theme));
             changes.push(DesktopSetting::EntryMode(self.settings.borrow().entry_mode));
             changes.push(DesktopSetting::CloseBehavior(
                 self.settings.borrow().close_behavior,

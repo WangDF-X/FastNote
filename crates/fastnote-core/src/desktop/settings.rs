@@ -59,11 +59,63 @@ impl CloseBehavior {
     }
 }
 
+/// ARCH-05 §7：主题三态；`system` 跟随 Windows 应用主题设置。
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ThemeMode {
+    /// 跟随系统。
+    #[default]
+    System,
+    /// 始终浅色。
+    Light,
+    /// 始终深色。
+    Dark,
+}
+
+impl ThemeMode {
+    /// 稳定配置值。
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::Light => "light",
+            Self::Dark => "dark",
+        }
+    }
+    /// 严格解析配置值，未知值回退由调用方决定。
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "system" => Some(Self::System),
+            "light" => Some(Self::Light),
+            "dark" => Some(Self::Dark),
+            _ => None,
+        }
+    }
+    /// 结合系统状态解析实际是否使用深色调色板。
+    pub fn is_dark(self, system_dark: bool) -> bool {
+        match self {
+            Self::System => system_dark,
+            Self::Light => false,
+            Self::Dark => true,
+        }
+    }
+
+    /// SET-02 §3.2：单图标按钮的下一模式，按系统 → 浅色 → 深色 → 系统循环。
+    pub fn next_mode(self) -> Self {
+        match self {
+            Self::System => Self::Light,
+            Self::Light => Self::Dark,
+            Self::Dark => Self::System,
+        }
+    }
+}
+
 /// 由设置仓储读取、应用层拥有的桌面配置快照。
 #[derive(Clone, Debug, PartialEq)]
 pub struct DesktopSettings {
     /// 用户选择的入口模式。
     pub entry_mode: EntryMode,
+    /// 主题选择。
+    pub theme: ThemeMode,
     /// 关闭窗口策略。
     pub close_behavior: CloseBehavior,
     /// 是否注册全局热键。
@@ -82,6 +134,7 @@ impl Default for DesktopSettings {
     fn default() -> Self {
         Self {
             entry_mode: EntryMode::Ball,
+            theme: ThemeMode::System,
             close_behavior: CloseBehavior::Entry,
             hotkeys_enabled: true,
             show_hotkey: "Ctrl+Alt+Space".to_owned(),
@@ -97,6 +150,8 @@ impl Default for DesktopSettings {
 pub enum DesktopSetting {
     /// 入口形态。
     EntryMode(EntryMode),
+    /// 主题三态。
+    Theme(ThemeMode),
     /// 主窗口关闭策略。
     CloseBehavior(CloseBehavior),
     /// 主窗口几何；None 清除旧值。
@@ -112,6 +167,7 @@ impl DesktopSetting {
     pub fn key(&self) -> &'static str {
         match self {
             Self::EntryMode(_) => "general.entry_mode",
+            Self::Theme(_) => "appearance.theme",
             Self::CloseBehavior(_) => "general.close_behavior",
             Self::MainGeometry(_) => "window.main_geometry",
             Self::BallPosition(_) => "appearance.ball_position",
@@ -125,6 +181,7 @@ impl DesktopSettings {
     pub fn apply(&mut self, change: &DesktopSetting) {
         match change {
             DesktopSetting::EntryMode(value) => self.entry_mode = *value,
+            DesktopSetting::Theme(value) => self.theme = *value,
             DesktopSetting::CloseBehavior(value) => self.close_behavior = *value,
             DesktopSetting::MainGeometry(value) => self.geometry = *value,
             DesktopSetting::BallPosition(value) => self.ball_position = value.clone(),
@@ -141,6 +198,7 @@ mod tests {
     fn test_defaults_match_arch_04() {
         let settings = DesktopSettings::default();
         assert_eq!(settings.entry_mode, EntryMode::Ball);
+        assert_eq!(settings.theme, ThemeMode::System);
         assert_eq!(settings.close_behavior, CloseBehavior::Entry);
         assert_eq!(settings.show_hotkey, "Ctrl+Alt+Space");
         assert!(!settings.first_run_done);
@@ -157,12 +215,47 @@ mod tests {
         assert_eq!(CloseBehavior::parse("invalid"), None);
     }
     #[test]
+    fn test_theme_mode_round_trips_and_resolves_system_state() {
+        for value in [ThemeMode::System, ThemeMode::Light, ThemeMode::Dark] {
+            assert_eq!(ThemeMode::parse(value.as_str()), Some(value));
+        }
+        assert_eq!(ThemeMode::parse("auto"), None);
+        assert!(ThemeMode::System.is_dark(true));
+        assert!(!ThemeMode::System.is_dark(false));
+        assert!(!ThemeMode::Light.is_dark(true));
+        assert!(!ThemeMode::Light.is_dark(false));
+        assert!(ThemeMode::Dark.is_dark(false));
+        assert!(ThemeMode::Dark.is_dark(true));
+    }
+    #[test]
+    fn test_theme_button_cycles_all_three_modes_and_wraps() {
+        let mut mode = ThemeMode::System;
+        for expected in [
+            ThemeMode::Light,
+            ThemeMode::Dark,
+            ThemeMode::System,
+            ThemeMode::Light,
+            ThemeMode::Dark,
+            ThemeMode::System,
+        ] {
+            mode = mode.next_mode();
+            assert_eq!(mode, expected);
+        }
+        for mode in [ThemeMode::System, ThemeMode::Light, ThemeMode::Dark] {
+            assert_ne!(mode.next_mode(), mode);
+            assert_eq!(mode.next_mode().next_mode().next_mode(), mode);
+        }
+    }
+
+    #[test]
     fn test_committed_changes_only_touch_their_own_field() {
         let mut settings = DesktopSettings::default();
         settings.apply(&DesktopSetting::EntryMode(EntryMode::Tray));
+        settings.apply(&DesktopSetting::Theme(ThemeMode::Dark));
         settings.apply(&DesktopSetting::CloseBehavior(CloseBehavior::Quit));
         settings.apply(&DesktopSetting::FirstRunDone(true));
         assert_eq!(settings.entry_mode, EntryMode::Tray);
+        assert_eq!(settings.theme, ThemeMode::Dark);
         assert_eq!(settings.close_behavior, CloseBehavior::Quit);
         assert!(settings.first_run_done);
         assert_eq!(settings.geometry, None);

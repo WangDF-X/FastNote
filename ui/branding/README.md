@@ -11,7 +11,7 @@
 | 用途 | 需要的格式 | 原因 |
 |---|---|---|
 | exe 文件图标 / 任务栏 / Alt+Tab | **ICO** | Win32 只认 `RT_GROUP_ICON` 资源，Windows 不会去解析 SVG |
-| 运行中窗口图标 | 跟随 exe 资源 | Slint 1.18 的 `Window` 没有 icon 属性，winit 也不会单独设置 |
+| 运行中窗口图标 | `MainWindow.icon` 使用 SVG；`ICON_BIG` 单独使用 exe 资源 | Slint/winit 设置 `ICON_SMALL`，任务栏大图标由平台层补齐 |
 | 托盘图标 | 位图（RGBA 或 `.ico` 路径） | `tray-icon` 只接受像素数据 |
 | 应用内界面（侧边栏品牌区等） | **SVG 可用** | Slint 的 `@image-url()` 直接支持 SVG |
 
@@ -133,11 +133,13 @@ F 是**镂空**的（露出纸色），斜体：`skewX(-11)`，基线保持水�
 | 使用位置 | 接入方式 | 资源 |
 |---|---|---|
 | exe / 资源管理器文件图标 | `crates/fastnote-app/build.rs` 调用 Windows SDK 的 `rc.exe`，把图标编进 exe 资源 | `fastnote.ico`（16–256 九档） |
-| 窗口标题栏 | `MainWindow` 的 `icon` 属性，Slint 后端按 64pt 光栅化后设置 `ICON_SMALL` | `fastnote-app-icon.svg` |
+| 窗口标题栏 | 自绘 `TitleBar` 显示 16px 品牌图标；原生回退保留 `MainWindow.icon` / `ICON_SMALL`；按有效主题切换 | 浅色 `fastnote-app-icon-small.svg`（原生回退为主母版）；深色 `fastnote-app-icon-reversed.svg` |
 | 任务栏 / Alt+Tab | `fastnote-platform::set_window_big_icon` 从 exe 资源加载 ico 并设置 `ICON_BIG` | `fastnote.ico` |
-| 侧边栏品牌区（24px） | Slint `@image-url` | `fastnote-app-icon-small.svg` |
-| 悬浮球（32px） | Slint `@image-url` | `fastnote-app-icon-small.svg` |
+| 侧边栏品牌区（24px） | `ShellPalette.brand-icon-small`，按有效主题切换 | 浅色 `fastnote-app-icon-small.svg`；深色 `fastnote-app-icon-reversed.svg` |
+| 悬浮球（32px） | `ShellPalette.brand-icon-small`，按有效主题切换 | 浅色 `fastnote-app-icon-small.svg`；深色 `fastnote-app-icon-reversed.svg` |
 | 系统托盘 | `include_bytes!` + `png` 解码成 32px RGBA | `png/fastnote-32.png` |
+
+- 2026-11-03 用户确认：主题切换同时让侧边栏、标题栏与悬浮球切换既有彩色/反色图标；不重新设计或生成资产。exe、任务栏/Alt+Tab 和系统托盘仍使用原图，不随应用主题切换。
 
 - exe 图标不引入新依赖，只调用 `rc.exe`。脚本按 `RC` 环境变量 → `PATH` → Windows SDK 的顺序查找，
   找不到时构建失败并给出提示，不会静默生成没有图标的 exe。

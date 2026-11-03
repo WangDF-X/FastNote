@@ -131,6 +131,7 @@ impl Runtime {
     }
 
     fn show_main_window(&self) -> Result<(), ()> {
+        self.refresh_system_theme();
         let window = self.shell.component().window();
         let recreating = !window.has_winit_window();
         let geometry = self
@@ -142,6 +143,7 @@ impl Runtime {
             window.set_maximized(false);
             // 原生窗口会重建，HWND 可能复用；清空去重标记以便重设大图标。
             self.main_icon.set(0);
+            self.main_caption.set(0);
             if let Some(geometry) = geometry {
                 window.set_size(slint::LogicalSize::new(
                     geometry.w as f32,
@@ -160,6 +162,8 @@ impl Runtime {
             }
         }
         self.shell.show().map_err(|_| ())?;
+        self.apply_main_caption();
+        self.sync_theme();
         window.set_minimized(false);
         if recreating {
             if let Some(geometry) = self.geometry.get().or(geometry) {

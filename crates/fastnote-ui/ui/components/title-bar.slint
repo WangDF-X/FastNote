@@ -1,0 +1,90 @@
+import { ShellPalette } from "../palette.slint";
+import { ShellFocus } from "../shell-focus.slint";
+
+component CaptionButton inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    in property <string> focus-key;
+    in property <bool> close-button: false;
+    callback activated();
+    width: 46px;
+    height: 40px;
+    forward-focus: keyboard;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.activated(); }
+    background: root.close-button && (mouse.has-hover || mouse.pressed) ? (mouse.pressed ? ShellPalette.danger.darker(0.15) : ShellPalette.danger) : mouse.pressed ? ShellPalette.subtle : mouse.has-hover ? ShellPalette.hover : transparent;
+
+    private property <bool> focused: keyboard.has-focus;
+    private property <int> focus-tick: ShellFocus.restore-tick;
+    changed focused => { if (focused) { ShellFocus.claim(root.focus-key); } }
+    changed focus-tick => { if (ShellFocus.anchor == root.focus-key) { keyboard.focus(); } }
+    Image {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 16px; height: 16px;
+        source: root.icon;
+        colorize: root.close-button && (mouse.has-hover || mouse.pressed) ? ShellPalette.on-accent : ShellPalette.text-primary;
+        accessible-role: none;
+    }
+    Rectangle {
+        x: 3px; y: 3px; width: parent.width - 6px; height: parent.height - 6px;
+        background: transparent;
+        border-width: 2px; border-color: ShellPalette.accent; border-radius: 4px;
+        visible: keyboard.has-focus;
+    }
+    keyboard := FocusScope {
+        key-pressed(event) => {
+            if (event.text == "\n" || event.text == " ") { root.activated(); return accept; }
+            return reject;
+        }
+        mouse := TouchArea { clicked => { keyboard.focus(); root.activated(); } }
+    }
+}
+
+/// SHELL-01 §3.1：仅按需绘制；空白区域的拖动/双击/右键由原生命中测试处理。
+/// 高 40，按钮宽 46，与 fastnote-platform/windows/caption.rs 的命中契约一致。
+export component TitleBar inherits Rectangle {
+    in property <bool> maximized: false;
+    in property <bool> active: true;
+    callback minimize();
+    callback maximize();
+    callback close();
+    height: 40px;
+    background: ShellPalette.canvas;
+    Image {
+        x: 12px; y: 12px; width: 16px; height: 16px;
+        source: ShellPalette.brand-icon-small;
+        accessible-role: none;
+    }
+    Text {
+        x: 36px; y: 0px;
+        width: max(0px, root.width - 186px);
+        height: parent.height;
+        text: "FastNote"; font-size: 13px; font-weight: 500;
+        color: root.active ? ShellPalette.text-primary : ShellPalette.text-secondary;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    // 不让品牌区或弹性占位元素参与按钮定位；右侧 138px 对齐原生命中区。
+    minimize-button := CaptionButton {
+        x: root.width - 138px; y: 0px;
+        icon: @image-url("../../../../ui/icons/window-minimize.svg");
+        label: "最小化"; focus-key: "window-minimize";
+        activated => { root.minimize(); }
+    }
+    maximize-button := CaptionButton {
+        x: root.width - 92px; y: 0px;
+        icon: root.maximized ? @image-url("../../../../ui/icons/window-restore.svg") : @image-url("../../../../ui/icons/window-maximize.svg");
+        label: root.maximized ? "还原窗口" : "最大化";
+        focus-key: "window-maximize";
+        activated => { root.maximize(); }
+    }
+    close-button := CaptionButton {
+        x: root.width - 46px; y: 0px;
+        icon: @image-url("../../../../ui/icons/window-close.svg");
+        label: "关闭"; focus-key: "window-close"; close-button: true;
+        activated => { root.close(); }
+    }
+    Rectangle { y: parent.height - 1px; height: 1px; width: parent.width; background: ShellPalette.border; }
+}

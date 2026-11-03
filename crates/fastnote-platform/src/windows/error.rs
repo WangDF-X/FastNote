@@ -21,6 +21,9 @@ pub enum PlatformError {
     /// 编译期嵌入的品牌图标无法解码。
     #[error("Invalid brand icon")]
     Icon,
+    /// 系统应用主题不是有效的 0/1 DWORD。
+    #[error("Invalid Windows application theme")]
+    InvalidTheme,
 }
 
 impl PlatformError {
@@ -41,6 +44,7 @@ impl PlatformError {
             Self::Hotkey(_) => "hotkey",
             Self::InvalidHotkey => "invalid_hotkey",
             Self::Icon => "brand_icon",
+            Self::InvalidTheme => "system_theme",
         }
     }
 }

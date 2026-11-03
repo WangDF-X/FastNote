@@ -22,4 +22,6 @@ pub enum NativeEvent {
     Menu(String),
     /// 已按下的全局热键 ID。
     HotkeyShow(u32),
+    /// Windows 设置广播；实际主题由应用层重新读取，平台不持有业务偏好。
+    SystemThemeChanged,
 }

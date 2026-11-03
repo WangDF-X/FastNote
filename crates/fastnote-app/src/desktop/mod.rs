@@ -7,6 +7,7 @@ mod gesture;
 mod lifecycle;
 mod presentation;
 mod runtime;
+mod theme;
 mod window;
 mod worker;
 
@@ -30,6 +31,7 @@ pub(crate) fn run(hidden: bool) -> Result<(), Box<dyn std::error::Error>> {
                 .with_active(true)
                 .with_drag_and_drop(false)
                 .with_resizable(false),
+            "FastNote" => attributes.with_undecorated_shadow(true),
             _ => attributes,
         })
         .select()?;

@@ -224,7 +224,7 @@ fn work(
 mod tests {
     use std::time::Duration;
 
-    use fastnote_core::{CloseBehavior, EntryMode};
+    use fastnote_core::{CloseBehavior, EntryMode, ThemeMode};
 
     use super::*;
 
@@ -249,7 +249,10 @@ mod tests {
         worker
             .save(
                 2,
-                vec![DesktopSetting::CloseBehavior(CloseBehavior::Quit)],
+                vec![
+                    DesktopSetting::CloseBehavior(CloseBehavior::Quit),
+                    DesktopSetting::Theme(ThemeMode::Dark),
+                ],
                 true,
             )
             .unwrap();
@@ -272,6 +275,7 @@ mod tests {
         let settings = store.load_desktop().unwrap();
         assert_eq!(settings.entry_mode, EntryMode::Tray);
         assert_eq!(settings.close_behavior, CloseBehavior::Quit);
+        assert_eq!(settings.theme, ThemeMode::Dark);
     }
 
     #[test]

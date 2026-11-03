@@ -1,6 +1,6 @@
 # ARCH-06 平台集成
 
-> 文档编号：ARCH-06 ｜ 模块：00 总览与架构 ｜ 状态：已定稿 v0.1 ｜ 更新：2026-10-23
+> 文档编号：ARCH-06 ｜ 模块：00 总览与架构 ｜ 状态：已定稿 v0.1 ｜ 更新：2026-11-02
 > 上游：[ARCH-01](01-tech-and-runtime.md)、[product.md](../../product.md) §1 ｜ 下游：[02-desktop-entry](../02-desktop-entry/)、[08-settings](../08-settings/)
 
 ---
@@ -266,6 +266,7 @@ pub trait EntryPlatform: Send + Sync {
 
 - 检测失败 → 浅色；用户手动选择 `light/dark` 时忽略系统。
 - 主题切换不重启应用、不重建数据。
+- Windows v1（2026-11-02）：复用现有 `windows`，用不可见的顶层工具窗口接收 `WM_SETTINGCHANGE` 并通过容量 256 的通道唤醒 UI；不用消息专用窗口（它不接收广播）、新增线程或轮询。读取使用 `RegGetValueW` 的 DWORD 类型校验；缺失/非法值记录安全诊断并回退浅色。通知窗口由 UI 线程创建/销毁，所有窗口隐藏后仍可接收系统变化；监听失败则保留窗口主题事件及显示/聚焦时读取的降级路径。
 
 ### 9.2 文件与目录
 
