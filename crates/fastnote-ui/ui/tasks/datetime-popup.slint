@@ -1,0 +1,204 @@
+import { Date } from "std-widgets.slint";
+import { CalendarDayData } from "types.slint";
+import { PickerDay } from "calendar-day.slint";
+import { TaskSelect } from "task-select.slint";
+import { TaskIconButton } from "icon-button.slint";
+import { TaskStyle } from "task-style.slint";
+import { ActionButton } from "../components/action-button.slint";
+import { ShellPalette } from "../palette.slint";
+import { ShellFocus } from "../shell-focus.slint";
+
+/// D-TODAY-03：同一紧凑弹层完成月历与时分选择，确认前只修改显示草稿。
+export component TaskDateTimePopup inherits PopupWindow {
+    in property <string> label;
+    in property <string> focus-key;
+    in property <Date> initial-date;
+    in property <Date> today;
+    in property <int> initial-hour;
+    in property <int> initial-minute;
+    in property <int> open-version;
+    in property <[string]> years;
+    in property <[string]> hours;
+    in property <[string]> minutes;
+    pure callback month-days(int, int, Date) -> [CalendarDayData];
+    pure callback shift-day(Date, int) -> Date;
+    pure callback shift-month(Date, int) -> Date;
+    pure callback select-month(Date, int, int) -> Date;
+    pure callback date-label(string, int) -> string;
+    callback confirmed(Date, int, int);
+    private property <Date> chosen-date: root.initial-date;
+    private property <int> view-year: clamp(root.initial-date.year, TaskStyle.picker-first-year, TaskStyle.picker-last-year);
+    private property <int> view-month: root.initial-date.month;
+    private property <int> chosen-hour: root.initial-hour;
+    private property <int> chosen-minute: root.initial-minute;
+    private property <[CalendarDayData]> days: root.month-days(root.view-year, root.view-month, root.today);
+
+    width: TaskStyle.popup-width;
+    height: TaskStyle.popup-height;
+    close-policy: close-on-click-outside;
+    forward-focus: year-choice;
+
+    changed open-version => {
+        if (root.open-version > 0) {
+            root.chosen-date = root.initial-date;
+            root.view-year = clamp(root.initial-date.year, TaskStyle.picker-first-year, TaskStyle.picker-last-year);
+            root.view-month = root.initial-date.month;
+            root.chosen-hour = root.initial-hour;
+            root.chosen-minute = root.initial-minute;
+            year-choice.focus();
+        }
+    }
+
+    pure function two-digits(value: int) -> string { return value < 10 ? "0" + value : "" + value; }
+    function apply-selection() {
+        // 回调可能同步刷新详情；先冻结组合值并回传，再关闭弹层和恢复焦点。
+        let date = root.chosen-date;
+        let hour = root.chosen-hour;
+        let minute = root.chosen-minute;
+        root.confirmed(date, hour, minute);
+        root.close();
+    }
+    function focus-day() {
+        ShellFocus.anchor = root.focus-key + ":day:" + root.chosen-date.year + "-" + root.chosen-date.month + "-" + root.chosen-date.day;
+        ShellFocus.restore();
+    }
+    function choose-date(date: Date) {
+        root.chosen-date = date;
+        root.view-year = date.year;
+        root.view-month = date.month;
+        root.focus-day();
+    }
+    function show-month(delta: int) {
+        let base = root.select-month(root.chosen-date, root.view-year, root.view-month);
+        let next = root.shift-month(base, delta);
+        root.select-period(next.year, next.month);
+    }
+    function select-period(year: int, month: int) {
+        // 年月选择不是只浏览：保持日并校正月末，时分不变，应用前不回写字段。
+        let date = root.select-month(root.chosen-date, year, month);
+        root.view-year = date.year;
+        root.view-month = date.month;
+        // Slint 1.18.1 生成代码会移动局部 Date，先读字段再赋整个结构体。
+        root.chosen-date = date;
+    }
+    Rectangle {
+        width: parent.width; height: parent.height;
+        background: ShellPalette.surface;
+        border-width: 1px; border-color: ShellPalette.border;
+        border-radius: TaskStyle.card-radius;
+    }
+    popup-keys := FocusScope {
+        width: parent.width; height: parent.height;
+        focus-on-tab-navigation: false;
+        key-pressed(event) => {
+            if (event.text == Key.Escape) { root.close(); return accept; }
+            return reject;
+        }
+        VerticalLayout {
+            padding: 16px; spacing: 8px;
+            HorizontalLayout {
+                height: TaskStyle.control-height; spacing: 8px;
+                cross-axis-alignment: center;
+                year-choice := TaskSelect {
+                    min-width: 92px; max-width: 92px; preferred-width: 92px;
+                    model: root.years; current-index: root.view-year - TaskStyle.picker-first-year;
+                    label: "选择年份"; focus-key: root.focus-key + ":year";
+                    selected(index) => { root.select-period(TaskStyle.picker-first-year + index, root.view-month); }
+                }
+                TaskSelect {
+                    min-width: 72px; max-width: 72px; preferred-width: 72px;
+                    model: ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
+                    current-index: root.view-month - 1;
+                    label: "选择月份"; focus-key: root.focus-key + ":month";
+                    selected(index) => { root.select-period(root.view-year, index + 1); }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                TaskIconButton {
+                    icon: @image-url("../../../../ui/icons/arrow-left.svg"); label: "上个月";
+                    focus-key: root.focus-key + ":previous";
+                    enabled: root.view-year > TaskStyle.picker-first-year || root.view-month > 1;
+                    activated => { root.show-month(-1); }
+                }
+                TaskIconButton {
+                    icon: @image-url("../../../../ui/icons/chevron-right.svg"); label: "下个月";
+                    focus-key: root.focus-key + ":next";
+                    enabled: root.view-year < TaskStyle.picker-last-year || root.view-month < 12;
+                    activated => { root.show-month(1); }
+                }
+            }
+            VerticalLayout {
+                spacing: 2px;
+                HorizontalLayout {
+                    height: 18px; spacing: 2px;
+                    for day in ["一", "二", "三", "四", "五", "六", "日"]: Text {
+                        horizontal-stretch: 1;
+                        text: day; font-size: TaskStyle.caption; font-family: TaskStyle.font-family;
+                        color: ShellPalette.text-secondary; horizontal-alignment: center; vertical-alignment: center;
+                    }
+                }
+                Rectangle {
+                    height: 6 * TaskStyle.day-height + 10px;
+                    for day[index] in root.days: PickerDay {
+                        x: Math.mod(index, 7) * (parent.width + 2px) / 7;
+                        y: Math.floor(index / 7) * (TaskStyle.day-height + 2px);
+                        width: (parent.width - 12px) / 7;
+                        data: day;
+                        selected: day.date.year == root.chosen-date.year && day.date.month == root.chosen-date.month && day.date.day == root.chosen-date.day;
+                        focus-prefix: root.focus-key;
+                        chosen => { root.choose-date(day.date); }
+                        moved(offset) => { root.choose-date(root.shift-day(day.date, offset)); }
+                        month-moved(offset) => { root.choose-date(root.shift-month(day.date, offset)); }
+                    }
+                }
+            }
+            Rectangle { height: 1px; background: ShellPalette.border; }
+            HorizontalLayout {
+                height: TaskStyle.control-height; spacing: 8px;
+                cross-axis-alignment: center;
+                Image {
+                    width: TaskStyle.icon-size; height: TaskStyle.icon-size;
+                    source: @image-url("../../../../ui/icons/clock.svg"); colorize: ShellPalette.text-secondary;
+                    accessible-role: none;
+                }
+                Text { text: "时间"; font-size: TaskStyle.caption; font-family: TaskStyle.font-family; color: ShellPalette.text-secondary; }
+                TaskSelect {
+                    model: root.hours; current-index: root.chosen-hour;
+                    label: root.label + "小时"; focus-key: root.focus-key + ":hour";
+                    selected(index) => { root.chosen-hour = index; }
+                }
+                Text { text: ":"; font-size: TaskStyle.body; font-family: TaskStyle.font-family; color: ShellPalette.text-secondary; }
+                TaskSelect {
+                    model: root.minutes; current-index: root.chosen-minute;
+                    label: root.label + "分钟"; focus-key: root.focus-key + ":minute";
+                    selected(index) => { root.chosen-minute = index; }
+                }
+            }
+            Text {
+                height: 20px;
+                text: root.date-label(root.chosen-date.year + "-" + root.two-digits(root.chosen-date.month) + "-" + root.two-digits(root.chosen-date.day), root.today.year) + "  " + root.two-digits(root.chosen-hour) + ":" + root.two-digits(root.chosen-minute);
+                font-size: TaskStyle.caption; font-family: TaskStyle.font-family; color: ShellPalette.text-secondary;
+                vertical-alignment: center;
+            }
+            Rectangle { height: 1px; background: ShellPalette.border; }
+            HorizontalLayout {
+                height: TaskStyle.control-height; spacing: 8px;
+                ActionButton {
+                    label: "今天"; icon: @image-url("../../../../ui/icons/calendar.svg"); with-icon: true; ghost: true;
+                    text-size: TaskStyle.body; text-family: TaskStyle.font-family;
+                    enabled: root.today.year >= TaskStyle.picker-first-year && root.today.year <= TaskStyle.picker-last-year;
+                    activated => { root.choose-date(root.today); }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                ActionButton {
+                    label: "取消"; ghost: true; text-size: TaskStyle.body; text-family: TaskStyle.font-family;
+                    activated => { root.close(); }
+                }
+                ActionButton {
+                    label: "应用"; primary: true; icon: @image-url("../../../../ui/icons/check.svg"); with-icon: true;
+                    text-size: TaskStyle.body; text-family: TaskStyle.font-family;
+                    activated => { root.apply-selection(); }
+                }
+            }
+        }
+    }
+}

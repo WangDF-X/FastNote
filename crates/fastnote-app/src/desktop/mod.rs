@@ -1,4 +1,4 @@
-//! Windows 驻留闭环；UI 线程拥有窗口/句柄，设置线程拥有唯一 SQLite 写连接。
+//! Windows 驻留闭环；UI 线程拥有窗口/句柄，DB worker 拥有设置与任务的唯一 SQLite 写连接。
 
 mod actions;
 mod ball;
@@ -7,11 +7,13 @@ mod gesture;
 mod lifecycle;
 mod presentation;
 mod runtime;
+mod tasks;
 mod theme;
 mod window;
+mod window_frame;
 mod worker;
 
-use slint::winit_030::winit::platform::windows::WindowAttributesExtWindows;
+use slint::winit_030::winit::platform::windows::{CornerPreference, WindowAttributesExtWindows};
 
 use runtime::Runtime;
 
@@ -31,7 +33,9 @@ pub(crate) fn run(hidden: bool) -> Result<(), Box<dyn std::error::Error>> {
                 .with_active(true)
                 .with_drag_and_drop(false)
                 .with_resizable(false),
-            "FastNote" => attributes.with_undecorated_shadow(true),
+            "FastNote" => attributes
+                .with_undecorated_shadow(true)
+                .with_corner_preference(CornerPreference::Round),
             _ => attributes,
         })
         .select()?;

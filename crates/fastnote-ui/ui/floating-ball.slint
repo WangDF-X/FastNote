@@ -1,4 +1,5 @@
 import { ShellPalette } from "palette.slint";
+import { ShellFocus } from "shell-focus.slint";
 
 export component FloatingBall inherits Window {
     title: "FastNote 悬浮球";
@@ -84,7 +85,7 @@ export component BallMenuWindow inherits Window {
             x: 8px; y: 8px + index * 40px; width: parent.width - 16px; height: 36px;
             border-radius: 6px;
             background: root.active-index == index || mouse.has-hover ? ShellPalette.hover : transparent;
-            border-width: root.active-index == index && keyboard.has-focus ? 1px : 0px;
+            border-width: ShellFocus.show-indicators && root.active-index == index && keyboard.has-focus ? 1px : 0px;
             border-color: ShellPalette.accent;
             accessible-role: button;
             accessible-label: item.label;

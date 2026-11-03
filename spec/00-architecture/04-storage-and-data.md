@@ -1,6 +1,6 @@
 # ARCH-04 数据存储与配置项
 
-> 文档编号：ARCH-04 ｜ 模块：00 总览与架构 ｜ 状态：已定稿 v0.1 ｜ 更新：2026-10-23
+> 文档编号：ARCH-04 ｜ 模块：00 总览与架构 ｜ 状态：Confirmed ｜ 更新：2026-11-03
 > 上游：[ARCH-01](01-tech-and-runtime.md)、[ARCH-03](03-domain-model.md) ｜ 下游：[09-data-management](../09-data-management/)、[08-settings](../08-settings/)
 
 ---
@@ -108,9 +108,9 @@ pub trait Store: Send + Sync {
 
 ---
 
-## 4. 数据库 Schema（v1）
+## 4. 数据库 Schema（当前 v3）
 
-> 所有日期列为 `TEXT`，格式 `YYYY-MM-DD`；所有时间戳为 RFC 3339 UTC（`YYYY-MM-DDTHH:MM:SSZ`）；ID 为 UUIDv7 小写字符串。
+> 日期列为 `TEXT`，格式 `YYYY-MM-DD`；任务本地时分为可空 `HH:MM`；审计时间戳为 RFC 3339 UTC（`YYYY-MM-DDTHH:MM:SSZ`）；ID 为 UUIDv7 小写字符串。v1/v2 迁移脚本保持不变，v3 只追加任务时分字段。
 
 ### 4.1 元数据
 
@@ -173,6 +173,17 @@ CREATE TABLE tasks (
     sort_order        INTEGER NOT NULL DEFAULT 0,
     created_at        TEXT NOT NULL,
     updated_at        TEXT NOT NULL,
+    start_time        TEXT CHECK (start_time IS NULL OR (
+                          kind = 'task' AND start_date IS NOT NULL
+                          AND length(start_time) = 5
+                          AND start_time GLOB '[0-2][0-9]:[0-5][0-9]'
+                          AND substr(start_time, 1, 2) <= '23')),
+    due_time          TEXT CHECK (due_time IS NULL OR (
+                          kind = 'task' AND due_date IS NOT NULL
+                          AND length(due_time) = 5
+                          AND due_time GLOB '[0-2][0-9]:[0-5][0-9]'
+                          AND substr(due_time, 1, 2) <= '23'
+                          AND (start_time IS NULL OR start_date <> due_date OR start_time <= due_time))),
 
     -- 日期顺序
     CHECK (start_date IS NULL OR due_date IS NULL OR start_date <= due_date),
@@ -190,6 +201,8 @@ CREATE TABLE tasks (
 ```
 
 > **说明：** SQLite 的 `CHECK` 在结果为 `NULL` 时视为通过，因此额外用「任务必须有状态」的表达式兜底；应用层仍需按 ARCH-03 §10 做完整校验。
+
+**D-TODAY-02 / schema v3 增量：** `m0003_task_times.sql` 为 tasks 增加 `start_time TEXT`、`due_time TEXT`。非空值必须是有效的 `HH:MM`（00–23 时、00–59 分）、普通任务且对应日期非空；同日双方均有时分时开始不得晚于到期。旧数据两列为 NULL，不改原日期/正文，不虚构旧任务的时分。所有任务读模型和字段补丁保留时分，清除日期时同时清除时间；提醒规则继续独立。
 
 ### 4.4 依赖
 
@@ -252,7 +265,7 @@ CREATE TABLE app_settings (
 
 ### 4.8a 定时提醒（schema v2 新增）
 
-规则归属一个任务或小记，业务不变量与时间解释见 [REM-01](../11-reminders/01-reminders-and-notifications.md)；任务阶段不得绑定提醒。日期仍不改变任务的 date-only 排期。
+规则归属一个任务或小记，业务不变量与时间解释见 [REM-01](../11-reminders/01-reminders-and-notifications.md)；任务阶段不得绑定提醒。提醒不改任务排期；任务日期/时分也不自动创建或修改提醒。
 
 ```sql
 CREATE TABLE reminders (
@@ -326,7 +339,7 @@ CREATE INDEX idx_journal_date      ON journal_entries(entry_date DESC);
 
 ### 5.1 版本规则
 
-- 当前 schema 版本：**2**。保留 `m0001_init.sql`，新增 `m0002_reminders.sql` 创建 §4.8a 两表及索引；已有 v1 库事务迁移至 v2，无原提醒数据需要转换。
+- 当前 schema 版本：**3**。保留 `m0001_init.sql`、`m0002_reminders.sql`，新增 `m0003_task_times.sql` 增加任务可空时分；v1/v2 均先预迁移备份再顺序迁移，原日期/正文/状态/提醒完整保留。
 - `PRAGMA user_version` 为权威版本；`schema_migrations` 记录历史。
 - 迁移脚本只增不改，命名 `m0001_init.sql`、`m0002_xxx.sql`，编译期 `include_str!` 嵌入。
 - 每个版本一个事务；DDL 在 SQLite 中可回滚。
@@ -334,7 +347,7 @@ CREATE INDEX idx_journal_date      ON journal_entries(entry_date DESC);
 ### 5.2 启动流程
 
 1. 读取 `user_version`。
-2. `= 0` 且库为空 → 顺序执行 `m0001_init.sql`、`m0002_reminders.sql`，每版记录 `schema_migrations`，最终 `user_version=2`。
+2. `= 0` 且库为空 → 顺序执行 `m0001_init.sql`、`m0002_reminders.sql`、`m0003_task_times.sql`，每版记录 `schema_migrations`，最终 `user_version=3`。
 3. `> 当前支持版本` → 拒绝打开，提示「数据由更高版本创建，请升级应用」，不写库。
 4. `< 当前版本` → 先创建预迁移备份（`backups/pre-migration-v{from}-{timestamp}.fnsbackup`），再逐版本迁移；失败回滚并保留原库。
 5. 迁移后执行 `PRAGMA foreign_key_check` + `quick_check`；异常进入数据恢复流程。

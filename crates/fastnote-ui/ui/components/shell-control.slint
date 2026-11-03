@@ -84,7 +84,7 @@ export component ShellControl inherits Rectangle {
         border-width: 2px;
         border-color: ShellPalette.accent;
         background: transparent;
-        visible: keyboard.has-focus;
+        visible: ShellFocus.show-indicators && keyboard.has-focus;
     }
 
     keyboard := FocusScope {

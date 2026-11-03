@@ -1,0 +1,34 @@
+import { Date } from "std-widgets.slint";
+
+/// DTO 的纯显示投影，不在 Slint 中判定业务分组或逾期。
+export struct TaskRowData {
+    id: string,
+    title: string,
+    status-label: string,
+    status-index: int,
+    done: bool,
+    priority-label: string,
+    priority: int,
+    metadata: string,
+    overdue: bool,
+    read-only: bool,
+}
+
+export struct TodaySectionData {
+    kind: int,
+    label: string,
+    total: int,
+    collapsed: bool,
+    items: [TaskRowData],
+    has-more: bool,
+    can-load-more: bool,
+    more-label: string,
+}
+
+/// 紧凑选择器的日期格，不承载任务状态或逾期判断。
+export struct CalendarDayData {
+    date: Date,
+    in-month: bool,
+    today: bool,
+    enabled: bool,
+}

@@ -1,0 +1,62 @@
+import { CalendarDayData } from "types.slint";
+import { TaskStyle } from "task-style.slint";
+import { ShellPalette } from "../palette.slint";
+import { ShellFocus } from "../shell-focus.slint";
+
+export component PickerDay inherits Rectangle {
+    in property <CalendarDayData> data;
+    in property <bool> selected;
+    in property <bool> enabled: true;
+    in property <string> focus-prefix;
+    callback chosen();
+    callback moved(int);
+    callback month-moved(int);
+    height: TaskStyle.day-height;
+    border-radius: TaskStyle.control-radius;
+    border-width: root.data.today && !root.selected ? 1px : 0px;
+    border-color: ShellPalette.accent;
+    background: root.selected ? ShellPalette.accent : mouse.pressed ? ShellPalette.subtle : mouse.has-hover ? ShellPalette.hover : transparent;
+    animate background { duration: 120ms; }
+    opacity: root.enabled && root.data.enabled ? 1 : 0.45;
+    forward-focus: keyboard;
+    accessible-role: button;
+    accessible-label: root.data.date.year + "年" + root.data.date.month + "月" + root.data.date.day + "日" + (root.data.today ? "，今天" : "");
+    accessible-action-default => { if (root.enabled && root.data.enabled) { root.chosen(); } }
+    private property <string> focus-key: root.focus-prefix + ":day:" + root.data.date.year + "-" + root.data.date.month + "-" + root.data.date.day;
+    private property <int> focus-tick: ShellFocus.restore-tick;
+    changed focus-tick => { if (ShellFocus.anchor == root.focus-key && root.data.enabled) { keyboard.focus(); } }
+    Text {
+        width: parent.width; height: parent.height;
+        text: root.data.date.day;
+        font-size: TaskStyle.body; font-family: TaskStyle.font-family;
+        font-weight: root.selected || root.data.today ? 600 : 400;
+        color: root.selected ? ShellPalette.on-accent : root.data.in-month ? ShellPalette.text-primary : ShellPalette.text-secondary;
+        horizontal-alignment: center; vertical-alignment: center;
+    }
+    Rectangle {
+        x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - 2px;
+        visible: ShellFocus.show-indicators && keyboard.has-focus;
+        border-width: 2px; border-radius: 5px;
+        border-color: root.selected ? ShellPalette.on-accent : ShellPalette.accent;
+        background: transparent;
+    }
+    keyboard := FocusScope {
+        width: parent.width; height: parent.height;
+        enabled: root.enabled && root.data.enabled;
+        focus-on-tab-navigation: root.selected;
+        key-pressed(event) => {
+            if (event.text == Key.LeftArrow) { root.moved(-1); return accept; }
+            if (event.text == Key.RightArrow) { root.moved(1); return accept; }
+            if (event.text == Key.UpArrow) { root.moved(-7); return accept; }
+            if (event.text == Key.DownArrow) { root.moved(7); return accept; }
+            if (event.text == Key.PageUp) { root.month-moved(-1); return accept; }
+            if (event.text == Key.PageDown) { root.month-moved(1); return accept; }
+            if (event.text == Key.Return || event.text == " ") { root.chosen(); return accept; }
+            return reject;
+        }
+        mouse := TouchArea {
+            enabled: root.enabled && root.data.enabled; mouse-cursor: pointer;
+            clicked => { keyboard.focus(); root.chosen(); }
+        }
+    }
+}

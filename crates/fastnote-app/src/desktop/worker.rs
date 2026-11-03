@@ -4,8 +4,11 @@ use std::thread::{self, JoinHandle};
 use std::time::{Instant, SystemTime};
 
 use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
-use fastnote_core::{DateTime, DesktopSetting, DesktopSettings, SettingsRepository, Utc};
-use fastnote_store::{SqliteSettings, StoreError};
+use fastnote_core::{
+    Command as TaskCommand, CommandResult, DateTime, DesktopSetting, DesktopSettings, Query,
+    QueryResult, SettingsRepository, Utc,
+};
+use fastnote_store::{SqliteSettings, StoreError, TaskStoreError};
 
 use crate::logging::storage_error;
 
@@ -16,6 +19,15 @@ pub(super) enum Command {
         checkpoint: bool,
     },
     Reload,
+    Execute {
+        id: u64,
+        command: TaskCommand,
+        source: &'static str,
+    },
+    Query {
+        id: u64,
+        query: Query,
+    },
     Stop,
 }
 
@@ -25,6 +37,14 @@ pub(super) enum Reply {
         id: u64,
         result: Result<(), StoreError>,
     },
+    Executed {
+        id: u64,
+        result: Result<CommandResult, TaskStoreError>,
+    },
+    Queried {
+        id: u64,
+        result: Result<QueryResult, TaskStoreError>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -33,13 +53,13 @@ pub(super) enum SendError {
     Stopped,
 }
 
-pub(super) struct SettingsWorker {
+pub(super) struct DbWorker {
     commands: Option<Sender<Command>>,
     replies: Option<Receiver<Reply>>,
     thread: Option<JoinHandle<()>>,
 }
 
-impl SettingsWorker {
+impl DbWorker {
     pub(super) fn spawn(
         path: Option<PathBuf>,
         wake: Arc<dyn Fn() + Send + Sync>,
@@ -47,7 +67,7 @@ impl SettingsWorker {
         let (command_tx, command_rx) = bounded(256);
         let (reply_tx, reply_rx) = bounded(256);
         let thread = thread::Builder::new()
-            .name("fastnote-settings".to_owned())
+            .name("fastnote-db".to_owned())
             .spawn(move || {
                 work(path, command_rx, reply_tx, wake);
             })?;
@@ -75,6 +95,23 @@ impl SettingsWorker {
         self.send(Command::Reload)
     }
 
+    pub(super) fn execute(
+        &self,
+        id: u64,
+        command: TaskCommand,
+        source: &'static str,
+    ) -> Result<(), SendError> {
+        self.send(Command::Execute {
+            id,
+            command,
+            source,
+        })
+    }
+
+    pub(super) fn query(&self, id: u64, query: Query) -> Result<(), SendError> {
+        self.send(Command::Query { id, query })
+    }
+
     fn send(&self, command: Command) -> Result<(), SendError> {
         let Some(sender) = &self.commands else {
             return Err(SendError::Stopped);
@@ -92,7 +129,7 @@ impl SettingsWorker {
     }
 }
 
-impl Drop for SettingsWorker {
+impl Drop for DbWorker {
     fn drop(&mut self) {
         // 先断开结果接收端，防止工作线程堵在满结果队列、UI 又堵在 join。
         self.replies.take();
@@ -101,7 +138,7 @@ impl Drop for SettingsWorker {
         }
         if let Some(thread) = self.thread.take() {
             if thread.join().is_err() {
-                tracing::error!("settings thread panicked during shutdown");
+                tracing::error!("database thread panicked during shutdown");
             }
         }
     }
@@ -194,6 +231,27 @@ fn work(
     while let Ok(command) = commands.recv() {
         let reply = match command {
             Command::Stop => break,
+            Command::Execute {
+                id,
+                command,
+                source,
+            } => {
+                let started = Instant::now();
+                let result = crate::tasks::execute(store.as_mut(), path.as_deref(), command);
+                if started.elapsed().as_millis() > 50 {
+                    tracing::warn!(
+                        request_id = id,
+                        source,
+                        elapsed_ms = started.elapsed().as_millis() as u64,
+                        "task command slow"
+                    );
+                }
+                Reply::Executed { id, result }
+            }
+            Command::Query { id, query } => {
+                let result = crate::tasks::query(store.as_mut(), path.as_deref(), query);
+                Reply::Queried { id, result }
+            }
             Command::Reload => {
                 store.take();
                 let (new_store, result) = load(&mut path);
@@ -221,104 +279,4 @@ fn work(
 }
 
 #[cfg(test)]
-mod tests {
-    use std::time::Duration;
-
-    use fastnote_core::{CloseBehavior, EntryMode, ThemeMode};
-
-    use super::*;
-
-    fn receive(worker: &SettingsWorker) -> Reply {
-        worker
-            .replies
-            .as_ref()
-            .unwrap()
-            .recv_timeout(Duration::from_secs(5))
-            .unwrap()
-    }
-
-    #[test]
-    fn test_worker_owns_connection_saves_in_fifo_order_and_joins() {
-        let directory = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
-        let path = directory.path().join("fake.db");
-        let worker = SettingsWorker::spawn(Some(path.clone()), Arc::new(|| {})).unwrap();
-        assert!(matches!(receive(&worker), Reply::Loaded(Ok(_))));
-        worker
-            .save(1, vec![DesktopSetting::EntryMode(EntryMode::Tray)], false)
-            .unwrap();
-        worker
-            .save(
-                2,
-                vec![
-                    DesktopSetting::CloseBehavior(CloseBehavior::Quit),
-                    DesktopSetting::Theme(ThemeMode::Dark),
-                ],
-                true,
-            )
-            .unwrap();
-        assert!(matches!(
-            receive(&worker),
-            Reply::Saved {
-                id: 1,
-                result: Ok(())
-            }
-        ));
-        assert!(matches!(
-            receive(&worker),
-            Reply::Saved {
-                id: 2,
-                result: Ok(())
-            }
-        ));
-        drop(worker);
-        let store = SqliteSettings::open(&path, timestamp()).unwrap();
-        let settings = store.load_desktop().unwrap();
-        assert_eq!(settings.entry_mode, EntryMode::Tray);
-        assert_eq!(settings.close_behavior, CloseBehavior::Quit);
-        assert_eq!(settings.theme, ThemeMode::Dark);
-    }
-
-    #[test]
-    fn test_failed_open_can_retry_without_rebuilding_corrupt_data() {
-        let directory = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
-        let path = directory.path().join("fake.db");
-        std::fs::write(&path, b"fake corrupt bytes").unwrap();
-        let worker = SettingsWorker::spawn(Some(path.clone()), Arc::new(|| {})).unwrap();
-        assert!(matches!(receive(&worker), Reply::Loaded(Err(_))));
-        worker.reload().unwrap();
-        assert!(matches!(receive(&worker), Reply::Loaded(Err(_))));
-        assert_eq!(std::fs::read(path).unwrap(), b"fake corrupt bytes");
-        drop(worker);
-    }
-
-    #[test]
-    fn test_save_reports_unavailable_store_without_panicking() {
-        let error = save(
-            &mut None,
-            Some(Path::new("fake.db")),
-            &[DesktopSetting::EntryMode(EntryMode::Tray)],
-            true,
-        )
-        .unwrap_err();
-        assert!(matches!(
-            error,
-            StoreError::File { source, .. } if source.kind() == std::io::ErrorKind::NotConnected
-        ));
-    }
-
-    #[test]
-    fn test_bounded_command_backpressure_and_disconnection_are_explicit() {
-        let (sender, receiver) = bounded(256);
-        let worker = SettingsWorker {
-            commands: Some(sender),
-            replies: None,
-            thread: None,
-        };
-        for _ in 0..256 {
-            worker.reload().unwrap();
-        }
-        assert_eq!(worker.reload(), Err(SendError::Full));
-        drop(receiver);
-        assert_eq!(worker.reload(), Err(SendError::Stopped));
-    }
-}
+mod tests;

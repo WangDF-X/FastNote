@@ -12,10 +12,14 @@ import { BannerData, BannerTone } from "components/page-banner.slint";
 import { GeneralSettings } from "components/general-settings.slint";
 import { FloatingBall, BallMenuWindow } from "floating-ball.slint";
 import { TitleBar } from "components/title-bar.slint";
+import { WindowOutline } from "components/window-outline.slint";
 import { ThemeSwitch } from "components/theme-switch.slint";
-import { Palette } from "std-widgets.slint";
+import { TodayPage } from "tasks/today-page.slint";
+import { TaskDrawer } from "tasks/task-drawer.slint";
+import { TaskRowData, TodaySectionData, CalendarDayData } from "tasks/types.slint";
+import { Palette, Date } from "std-widgets.slint";
 
-export { BannerData, BannerTone, DialogData, DialogTone, ToastData, ToastTone, FloatingBall, BallMenuWindow, ShellPalette, Palette }
+export { BannerData, BannerTone, DialogData, DialogTone, ToastData, ToastTone, FloatingBall, BallMenuWindow, ShellPalette, ShellFocus, Palette, Date, TaskRowData, TodaySectionData, CalendarDayData }
 
 struct PagePresentation {
     label: string,
@@ -87,6 +91,82 @@ export component MainWindow inherits Window {
     callback banner_dismissed();
     /// 后台线程只能通过 event loop 唤醒此回调。
     callback desktop-wakeup();
+
+    in property <[TodaySectionData]> today-sections;
+    /// 0 首次加载 / 1 已加载 / 2 查询失败。
+    in property <int> today-state: 0;
+    in property <string> today-date;
+    in property <int> today-open-count;
+    in property <int> today-overdue-count;
+    in property <int> today-completed-count;
+    in property <string> today-error;
+    in property <string> today-error-log-id;
+    in property <bool> task-busy: false;
+    in property <string> task-create-error;
+    in-out property <string> task-quick-title;
+    in property <bool> task-detail-visible: false;
+    in property <bool> task-detail-loading: false;
+    in property <string> task-detail-focus: "editor:title";
+    in property <bool> task-editor-enabled: true;
+    in property <bool> task-read-only: false;
+    in property <string> task-selected-id;
+    in property <string> task-save-label;
+    in property <string> task-error;
+    in property <string> task-context;
+    in property <int> task-description-count;
+    in-out property <string> task-title;
+    in-out property <string> task-description;
+    in-out property <string> task-start-date;
+    in property <string> task-start-time;
+    in-out property <string> task-due-date;
+    in property <string> task-due-time;
+    in property <Date> task-start-seed-date;
+    in property <Date> task-due-seed-date;
+    in property <int> task-start-seed-hour;
+    in property <int> task-start-seed-minute;
+    in property <int> task-due-seed-hour;
+    in property <int> task-due-seed-minute;
+    in property <[string]> task-hours;
+    in property <[string]> task-minutes;
+    in property <[string]> task-years;
+    in property <Date> task-picker-today;
+    private property <bool> task-picker-open: false;
+    callback task-create(string);
+    callback task-open(string);
+    callback task-open-dates(string);
+    callback task-toggle(string);
+    callback task-delete(string);
+    callback task-priority(string);
+    callback task-focus-move(string, int);
+    callback task-edit(string, string);
+    callback task-set-status(string, int);
+    callback task-datetime(string, Date, int, int);
+    callback task-clear-datetime(string);
+    pure callback task-calendar-month(int, int, Date) -> [CalendarDayData];
+    pure callback task-calendar-day(Date, int) -> Date;
+    pure callback task-calendar-month-move(Date, int) -> Date;
+    pure callback task-calendar-select-month(Date, int, int) -> Date;
+    pure callback task-date-label(string, int) -> string;
+    callback task-flush();
+    callback task-close();
+    callback task-retry();
+    callback task-reload();
+    callback today-retry();
+    callback today-section(int);
+    callback today-more(int);
+
+    changed task-detail-visible => { if (!root.task-detail-visible) { root.task-picker-open = false; } }
+
+    public function focus-task-create() { ShellFocus.anchor = "today:quick"; ShellFocus.restore(); }
+    public function focus-task-editor() {
+        ShellFocus.anchor = root.task-read-only ? "editor:close" : root.task-detail-focus;
+        ShellFocus.restore();
+    }
+    public function focus-task-row(id: string) {
+        ShellFocus.anchor = "task:" + id;
+        ShellFocus.restore();
+    }
+    public function restore-task-focus() { ShellFocus.restore(); }
 
     /// SHELL-02 §8.1：切换路由后聚焦页头，但不抢走模态对话框的焦点。
     public function focus-route-header() {
@@ -188,10 +268,16 @@ export component MainWindow inherits Window {
             if (root.dialog-visible) {
                 return reject;
             }
+            if (event.text == Key.Escape && root.task-detail-visible && !root.task-picker-open) {
+                root.task-close();
+                return accept;
+            }
             if (!event.modifiers.control || event.modifiers.alt || event.modifiers.shift) {
                 return reject;
             }
-            if (event.text == "1") {
+            if ((event.text == "n" || event.text == "N") && root.current_page == "今日任务") {
+                root.focus-task-create();
+            } else if (event.text == "1") {
                 root.route_action("navigate:今日任务");
             } else if (event.text == "2") {
                 root.route_action("navigate:日历");
@@ -338,7 +424,8 @@ export component MainWindow inherits Window {
 
                 page-header := PageHeader {
                     title: root.page-title;
-                    context: root.desktop-busy ? (root.desktop-state == 0 ? "正在读取窗口配置…" : "正在保存窗口配置…") : root.route-context;
+                    context: root.desktop-busy ? (root.desktop-state == 0 ? "正在读取窗口配置…" : "正在保存窗口配置…") : root.current_page == "今日任务" ? root.today-date : root.route-context;
+                    placeholder: root.current_page != "今日任务";
                     can-go-back: root.can-go-back;
                     back-focus-key: root.plan-detail ? "plan-back" : "settings-back";
                     back => { root.route_action("back"); }
@@ -381,7 +468,33 @@ export component MainWindow inherits Window {
                         hotkey-status: root.show-hotkey-status;
                         action(value) => { root.route_action(value); }
                     }
-                    if !root.general-settings: PagePlaceholder {
+                    if root.current_page == "今日任务": today-page := TodayPage {
+                        sections: root.today-sections;
+                        state: root.today-state;
+                        busy: root.task-busy;
+                        enabled: root.desktop-state == 1 && !root.desktop-busy && !root.dialog-visible;
+                        open-count: root.today-open-count;
+                        overdue-count: root.today-overdue-count;
+                        completed-count: root.today-completed-count;
+                        selected-id: root.task-selected-id;
+                        error-message: root.today-error;
+                        error-log-id: root.today-error-log-id;
+                        create-error: root.task-create-error;
+                        quick-title <=> root.task-quick-title;
+                        created(value) => { root.task-create(value); }
+                        opened(id) => { root.task-open(id); }
+                        dates-requested(id) => { root.task-open-dates(id); }
+                        toggled(id) => { root.task-toggle(id); }
+                        deleted(id) => { root.task-delete(id); }
+                        priority-changed(id) => { root.task-priority(id); }
+                        status-changed(id, index) => { root.task-set-status(id, index); }
+                        focus-moved(id, direction) => { root.task-focus-move(id, direction); }
+                        section-toggled(kind) => { root.today-section(kind); }
+                        more(kind) => { root.today-more(kind); }
+                        retry => { root.today-retry(); }
+                        escaped => { root.focus-route-header(); }
+                    }
+                    if !root.general-settings && root.current_page != "今日任务": PagePlaceholder {
                         icon: root.current_page == "设置" ? root.settings-icon : root.pages[root.active-index].icon;
                         title: root.page-title + "工作区";
                         description: root.current_page == "设置" ? "外观、快捷键和数据管理将在这里统一设置。\n点击右上角返回，可回到进入设置前的页面。" : root.pages[root.active-index].description;
@@ -397,6 +510,60 @@ export component MainWindow inherits Window {
                     }
                 }
             }
+        }
+
+        // 首次外部点击只触发保存关闭，不穿透到下层按钮；内部选择弹层不算外部。
+        if root.task-detail-visible: detail-outside := TouchArea {
+            x: 0px;
+            y: root.caption-height;
+            width: parent.width;
+            height: parent.height - self.y;
+            enabled: !root.dialog-visible && !root.task-picker-open;
+            clicked => { root.task-close(); }
+        }
+
+        if root.task-detail-visible: task-drawer := TaskDrawer {
+            x: parent.width - 400px;
+            y: root.caption-height + 64px;
+            width: 400px;
+            height: parent.height - self.y;
+            loading: root.task-detail-loading;
+            enabled: root.task-editor-enabled && !root.dialog-visible && !root.desktop-busy;
+            read-only: root.task-read-only;
+            title <=> root.task-title;
+            description <=> root.task-description;
+            start-date <=> root.task-start-date;
+            start-time: root.task-start-time;
+            due-date <=> root.task-due-date;
+            due-time: root.task-due-time;
+            start-seed-date: root.task-start-seed-date;
+            due-seed-date: root.task-due-seed-date;
+            start-seed-hour: root.task-start-seed-hour;
+            start-seed-minute: root.task-start-seed-minute;
+            due-seed-hour: root.task-due-seed-hour;
+            due-seed-minute: root.task-due-seed-minute;
+            hours: root.task-hours;
+            minutes: root.task-minutes;
+            years: root.task-years;
+            picker-today: root.task-picker-today;
+            description-count: root.task-description-count;
+            save-label: root.task-save-label;
+            error-message: root.task-error;
+            context-label: root.task-context;
+            edited(field, value) => { root.task-edit(field, value); }
+            datetime-selected(field, date, hour, minute) => { root.task-datetime(field, date, hour, minute); }
+            datetime-cleared(field) => { root.task-clear-datetime(field); }
+            picker-changed(open) => { root.task-picker-open = open; }
+            calendar-month(year, month, today) => { return root.task-calendar-month(year, month, today); }
+            calendar-day(date, offset) => { return root.task-calendar-day(date, offset); }
+            calendar-month-move(date, offset) => { return root.task-calendar-month-move(date, offset); }
+            calendar-select-month(date, year, month) => { return root.task-calendar-select-month(date, year, month); }
+            date-label(date, year) => { return root.task-date-label(date, year); }
+            flush => { root.task-flush(); }
+            closed => { root.task-close(); }
+            deleted => { root.task-delete(root.task-selected-id); }
+            retry => { root.task-retry(); }
+            reload => { root.task-reload(); }
         }
 
         // SHELL-02 §3.1：Toast 居中于内容区，距底 24。
@@ -433,5 +600,11 @@ export component MainWindow inherits Window {
                 root.dialog_cancel();
             }
         }
+    }
+    // 原生圆角裁切整个窗口；描边只补充边缘辨识，不接收输入或占用布局空间。
+    window-outline := WindowOutline {
+        x: 0px; y: 0px;
+        width: parent.width; height: parent.height;
+        visible: root.custom-titlebar && !root.window-maximized;
     }
 }

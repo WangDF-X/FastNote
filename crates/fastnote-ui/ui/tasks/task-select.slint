@@ -1,0 +1,86 @@
+import { TaskSelectPopup } from "select-popup.slint";
+import { TaskStyle } from "task-style.slint";
+import { ShellPalette } from "../palette.slint";
+import { ShellFocus } from "../shell-focus.slint";
+
+/// 受控下拉：只展示父级确认值，弹层中的临时高亮不会自动写业务状态。
+export component TaskSelect inherits Rectangle {
+    in property <[string]> model;
+    in property <int> current-index;
+    in property <bool> enabled: true;
+    in property <bool> quiet: false;
+    in property <string> label;
+    in property <string> focus-key;
+    callback selected(int);
+    out property <bool> has-focus: keyboard.has-focus || menu.is-open;
+
+    height: TaskStyle.control-height;
+    min-width: 64px;
+    preferred-width: 112px;
+    horizontal-stretch: 1;
+    border-radius: TaskStyle.control-radius;
+    border-width: root.quiet ? 0px : 1px;
+    border-color: ShellFocus.show-indicators && menu.is-open ? ShellPalette.accent : ShellPalette.border;
+    background: menu.is-open ? ShellPalette.selected : mouse.pressed ? ShellPalette.subtle : mouse.has-hover ? ShellPalette.hover : root.quiet ? transparent : ShellPalette.surface;
+    animate background { duration: 120ms; }
+    opacity: root.enabled ? 1 : 0.45;
+    forward-focus: keyboard;
+    accessible-role: combobox;
+    accessible-label: root.label;
+    accessible-value: root.model[root.current-index];
+    accessible-expandable: true;
+    accessible-expanded: menu.is-open;
+    accessible-action-expand => { root.open-menu(); }
+    private property <int> active-index;
+    private property <int> focus-tick: ShellFocus.restore-tick;
+    private property <bool> focused: keyboard.has-focus;
+    private property <bool> popup-open: menu.is-open;
+    changed focused => { if (focused) { ShellFocus.claim(root.focus-key); } }
+    changed popup-open => { if (!popup-open) { keyboard.focus(); } }
+    changed focus-tick => {
+        if (root.enabled && root.focus-key != "" && ShellFocus.anchor == root.focus-key) { keyboard.focus(); }
+    }
+    function open-menu() {
+        if (root.enabled && root.model.length > 0) {
+            root.active-index = clamp(root.current-index, 0, root.model.length - 1);
+            menu.show();
+        }
+    }
+    Text {
+        x: 12px; width: parent.width - 40px; height: parent.height;
+        text: root.model[root.current-index]; font-size: TaskStyle.body; font-family: TaskStyle.font-family;
+        color: ShellPalette.text-primary; vertical-alignment: center; overflow: elide;
+    }
+    Image {
+        x: parent.width - 24px; y: (parent.height - 12px) / 2;
+        width: 12px; height: 12px;
+        source: @image-url("../../../../ui/icons/chevron-down.svg"); colorize: ShellPalette.text-secondary;
+        accessible-role: none;
+    }
+    Rectangle {
+        x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - 2px;
+        background: transparent; border-radius: 5px; border-width: 2px; border-color: ShellPalette.accent;
+        visible: ShellFocus.show-indicators && keyboard.has-focus;
+    }
+    keyboard := FocusScope {
+        width: parent.width; height: parent.height; enabled: root.enabled;
+        key-pressed(event) => {
+            if (event.text == Key.Return || event.text == " ") { root.open-menu(); return accept; }
+            if (event.text == Key.UpArrow) { root.selected(max(0, root.current-index - 1)); return accept; }
+            if (event.text == Key.DownArrow) { root.selected(min(root.model.length - 1, root.current-index + 1)); return accept; }
+            return reject;
+        }
+        mouse := TouchArea {
+            enabled: root.enabled; mouse-cursor: pointer;
+            clicked => { keyboard.focus(); root.open-menu(); }
+        }
+    }
+    menu := TaskSelectPopup {
+        x: 0px; y: root.height + 4px;
+        // 窄年份/月字段不限制菜单宽度，为勾选图标、完整文字和滚动条留出空间。
+        width: max(root.width, TaskStyle.menu-min-width);
+        model: root.model; selected-index: root.current-index;
+        active-index <=> root.active-index;
+        chosen(index) => { root.selected(index); }
+    }
+}

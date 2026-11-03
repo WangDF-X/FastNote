@@ -1,6 +1,6 @@
 ﻿# SET-03 全局快捷键、任务偏好与关于
 
-> 文档编号：SET-03 ｜ 模块：08 设置中心 ｜ 状态：已定稿 v0.1 ｜ 更新日期：2026-10-23
+> 文档编号：SET-03 ｜ 模块：08 设置中心 ｜ 状态：Confirmed ｜ 更新日期：2026-11-03
 > 上游：[SET-01](01-overview.md)、[ENTRY-03](../02-desktop-entry/03-global-hotkeys.md) ｜ 下游：[TODAY-01](../03-today-tasks/01-overview-and-sections.md)、[SHELL-02](../01-app-shell/02-interaction-and-feedback.md)
 
 ---
@@ -52,7 +52,7 @@
 | 与本应用另一功能重复 | Dialog 告知冲突关系 |
 | 有效且无冲突 | 立即注册并保存 |
 
-> **已确认（2026-10-26）Q-SET-06：** Tomorrow 分组是否受 default_sort 设置影响？→ **当前默认处理：** 不受影响——Tomorrow 的分组和内部排序是独立计算的（按自然日下一天的 start_date/due_date），default_sort 仅影响同组内的优先级和创建时间排序。
+> **已确认（2026-10-26；2026-11-03 同步）Q-SET-06：** 明日预告不受 `tasks.default_sort` 影响，固定使用 ARCH-03 §9 的日期类默认排序；此配置仅影响逾期、今日到期、今日开始、进行中四组。
 
 ### 2.4 Week Start 跟随系统
 
@@ -64,12 +64,12 @@
 
 ### 3.1 默认排序
 
-| 字段 | `general.default_sort` |
+| 字段 | `tasks.default_sort` |
 | --- | --- |
 | 类型 | 下拉选择器 |
-| 选项 | `priority_desc_created_asc`（默认）/ `created_desc` / `due_date_asc` |
+| 选项 | `priority`（默认）/ `due_date` / `created_desc` |
 
-- 修改后立即刷新今日页和其他用到排序的页面。
+- 修改后刷新今日四个日期类分组，其他分组保持统一的固定排序；本轮仅读取偏好，设置控件后续接入。
 
 > **已确认（2026-10-26）Q-SET-08：** 同一快捷键组合是否可以交换使用场景（如 F 键在两个功能间互换）？→ **当前默认处理：** 不支持；每个组合只能绑定一个功能。避免多义性。
 
@@ -130,9 +130,9 @@
 
 ## 7. 待确认问题
 
-以下为本文件中所有未决问题的索引，全部已登记至 [QA-02 风险与开放问题](../10-quality/02-risks-and-open-questions.md) §4。具体条目见本文档对应章节。
+以下为已确认问题的索引，结论已登记至 [QA-02 风险与开放问题](../10-quality/02-risks-and-open-questions.md) §4，无未决项。
 
-| 编号 | 位置 | 问题摘要 | 当前默认处理 |
+| 编号 | 位置 | 问题摘要 | 已确认处理（2026-10-26） |
 | --- | --- | --- | --- |
 | Q-SET-06 | §2 | Tomorrow 受 default_sort 影响 | 不受影响 |
 | Q-SET-07 | §2 | 周起始日跟随系统 | 不跟随，固定 Monday |

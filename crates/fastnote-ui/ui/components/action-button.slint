@@ -4,6 +4,17 @@ import { ShellFocus } from "../shell-focus.slint";
 /// ARCH-05 §5.1：Primary / Secondary / Danger 按钮，高 32、圆角 6。
 export component ActionButton inherits Rectangle {
     in property <string> label;
+    /// 可选的统一线性图标；未指定时不预留图标空间。
+    in property <image> icon;
+    in property <bool> with-icon: false;
+    in property <length> text-size: 14px;
+    in property <string> text-family: "";
+    in property <color> text-color: ShellPalette.text-primary;
+    /// 语义色可只作用于图标，不必改变按钮文字。
+    in property <color> icon-color: root.text-color;
+    /// 低强调行操作，保留 hover 和实际焦点，不绘制常驻按钮边框。
+    in property <bool> ghost: false;
+    in property <bool> left-aligned: false;
     /// 强调色实心按钮。
     in property <bool> primary: false;
     /// 危险色实心按钮，用于删除等破坏性操作（SHELL-02 §6.1）。
@@ -19,6 +30,9 @@ export component ActionButton inherits Rectangle {
     private property <color> fill-color: danger ? ShellPalette.danger : ShellPalette.accent;
     private property <int> focus-tick: ShellFocus.restore-tick;
     private property <bool> keyboard-focused: keyboard.has-focus;
+    private property <length> icon-space: root.with-icon ? 22px : 0px;
+    private property <length> content-width: min(root.width - 24px, label-text.preferred-width + root.icon-space);
+    private property <length> content-x: root.left-aligned ? 12px : (root.width - root.content-width) / 2;
 
     changed keyboard-focused => {
         if (keyboard-focused) {
@@ -38,11 +52,12 @@ export component ActionButton inherits Rectangle {
     }
 
     height: 32px;
-    width: max(72px, label-text.preferred-width + 32px);
+    width: max(72px, label-text.preferred-width + 32px + root.icon-space);
     border-radius: 6px;
-    border-width: filled ? 0px : 1px;
+    border-width: filled || root.ghost ? 0px : 1px;
     border-color: ShellPalette.border;
-    background: filled ? (mouse-area.pressed ? fill-color.darker(ShellPalette.dark ? 0.1 : 0.25) : mouse-area.has-hover ? fill-color.darker(ShellPalette.dark ? 0.05 : 0.1) : fill-color) : (mouse-area.pressed ? ShellPalette.subtle : mouse-area.has-hover ? ShellPalette.hover : ShellPalette.surface);
+    background: filled ? (mouse-area.pressed ? fill-color.darker(ShellPalette.dark ? 0.1 : 0.25) : mouse-area.has-hover ? fill-color.darker(ShellPalette.dark ? 0.05 : 0.1) : fill-color) : (mouse-area.pressed ? ShellPalette.subtle : mouse-area.has-hover ? ShellPalette.hover : root.ghost ? transparent : ShellPalette.surface);
+    animate background { duration: 120ms; }
     opacity: enabled ? 1 : 0.45;
     forward-focus: keyboard;
     accessible-role: button;
@@ -53,14 +68,26 @@ export component ActionButton inherits Rectangle {
         }
     }
 
+    if root.with-icon: Image {
+        x: root.content-x;
+        y: (parent.height - 16px) / 2;
+        width: 16px; height: 16px;
+        source: root.icon;
+        colorize: root.filled ? ShellPalette.on-accent : root.icon-color;
+        accessible-role: none;
+    }
     label-text := Text {
-        x: (parent.width - self.width) / 2;
-        y: (parent.height - self.height) / 2;
+        x: root.content-x + root.icon-space;
+        y: (parent.height - 20px) / 2;
+        width: max(0px, root.content-width - root.icon-space);
+        height: 20px;
         text: root.label;
-        font-size: 13px;
+        font-size: root.text-size;
+        font-family: root.text-family;
         font-weight: 500;
-        color: root.filled ? ShellPalette.on-accent : ShellPalette.text-primary;
+        color: root.filled ? ShellPalette.on-accent : root.text-color;
         vertical-alignment: center;
+        overflow: elide;
         accessible-role: none;
     }
 
@@ -73,10 +100,12 @@ export component ActionButton inherits Rectangle {
         border-width: 2px;
         border-color: ShellPalette.accent;
         background: transparent;
-        visible: keyboard.has-focus;
+        visible: ShellFocus.show-indicators && keyboard.has-focus;
     }
 
     keyboard := FocusScope {
+        x: 0px; y: 0px;
+        width: parent.width; height: parent.height;
         enabled: root.enabled;
         key-pressed(event) => {
             if (event.text == "\n" || event.text == " ") {

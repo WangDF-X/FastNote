@@ -1,0 +1,10 @@
+import { ShellPalette } from "../palette.slint";
+
+/// D-SHELL-01：客户区内的被动细边缘；真正的窗口圆角与外部阴影由 Windows 绘制。
+export component WindowOutline inherits Rectangle {
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: ShellPalette.border-strong;
+    background: transparent;
+    accessible-role: none;
+}

@@ -26,14 +26,14 @@ export component ThemeSwitch inherits Rectangle {
     Image {
         x: 8px; y: 8px; width: 20px; height: 20px;
         source: root.mode == "light" ? @image-url("../../../../ui/icons/theme-light.svg") : root.mode == "dark" ? @image-url("../../../../ui/icons/theme-dark.svg") : @image-url("../../../../ui/icons/theme-system.svg");
-        colorize: mouse.has-hover || keyboard.has-focus ? ShellPalette.accent : ShellPalette.text-secondary;
+        colorize: mouse.has-hover || (ShellFocus.show-indicators && keyboard.has-focus) ? ShellPalette.accent : ShellPalette.text-secondary;
         accessible-role: none;
     }
     Rectangle {
         x: 2px; y: 2px; width: parent.width - 4px; height: parent.height - 4px;
         border-width: 2px; border-color: ShellPalette.accent; border-radius: 6px;
         background: transparent;
-        visible: keyboard.has-focus;
+        visible: ShellFocus.show-indicators && keyboard.has-focus;
     }
     keyboard := FocusScope {
         enabled: root.enabled;
