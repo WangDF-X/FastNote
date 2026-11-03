@@ -141,9 +141,10 @@ impl Runtime {
         if recreating {
             window.set_minimized(false);
             window.set_maximized(false);
-            // 原生窗口会重建，HWND 可能复用；清空去重标记以便重设大图标。
+            // 原生窗口会重建，HWND 可能复用；清空大图标、标题栏和外沿去重标记。
             self.main_icon.set(0);
             self.main_caption.set(0);
+            self.main_frame.set(None);
             if let Some(geometry) = geometry {
                 window.set_size(slint::LogicalSize::new(
                     geometry.w as f32,

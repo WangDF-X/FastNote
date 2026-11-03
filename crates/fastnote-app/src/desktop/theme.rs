@@ -92,6 +92,7 @@ impl Runtime {
         // 原生回退标题栏以及无边框阴影也尽量匹配；不保留底层 winit Arc。
         main.window().with_winit_window(|window| {
             window.set_theme(Some(if dark { Theme::Dark } else { Theme::Light }));
+            self.apply_main_frame(window);
         });
     }
 

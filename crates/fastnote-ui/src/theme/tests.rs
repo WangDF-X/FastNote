@@ -320,3 +320,19 @@ fn test_palette_bridge_updates_every_top_level_component_and_standard_widgets() 
         )));
     }
 }
+
+#[test]
+fn test_window_edge_is_neutral_and_more_distinct_than_regular_dividers_in_both_themes() {
+    for dark in [false, true] {
+        let edge = token("border-strong", dark);
+        let channels = [edge.red(), edge.green(), edge.blue()];
+        assert!(channels.iter().max().unwrap() - channels.iter().min().unwrap() <= 24);
+        assert_ne!(edge, token("accent", dark));
+        for background in ["canvas", "surface"] {
+            let background = token(background, dark);
+            let ratio = contrast(edge, background);
+            assert!(ratio >= 1.25, "dark={dark}, edge contrast={ratio:.2}");
+            assert!(ratio > contrast(token("border", dark), background));
+        }
+    }
+}

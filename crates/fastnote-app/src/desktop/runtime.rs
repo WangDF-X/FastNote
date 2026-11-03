@@ -21,6 +21,7 @@ use crate::{clock::SystemClock, controller::AppController};
 use super::gesture::BallDrag;
 use super::presentation::Presentation;
 use super::theme::ThemeState;
+use super::window_frame::WindowFrameState;
 use super::worker::{DbWorker, Reply};
 
 pub(super) enum Completion {
@@ -66,6 +67,8 @@ pub(super) struct Runtime {
     /// 已设置过大图标的 HWND；窗口重建后 HWND 变化，用于避免每次 Resized 重复设置。
     pub main_icon: Cell<isize>,
     pub main_caption: Cell<isize>,
+    /// 原生外沿的最近配置；窗口重建时清空，不能只按 HWND 数值去重。
+    pub main_frame: Cell<Option<WindowFrameState>>,
     pub menu_open: Cell<bool>,
     pub drag: RefCell<Option<BallDrag>>,
     pub next_id: Cell<u64>,
@@ -150,6 +153,7 @@ impl Runtime {
             geometry_timer: Timer::default(),
             main_icon: Cell::new(0),
             main_caption: Cell::new(0),
+            main_frame: Cell::new(None),
             menu_open: Cell::new(false),
             drag: RefCell::new(None),
             next_id: Cell::new(1),

@@ -12,6 +12,7 @@ import { BannerData, BannerTone } from "components/page-banner.slint";
 import { GeneralSettings } from "components/general-settings.slint";
 import { FloatingBall, BallMenuWindow } from "floating-ball.slint";
 import { TitleBar } from "components/title-bar.slint";
+import { WindowOutline } from "components/window-outline.slint";
 import { ThemeSwitch } from "components/theme-switch.slint";
 import { TodayPage } from "tasks/today-page.slint";
 import { TaskDrawer } from "tasks/task-drawer.slint";
@@ -599,5 +600,11 @@ export component MainWindow inherits Window {
                 root.dialog_cancel();
             }
         }
+    }
+    // 原生圆角裁切整个窗口；描边只补充边缘辨识，不接收输入或占用布局空间。
+    window-outline := WindowOutline {
+        x: 0px; y: 0px;
+        width: parent.width; height: parent.height;
+        visible: root.custom-titlebar && !root.window-maximized;
     }
 }

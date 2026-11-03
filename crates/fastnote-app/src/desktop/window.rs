@@ -190,6 +190,7 @@ impl Runtime {
                 .component()
                 .set_window_maximized(window.is_maximized());
             self.shell.component().set_window_active(window.has_focus());
+            self.apply_main_frame(window);
         });
     }
 
