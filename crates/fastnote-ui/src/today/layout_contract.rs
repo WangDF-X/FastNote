@@ -73,9 +73,15 @@ fn test_datetime_fields_use_selection_components_and_only_commit_the_combined_ch
         assert!(!source.contains("DatePickerPopup") && !source.contains("ComboBox"));
     }
     assert_eq!(picker.matches("root.confirmed(").count(), 1);
-    assert!(picker.contains(
-        "activated => { root.close(); root.confirmed(root.chosen-date, root.chosen-hour, root.chosen-minute); }"
-    ));
+    assert!(picker.contains("activated => { root.apply-selection(); }"));
+    let apply = picker.split_once("function apply-selection() {").unwrap().1;
+    let apply = apply.split_once("function focus-day() {").unwrap().0;
+    for part in ["date", "hour", "minute"] {
+        assert!(apply.contains(&format!("let {part} = root.chosen-{part};")));
+    }
+    let confirmed = apply.find("root.confirmed(date, hour, minute);").unwrap();
+    let close = apply.find("root.close();").unwrap();
+    assert!(confirmed < close);
     let cancel = picker.split_once("label: \"取消\";").unwrap().1;
     let cancel = cancel.split_once("ActionButton {").unwrap().0;
     assert!(cancel.contains("activated => { root.close(); }"));
@@ -88,6 +94,38 @@ fn test_datetime_fields_use_selection_components_and_only_commit_the_combined_ch
     assert!(drawer.contains("root.datetime-selected(\"start\", date, hour, minute)"));
     assert!(drawer.contains("root.datetime-selected(\"due\", date, hour, minute)"));
     assert!(!drawer.contains("placeholder: \"YYYY-MM-DD\""));
+}
+
+#[test]
+fn test_mouse_keyboard_and_accessibility_selection_emit_before_popup_release() {
+    let menu = include_str!("../../ui/tasks/select-popup.slint");
+    let accept = menu
+        .split_once("function accept-selection(index: int) {")
+        .expect("all selection paths use the popup-owned acceptance function")
+        .1;
+    let accept = accept.split_once("function ensure-visible() {").unwrap().0;
+    assert!(accept.contains("index >= 0 && index < root.model.length"));
+    let chosen = accept.find("root.chosen(index);").unwrap();
+    let close = accept.find("root.close();").unwrap();
+    assert!(
+        chosen < close,
+        "closing first destroys the virtual row's weak parent"
+    );
+    assert_eq!(menu.matches("root.chosen(").count(), 1);
+    assert!(menu.contains("clicked => { root.accept-selection(index); }"));
+    assert!(menu.contains("accessible-action-default => { root.accept-selection(index); }"));
+    assert!(menu.contains("root.accept-selection(root.active-index); return accept;"));
+    assert!(menu.contains("Key.Escape || event.text == Key.Tab) { root.close(); return accept; }"));
+    let select = include_str!("../../ui/tasks/task-select.slint");
+    assert!(select.contains("chosen(index) => { root.selected(index); }"));
+    let row = include_str!("../../ui/tasks/task-row.slint");
+    assert!(row.contains("selected(index) => { root.status-changed(index); }"));
+    let picker = include_str!("../../ui/tasks/datetime-popup.slint");
+    for part in ["hour", "minute"] {
+        assert!(picker.contains(&format!(
+            "selected(index) => {{ root.chosen-{part} = index; }}"
+        )));
+    }
 }
 
 #[test]

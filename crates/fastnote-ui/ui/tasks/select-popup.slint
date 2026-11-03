@@ -21,6 +21,13 @@ export component TaskSelectPopup inherits PopupWindow {
             list.content-y = -clamp(root.active-index - 3, 0, max(0, root.model.length - TaskStyle.menu-visible-rows)) * TaskStyle.control-height;
         }
     }
+    function accept-selection(index: int) {
+        if (index >= 0 && index < root.model.length) {
+            // D-TODAY-03：close 会释放虚拟行的父弹层，必须在它仍存活时回传所选索引。
+            root.chosen(index);
+            root.close();
+        }
+    }
     function ensure-visible() {
         let top = root.active-index * TaskStyle.control-height;
         if (top < -list.content-y) { list.content-y = -top; }
@@ -49,7 +56,7 @@ export component TaskSelectPopup inherits PopupWindow {
             if (event.text == Key.Home) { root.active-index = 0; root.ensure-visible(); return accept; }
             if (event.text == Key.End) { root.active-index = root.model.length - 1; root.ensure-visible(); return accept; }
             if (event.text == Key.Return || event.text == " ") {
-                root.close(); root.chosen(root.active-index); return accept;
+                root.accept-selection(root.active-index); return accept;
             }
             if (event.text == Key.Escape || event.text == Key.Tab) { root.close(); return accept; }
             return reject;
@@ -65,7 +72,7 @@ export component TaskSelectPopup inherits PopupWindow {
                 background: index == root.active-index ? ShellPalette.selected : row-mouse.has-hover ? ShellPalette.hover : transparent;
                 accessible-role: button;
                 accessible-label: label;
-                accessible-action-default => { root.close(); root.chosen(index); }
+                accessible-action-default => { root.accept-selection(index); }
                 if index == root.selected-index: Image {
                     x: 8px; y: 8px; width: TaskStyle.icon-size; height: TaskStyle.icon-size;
                     source: @image-url("../../../../ui/icons/check.svg"); colorize: ShellPalette.accent;
@@ -78,7 +85,7 @@ export component TaskSelectPopup inherits PopupWindow {
                 }
                 row-mouse := TouchArea {
                     mouse-cursor: pointer;
-                    clicked => { root.close(); root.chosen(index); }
+                    clicked => { root.accept-selection(index); }
                 }
             }
         }

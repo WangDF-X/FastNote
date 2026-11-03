@@ -48,6 +48,14 @@ export component TaskDateTimePopup inherits PopupWindow {
     }
 
     pure function two-digits(value: int) -> string { return value < 10 ? "0" + value : "" + value; }
+    function apply-selection() {
+        // 回调可能同步刷新详情；先冻结组合值并回传，再关闭弹层和恢复焦点。
+        let date = root.chosen-date;
+        let hour = root.chosen-hour;
+        let minute = root.chosen-minute;
+        root.confirmed(date, hour, minute);
+        root.close();
+    }
     function focus-day() {
         ShellFocus.anchor = root.focus-key + ":day:" + root.chosen-date.year + "-" + root.chosen-date.month + "-" + root.chosen-date.day;
         ShellFocus.restore();
@@ -177,7 +185,7 @@ export component TaskDateTimePopup inherits PopupWindow {
                 ActionButton {
                     label: "应用"; primary: true; icon: @image-url("../../../../ui/icons/check.svg"); with-icon: true;
                     text-size: TaskStyle.body; text-family: TaskStyle.font-family;
-                    activated => { root.close(); root.confirmed(root.chosen-date, root.chosen-hour, root.chosen-minute); }
+                    activated => { root.apply-selection(); }
                 }
             }
         }
