@@ -217,3 +217,36 @@ fn test_outside_close_waits_for_save_ack_and_does_not_discard_failed_draft() {
         "失败后不能丢弃"
     );
 }
+
+#[test]
+fn test_explicit_unscheduled_reveal_only_expands_that_group_and_preserves_pagination() {
+    let mut session = session();
+    session.collapsed = [Some(true); 8];
+    session.limits = [400; 8];
+    session.request_unscheduled_reveal();
+    assert_eq!(session.collapsed[5], Some(false));
+    for index in [0, 1, 2, 3, 4, 6, 7] {
+        assert_eq!(session.collapsed[index], Some(true));
+    }
+    assert_eq!(session.limits, [400; 8]);
+    assert!(session.take_unscheduled_reveal());
+    assert!(!session.take_unscheduled_reveal());
+}
+
+#[test]
+fn test_absent_or_empty_reveal_target_is_consumed_without_a_future_scroll_request() {
+    let mut session = session();
+    session
+        .today
+        .as_mut()
+        .unwrap()
+        .sections
+        .retain(|section| section.kind != TodaySectionKind::Unscheduled);
+    session.request_unscheduled_reveal();
+    assert!(!session.take_unscheduled_reveal());
+    session.today = self::session().today;
+    assert!(!session.take_unscheduled_reveal());
+    session.today = None;
+    session.request_unscheduled_reveal();
+    assert!(!session.take_unscheduled_reveal());
+}

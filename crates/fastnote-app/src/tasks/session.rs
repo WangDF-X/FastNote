@@ -73,6 +73,8 @@ pub(crate) struct TaskSession {
     pub status_confirmation: Option<(TaskId, TaskStatus)>,
     pub reload_confirmation: Option<TaskId>,
     pub discard_exit_allowed: bool,
+    /// 仅用户点击隐藏组提示的快捷按钮后请求，等待已提交偏好的查询结果。
+    pub reveal_unscheduled: bool,
 }
 
 impl TaskSession {
@@ -155,6 +157,21 @@ impl TaskSession {
         }
         *limit = (*limit + 200).min(1000);
         true
+    }
+
+    pub(crate) fn request_unscheduled_reveal(&mut self) {
+        self.collapsed[TodaySectionKind::Unscheduled as usize] = Some(false);
+        self.reveal_unscheduled = true;
+    }
+
+    pub(crate) fn take_unscheduled_reveal(&mut self) -> bool {
+        let requested = std::mem::take(&mut self.reveal_unscheduled);
+        requested
+            && self.today.as_ref().is_some_and(|view| {
+                view.sections
+                    .iter()
+                    .any(|section| section.kind == TodaySectionKind::Unscheduled)
+            })
     }
 
     pub(crate) fn visible_ids(&self) -> Vec<TaskId> {

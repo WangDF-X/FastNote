@@ -47,7 +47,9 @@ impl SettingsRepository for SqliteSettings {
             CASE WHEN length(CAST(value AS BLOB)) <= 4096 THEN value ELSE char(0) END
             FROM app_settings WHERE key IN ('general.entry_mode', 'general.close_behavior',
             'hotkeys.enabled', 'general.first_run_done', 'hotkeys.show_app',
-            'window.main_geometry', 'appearance.ball_position', 'appearance.theme')",
+            'window.main_geometry', 'appearance.ball_position', 'appearance.theme',
+            'tasks.default_sort', 'today.show_in_progress', 'today.show_waiting',
+            'today.show_unscheduled', 'today.show_completed', 'today.tomorrow_collapsed')",
         )?;
         let values: HashMap<String, String> = statement
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
@@ -99,6 +101,7 @@ impl SettingsRepository for SqliteSettings {
                 .filter(|p| p.is_valid())
                 .map(Some)
         });
+        result.today_preferences = crate::tasks::preferences::from_values(&values);
         Ok(result)
     }
 
@@ -159,8 +162,13 @@ fn encode(change: &DesktopSetting) -> Result<String, StoreError> {
     let value = match change {
         DesktopSetting::EntryMode(value) => value.as_str().to_owned(),
         DesktopSetting::Theme(value) => value.as_str().to_owned(),
+        DesktopSetting::TodaySort(value) => value.as_str().to_owned(),
         DesktopSetting::CloseBehavior(value) => value.as_str().to_owned(),
-        DesktopSetting::FirstRunDone(value) => value.to_string(),
+        DesktopSetting::FirstRunDone(value)
+        | DesktopSetting::TodayShowInProgress(value)
+        | DesktopSetting::TodayShowWaiting(value)
+        | DesktopSetting::TodayShowUnscheduled(value)
+        | DesktopSetting::TodayShowCompleted(value) => value.to_string(),
         DesktopSetting::MainGeometry(Some(value)) => {
             if !value.is_valid() {
                 return Err(StoreError::invalid(change.key()));

@@ -56,6 +56,15 @@ pub enum TodaySort {
 }
 
 impl TodaySort {
+    /// ARCH-04 已登记的持久化值；不把 UI 标签写入数据库。
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Priority => "priority",
+            Self::DueDate => "due_date",
+            Self::CreatedDescending => "created_desc",
+        }
+    }
+
     /// 解析 ARCH-04 已登记的值。
     pub fn parse(value: &str) -> Option<Self> {
         match value {

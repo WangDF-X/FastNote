@@ -14,6 +14,7 @@ impl Runtime {
         self.set_busy(false);
         match result {
             Ok(settings) => {
+                self.task_preferences_error.borrow_mut().take();
                 self.ready.set(true);
                 self.shell.component().set_desktop_state(1);
                 self.geometry.set(settings.geometry);
@@ -143,6 +144,7 @@ impl Runtime {
                     self.notice(ToastKind::Error, storage_message(error.code()));
                     self.sync_settings();
                 }
+                Completion::TaskPreference { .. } => self.task_preference_failed(&error),
             }
             return;
         }
@@ -173,6 +175,9 @@ impl Runtime {
             Completion::Preference { .. } | Completion::Rollback => {
                 self.preference_repair.set(false);
                 self.set_busy(false);
+            }
+            Completion::TaskPreference { reveal_unscheduled } => {
+                self.task_preference_committed(reveal_unscheduled);
             }
             Completion::Close { exit } => {
                 self.complete_close(exit, &pending.changes);

@@ -15,43 +15,43 @@ pub(super) fn load(connection: &Connection) -> Result<TodayPreferences, TaskStor
     let values: HashMap<String, String> = statement
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
         .collect::<Result<_, _>>()?;
+    Ok(from_values(&values))
+}
+
+/// 设置页面快照与今日查询共用同一校验/回退规则，不能出现两套默认值。
+pub(crate) fn from_values(values: &HashMap<String, String>) -> TodayPreferences {
     let default = TodayPreferences::default();
-    Ok(TodayPreferences {
-        sort: read(
-            &values,
-            "tasks.default_sort",
-            default.sort,
-            TodaySort::parse,
-        ),
+    TodayPreferences {
+        sort: read(values, "tasks.default_sort", default.sort, TodaySort::parse),
         show_in_progress: read(
-            &values,
+            values,
             "today.show_in_progress",
             default.show_in_progress,
             parse_bool,
         ),
         show_waiting: read(
-            &values,
+            values,
             "today.show_waiting",
             default.show_waiting,
             parse_bool,
         ),
         show_unscheduled: read(
-            &values,
+            values,
             "today.show_unscheduled",
             default.show_unscheduled,
             parse_bool,
         ),
         show_completed: read(
-            &values,
+            values,
             "today.show_completed",
             default.show_completed,
             parse_bool,
         ),
         tomorrow_collapsed: read(
-            &values,
+            values,
             "today.tomorrow_collapsed",
             default.tomorrow_collapsed,
             parse_bool,
         ),
-    })
+    }
 }

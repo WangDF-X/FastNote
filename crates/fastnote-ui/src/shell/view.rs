@@ -19,6 +19,8 @@ pub struct ShellView {
     pub is_plan_detail: bool,
     /// 是否显示本阶段的通用窗口设置，而不是其它设置分组的占位页。
     pub is_general_settings: bool,
+    /// 规范设置分组键；非设置页面为空，不从展示文案反推路由。
+    pub settings_section: String,
 }
 
 impl ShellView {
@@ -30,6 +32,7 @@ impl ShellView {
         window.set_can_go_back(self.can_go_back);
         window.set_plan_detail(self.is_plan_detail);
         window.set_general_settings(self.is_general_settings);
+        window.set_settings_section(self.settings_section.clone().into());
     }
 }
 

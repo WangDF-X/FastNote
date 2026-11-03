@@ -43,6 +43,7 @@ export component TaskSelect inherits Rectangle {
     function open-menu() {
         if (root.enabled && root.model.length > 0) {
             root.active-index = clamp(root.current-index, 0, root.model.length - 1);
+            ShellFocus.claim(root.focus-key);
             menu.show();
         }
     }

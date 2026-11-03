@@ -28,6 +28,7 @@ pub(super) enum Completion {
     Background,
     Preference { previous: DesktopSetting },
     Rollback,
+    TaskPreference { reveal_unscheduled: bool },
     Close { exit: bool },
 }
 
@@ -42,6 +43,7 @@ pub(super) struct Runtime {
     pub menu: BallMenuWindow,
     pub controller: RefCell<AppController<SystemClock>>,
     pub settings: RefCell<DesktopSettings>,
+    pub task_preferences_error: RefCell<Option<String>>,
     pub theme: RefCell<ThemeState>,
     pub theme_monitor: RefCell<Option<WindowsThemeMonitor>>,
     pub worker: DbWorker,
@@ -129,6 +131,7 @@ impl Runtime {
             menu: BallMenuWindow::new()?,
             controller: RefCell::new(controller),
             settings: RefCell::new(DesktopSettings::default()),
+            task_preferences_error: RefCell::new(None),
             theme: RefCell::new(ThemeState::default()),
             theme_monitor: RefCell::new(theme_monitor),
             worker,
@@ -193,6 +196,8 @@ impl Runtime {
     pub(super) fn set_busy(&self, value: bool) {
         self.busy.set(value);
         self.shell.component().set_desktop_busy(value);
+        self.sync_task_preferences();
+        self.sync_task_editor();
     }
 
     pub(super) fn sync_settings(&self) {
@@ -205,6 +210,8 @@ impl Runtime {
             .set_close_behavior(settings.close_behavior.as_str().into());
         drop(settings);
         self.sync_theme();
+        self.sync_task_preferences();
+        self.sync_task_editor();
     }
 
     pub(super) fn notice(&self, kind: ToastKind, message: impl Into<String>) {

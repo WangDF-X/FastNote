@@ -1,7 +1,7 @@
 //! 设置与任务共享 SqliteSettings 的同一写连接，不打开第二个数据库。
 
 mod error;
-mod preferences;
+pub(crate) mod preferences;
 mod read;
 mod write;
 
