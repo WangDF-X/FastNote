@@ -9,13 +9,13 @@ export component TaskCounter inherits Rectangle {
     in property <int> tone;
     width: 140px; height: 32px;
     border-radius: TaskStyle.control-radius;
-    background: root.tone == 1 && root.value > 0 ? ShellPalette.danger-subtle : ShellPalette.surface;
-    private property <color> foreground: root.tone == 1 && root.value > 0 ? ShellPalette.danger : root.tone == 2 && root.value > 0 ? ShellPalette.success : ShellPalette.text-secondary;
+    background: TaskStyle.section-background(root.tone == 1 ? 0 : root.tone == 2 ? 7 : 5, false, false);
+    private property <color> icon-color: TaskStyle.section-icon-color(root.tone == 1 ? 0 : root.tone == 2 ? 7 : 5);
     HorizontalLayout {
         padding-left: 10px; padding-right: 10px; spacing: 8px;
         cross-axis-alignment: center;
-        Image { width: TaskStyle.icon-size; height: TaskStyle.icon-size; source: root.icon; colorize: root.foreground; accessible-role: none; }
+        Image { width: TaskStyle.icon-size; height: TaskStyle.icon-size; source: root.icon; colorize: root.icon-color; accessible-role: none; }
         Text { text: root.label; font-size: TaskStyle.caption; font-family: TaskStyle.font-family; color: ShellPalette.text-secondary; vertical-alignment: center; horizontal-stretch: 1; }
-        Text { text: root.value; font-size: TaskStyle.body; font-family: TaskStyle.font-family; font-weight: 600; color: root.foreground; vertical-alignment: center; }
+        Text { text: root.value; font-size: TaskStyle.body; font-family: TaskStyle.font-family; font-weight: 600; color: ShellPalette.text-primary; vertical-alignment: center; }
     }
 }

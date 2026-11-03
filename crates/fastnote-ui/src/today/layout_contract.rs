@@ -145,14 +145,53 @@ fn test_picker_reopening_snapshots_current_values_and_resets_every_temporary_cho
     let reset = reset.split_once("pure function two-digits").unwrap().0;
     for (target, initial) in [
         ("chosen-date", "initial-date"),
-        ("view-year", "initial-date.year"),
         ("view-month", "initial-date.month"),
         ("chosen-hour", "initial-hour"),
         ("chosen-minute", "initial-minute"),
     ] {
         assert!(reset.contains(&format!("root.{target} = root.{initial};")));
     }
+    assert!(reset.contains("root.view-year = clamp(root.initial-date.year, TaskStyle.picker-first-year, TaskStyle.picker-last-year);"));
+    assert!(reset.contains("year-choice.focus();"));
     assert!(!reset.contains("root.confirmed("));
+}
+
+#[test]
+fn test_year_and_month_controls_update_the_combined_draft_instead_of_only_browsing() {
+    let picker = include_str!("../../ui/tasks/datetime-popup.slint");
+    assert!(picker.contains("selected(index) => { root.select-period(TaskStyle.picker-first-year + index, root.view-month); }"));
+    assert!(
+        picker.contains("selected(index) => { root.select-period(root.view-year, index + 1); }")
+    );
+    let select = picker
+        .split_once("function select-period(year: int, month: int) {")
+        .unwrap()
+        .1;
+    let select = select.split_once("Rectangle {").unwrap().0;
+    assert!(select.contains("root.select-month(root.chosen-date, year, month)"));
+    for field in [
+        "chosen-date = date;",
+        "view-year = date.year;",
+        "view-month = date.month;",
+    ] {
+        assert!(select.contains(field));
+    }
+    assert!(!select.contains("root.confirmed("));
+    assert!(!select.contains("chosen-hour =") && !select.contains("chosen-minute ="));
+    let window = include_str!("../../ui/app-window.slint");
+    assert!(window.contains("pure callback task-calendar-select-month(Date, int, int) -> Date;"));
+    assert!(window.contains("return root.task-calendar-select-month(date, year, month);"));
+    let drawer = include_str!("../../ui/tasks/task-drawer.slint");
+    assert_eq!(
+        drawer
+            .matches("return root.calendar-select-month(date, year, month);")
+            .count(),
+        2
+    );
+    let field = include_str!("../../ui/tasks/datetime-field.slint");
+    assert!(field.contains("return root.select-month(date, year, month);"));
+    assert!(include_str!("presentation.rs")
+        .contains("window.on_task_calendar_select_month(calendar::select_month);"));
 }
 
 #[test]

@@ -21,7 +21,7 @@ export component TaskSelect inherits Rectangle {
     border-radius: TaskStyle.control-radius;
     border-width: root.quiet ? 0px : 1px;
     border-color: menu.is-open ? ShellPalette.accent : ShellPalette.border;
-    background: menu.is-open ? ShellPalette.selected : mouse.pressed ? ShellPalette.subtle : mouse.has-hover ? ShellPalette.hover : root.quiet ? ShellPalette.subtle : ShellPalette.surface;
+    background: menu.is-open ? ShellPalette.selected : mouse.pressed ? ShellPalette.subtle : mouse.has-hover ? ShellPalette.hover : root.quiet ? transparent : ShellPalette.surface;
     animate background { duration: 120ms; }
     opacity: root.enabled ? 1 : 0.45;
     forward-focus: keyboard;
@@ -32,7 +32,6 @@ export component TaskSelect inherits Rectangle {
     accessible-expanded: menu.is-open;
     accessible-action-expand => { root.open-menu(); }
     private property <int> active-index;
-    private property <int> open-version: 0;
     private property <int> focus-tick: ShellFocus.restore-tick;
     private property <bool> focused: keyboard.has-focus;
     private property <bool> popup-open: menu.is-open;
@@ -44,7 +43,6 @@ export component TaskSelect inherits Rectangle {
     function open-menu() {
         if (root.enabled && root.model.length > 0) {
             root.active-index = clamp(root.current-index, 0, root.model.length - 1);
-            root.open-version += 1;
             menu.show();
         }
     }
@@ -82,7 +80,6 @@ export component TaskSelect inherits Rectangle {
         // 窄年份/月字段不限制菜单宽度，为勾选图标、完整文字和滚动条留出空间。
         width: max(root.width, TaskStyle.menu-min-width);
         model: root.model; selected-index: root.current-index;
-        open-version: root.open-version;
         active-index <=> root.active-index;
         chosen(index) => { root.selected(index); }
     }

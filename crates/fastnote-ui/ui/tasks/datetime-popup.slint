@@ -23,9 +23,11 @@ export component TaskDateTimePopup inherits PopupWindow {
     pure callback month-days(int, int, Date) -> [CalendarDayData];
     pure callback shift-day(Date, int) -> Date;
     pure callback shift-month(Date, int) -> Date;
+    pure callback select-month(Date, int, int) -> Date;
+    pure callback date-label(string, int) -> string;
     callback confirmed(Date, int, int);
     private property <Date> chosen-date: root.initial-date;
-    private property <int> view-year: root.initial-date.year;
+    private property <int> view-year: clamp(root.initial-date.year, TaskStyle.picker-first-year, TaskStyle.picker-last-year);
     private property <int> view-month: root.initial-date.month;
     private property <int> chosen-hour: root.initial-hour;
     private property <int> chosen-minute: root.initial-minute;
@@ -34,16 +36,16 @@ export component TaskDateTimePopup inherits PopupWindow {
     width: TaskStyle.popup-width;
     height: TaskStyle.popup-height;
     close-policy: close-on-click-outside;
-    forward-focus: popup-keys;
+    forward-focus: year-choice;
 
     changed open-version => {
         if (root.open-version > 0) {
             root.chosen-date = root.initial-date;
-            root.view-year = root.initial-date.year;
+            root.view-year = clamp(root.initial-date.year, TaskStyle.picker-first-year, TaskStyle.picker-last-year);
             root.view-month = root.initial-date.month;
             root.chosen-hour = root.initial-hour;
             root.chosen-minute = root.initial-minute;
-            root.focus-day();
+            year-choice.focus();
         }
     }
 
@@ -67,9 +69,17 @@ export component TaskDateTimePopup inherits PopupWindow {
         root.focus-day();
     }
     function show-month(delta: int) {
-        let next = root.shift-month({ year: root.view-year, month: root.view-month, day: 1 }, delta);
-        root.view-year = next.year;
-        root.view-month = next.month;
+        let base = root.select-month(root.chosen-date, root.view-year, root.view-month);
+        let next = root.shift-month(base, delta);
+        root.select-period(next.year, next.month);
+    }
+    function select-period(year: int, month: int) {
+        // 年月选择不是只浏览：保持日并校正月末，时分不变，应用前不回写字段。
+        let date = root.select-month(root.chosen-date, year, month);
+        root.view-year = date.year;
+        root.view-month = date.month;
+        // Slint 1.18.1 生成代码会移动局部 Date，先读字段再赋整个结构体。
+        root.chosen-date = date;
     }
     Rectangle {
         width: parent.width; height: parent.height;
@@ -89,30 +99,30 @@ export component TaskDateTimePopup inherits PopupWindow {
             HorizontalLayout {
                 height: TaskStyle.control-height; spacing: 8px;
                 cross-axis-alignment: center;
-                TaskSelect {
+                year-choice := TaskSelect {
                     min-width: 92px; max-width: 92px; preferred-width: 92px;
-                    model: root.years; current-index: root.view-year - 1900;
+                    model: root.years; current-index: root.view-year - TaskStyle.picker-first-year;
                     label: "选择年份"; focus-key: root.focus-key + ":year";
-                    selected(index) => { root.view-year = 1900 + index; }
+                    selected(index) => { root.select-period(TaskStyle.picker-first-year + index, root.view-month); }
                 }
                 TaskSelect {
                     min-width: 72px; max-width: 72px; preferred-width: 72px;
                     model: ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
                     current-index: root.view-month - 1;
                     label: "选择月份"; focus-key: root.focus-key + ":month";
-                    selected(index) => { root.view-month = index + 1; }
+                    selected(index) => { root.select-period(root.view-year, index + 1); }
                 }
                 Rectangle { horizontal-stretch: 1; }
                 TaskIconButton {
                     icon: @image-url("../../../../ui/icons/arrow-left.svg"); label: "上个月";
                     focus-key: root.focus-key + ":previous";
-                    enabled: root.view-year > 1900 || root.view-month > 1;
+                    enabled: root.view-year > TaskStyle.picker-first-year || root.view-month > 1;
                     activated => { root.show-month(-1); }
                 }
                 TaskIconButton {
                     icon: @image-url("../../../../ui/icons/chevron-right.svg"); label: "下个月";
                     focus-key: root.focus-key + ":next";
-                    enabled: root.view-year < 9999 || root.view-month < 12;
+                    enabled: root.view-year < TaskStyle.picker-last-year || root.view-month < 12;
                     activated => { root.show-month(1); }
                 }
             }
@@ -165,7 +175,7 @@ export component TaskDateTimePopup inherits PopupWindow {
             }
             Text {
                 height: 20px;
-                text: root.label + "：" + root.chosen-date.year + "-" + root.two-digits(root.chosen-date.month) + "-" + root.two-digits(root.chosen-date.day) + "  " + root.two-digits(root.chosen-hour) + ":" + root.two-digits(root.chosen-minute);
+                text: root.date-label(root.chosen-date.year + "-" + root.two-digits(root.chosen-date.month) + "-" + root.two-digits(root.chosen-date.day), root.today.year) + "  " + root.two-digits(root.chosen-hour) + ":" + root.two-digits(root.chosen-minute);
                 font-size: TaskStyle.caption; font-family: TaskStyle.font-family; color: ShellPalette.text-secondary;
                 vertical-alignment: center;
             }
@@ -175,6 +185,7 @@ export component TaskDateTimePopup inherits PopupWindow {
                 ActionButton {
                     label: "今天"; icon: @image-url("../../../../ui/icons/calendar.svg"); with-icon: true; ghost: true;
                     text-size: TaskStyle.body; text-family: TaskStyle.font-family;
+                    enabled: root.today.year >= TaskStyle.picker-first-year && root.today.year <= TaskStyle.picker-last-year;
                     activated => { root.choose-date(root.today); }
                 }
                 Rectangle { horizontal-stretch: 1; }

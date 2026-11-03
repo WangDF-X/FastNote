@@ -5,9 +5,10 @@ use fastnote_core::{
 };
 use slint::{Model, ModelRc, SharedString, VecModel};
 
-use crate::{MainWindow, TaskRowData, TodaySectionData};
+use crate::{Date, MainWindow, TaskRowData, TodaySectionData};
 
 use super::calendar;
+use super::summary::{display_date, schedule_label};
 
 /// 保留每组模型实例，刷新数据时不重建整页或文本编辑器。
 pub struct TodayPresenter {
@@ -28,6 +29,10 @@ impl TodayPresenter {
         });
         window.on_task_calendar_day(calendar::move_day);
         window.on_task_calendar_month_move(calendar::move_month);
+        window.on_task_calendar_select_month(calendar::select_month);
+        window.on_task_date_label(|date, current_year| {
+            display_date(date.as_str(), current_year).into()
+        });
         Self {
             sections,
             rows: std::array::from_fn(|_| Rc::new(VecModel::default())),
@@ -36,12 +41,22 @@ impl TodayPresenter {
 
     /// 应用已查询的只读快照与会话折叠状态；不修改业务数据。
     pub fn apply(&self, window: &MainWindow, view: &TodayView, collapsed: [Option<bool>; 8]) {
+        let current_year = view.date.year();
+        window.set_task_picker_today(Date {
+            year: current_year,
+            month: view.date.month() as i32,
+            day: view.date.day() as i32,
+        });
         let mut sections = Vec::new();
         for section in &view.sections {
             let index = section.kind as usize;
             sync_model(
                 &self.rows[index],
-                section.items.iter().map(row_data).collect(),
+                section
+                    .items
+                    .iter()
+                    .map(|task| row_data(task, current_year))
+                    .collect(),
             );
             let remaining = section.total.saturating_sub(section.items.len() as u32);
             let can_load_more = section.has_more && section.items.len() < 1000;
@@ -65,14 +80,7 @@ impl TodayPresenter {
         let weekday = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
             [view.date.weekday().num_days_from_monday() as usize];
         window.set_today_date(
-            format!(
-                "{}年{}月{}日  {}",
-                view.date.year(),
-                view.date.month(),
-                view.date.day(),
-                weekday
-            )
-            .into(),
+            format!("{}月{}日  {}", view.date.month(), view.date.day(), weekday).into(),
         );
         window.set_today_open_count(number(view.open_count));
         window.set_today_overdue_count(number(view.overdue_count));
@@ -91,7 +99,7 @@ fn time_labels(count: u32) -> Vec<SharedString> {
 }
 
 fn year_labels() -> Vec<SharedString> {
-    (1900..=9999)
+    (calendar::PICKER_FIRST_YEAR..=calendar::PICKER_LAST_YEAR)
         .map(|year| format!("{year}年").into())
         .collect()
 }
@@ -119,23 +127,17 @@ pub fn task_status_index(status: Option<TaskStatus>) -> i32 {
     }
 }
 
-fn row_data(task: &TaskSummary) -> TaskRowData {
+fn row_data(task: &TaskSummary, current_year: i32) -> TaskRowData {
     let mut metadata = Vec::new();
-    if let Some(date) = task.start_date {
-        metadata.push(format!(
-            "开始 {date}{}",
-            task.start_time
-                .map(|time| format!(" {}", time.format("%H:%M")))
-                .unwrap_or_default()
-        ));
-    }
-    if let Some(date) = task.due_date {
-        metadata.push(format!(
-            "到期 {date}{}",
-            task.due_time
-                .map(|time| format!(" {}", time.format("%H:%M")))
-                .unwrap_or_default()
-        ));
+    let dates = schedule_label(
+        task.start_date,
+        task.start_time,
+        task.due_date,
+        task.due_time,
+        current_year,
+    );
+    if !dates.is_empty() {
+        metadata.push(dates);
     }
     if let Some(days) = task.waiting_days {
         metadata.push(format!("已等待 {days} 天"));
@@ -244,13 +246,13 @@ mod tests {
         )
         .unwrap();
         let mut summary = TaskSummary::from_task(&task, TaskContext::default());
-        assert_eq!(row_data(&summary).title.as_str(), "假任务");
+        assert_eq!(row_data(&summary, 2026).title.as_str(), "假任务");
         summary.due_date = Some("2020-01-01".parse().unwrap());
-        assert!(!row_data(&summary).overdue);
+        assert!(!row_data(&summary, 2026).overdue);
         summary.is_overdue = true;
         summary.waiting_days = Some(3);
-        assert!(row_data(&summary).overdue);
-        assert!(row_data(&summary).metadata.contains("已等待 3 天"));
+        assert!(row_data(&summary, 2026).overdue);
+        assert!(row_data(&summary, 2026).metadata.contains("已等待 3 天"));
     }
 
     #[test]
@@ -281,7 +283,7 @@ mod tests {
         .unwrap();
         let mut summary = TaskSummary::from_task(&task, TaskContext::default());
         let model = VecModel::default();
-        sync_model(&model, vec![row_data(&summary)]);
+        sync_model(&model, vec![row_data(&summary, 2026)]);
         assert_eq!(
             model.row_data(0).unwrap().title.as_str(),
             "准备中文测试任务"
@@ -289,10 +291,31 @@ mod tests {
         summary.title = "修改后的中文任务".to_owned();
         summary.due_date = Some("2026-11-04".parse().unwrap());
         summary.due_time = fastnote_core::parse_task_time("15:31").unwrap();
-        sync_model(&model, vec![row_data(&summary)]);
+        sync_model(&model, vec![row_data(&summary, 2026)]);
         let row = model.row_data(0).unwrap();
         assert_eq!(row.title.as_str(), "修改后的中文任务");
-        assert!(row.metadata.contains("到期 2026-11-04 15:31"));
+        assert_eq!(row.metadata.as_str(), "11-04 15:31");
+    }
+
+    #[test]
+    fn test_concise_date_range_keeps_real_waiting_and_plan_context() {
+        let task = Task::new(
+            "019a0fff-aaaa-7000-8000-000000000001".parse().unwrap(),
+            "假任务".to_owned(),
+            "2026-11-03T12:00:00Z".parse().unwrap(),
+        )
+        .unwrap();
+        let mut summary = TaskSummary::from_task(&task, TaskContext::default());
+        summary.start_date = Some("2026-11-03".parse().unwrap());
+        summary.start_time = fastnote_core::parse_task_time("09:05").unwrap();
+        summary.due_date = Some("2026-11-04".parse().unwrap());
+        summary.due_time = fastnote_core::parse_task_time("15:31").unwrap();
+        summary.waiting_days = Some(2);
+        summary.context.plan_name = Some("假计划".to_owned());
+        assert_eq!(
+            row_data(&summary, 2026).metadata.as_str(),
+            "11-03 09:05 → 11-04 15:31 · 已等待 2 天 · 假计划"
+        );
     }
 
     #[test]
@@ -311,11 +334,11 @@ mod tests {
     }
 
     #[test]
-    fn test_compact_year_menu_keeps_every_supported_year_instead_of_limiting_the_range() {
+    fn test_year_menu_covers_2000_through_2100_inclusively() {
         let years = year_labels();
-        assert_eq!(years.len(), 8100);
+        assert_eq!(years.len(), 101);
         for (index, label) in years.iter().enumerate() {
-            assert_eq!(label.as_str(), format!("{}年", 1900 + index));
+            assert_eq!(label.as_str(), format!("{}年", 2000 + index));
         }
     }
 }

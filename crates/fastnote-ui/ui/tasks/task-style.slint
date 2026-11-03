@@ -1,4 +1,6 @@
-/// D-TODAY-03：任务列表、详情与所有选择弹层使用同一排版和尺寸，不另建调色板。
+import { ShellPalette } from "../palette.slint";
+
+/// D-TODAY-03/04/05：任务区共享排版；语义色仅用于背景和图标。
 export global TaskStyle {
     out property <string> font-family: "Microsoft YaHei UI";
     out property <length> body: 14px;
@@ -7,12 +9,41 @@ export global TaskStyle {
     out property <length> control-height: 32px;
     out property <length> input-height: 36px;
     out property <length> row-height: 52px;
+    out property <length> row-radius: 8px;
     out property <length> icon-size: 16px;
     out property <length> popup-width: 320px;
     out property <length> popup-height: 432px;
     out property <length> menu-min-width: 128px;
     out property <int> menu-visible-rows: 7;
+    out property <int> picker-first-year: 2000;
+    out property <int> picker-last-year: 2100;
     out property <length> day-height: 34px;
     out property <length> control-radius: 6px;
     out property <length> card-radius: 10px;
+    out property <color> row-danger: ShellPalette.dark ? ShellPalette.danger.brighter(0.04) : ShellPalette.danger.darker(0.08);
+    out property <color> row-warning: ShellPalette.dark ? ShellPalette.warning.brighter(0.04) : ShellPalette.warning.darker(0.08);
+
+    /// 逾期优先显示浅红底，仍保持真实状态文字，不反推或修改任务状态。
+    public pure function row-background(status: int, overdue: bool, hovered: bool, pressed: bool) -> color {
+        let surface = overdue ? ShellPalette.danger-subtle : status == 1 ? ShellPalette.task-progress : status == 2 ? ShellPalette.task-waiting : status == 3 ? ShellPalette.task-done : ShellPalette.task-todo;
+        return TaskStyle.interactive-surface(surface, hovered, pressed);
+    }
+
+    /// 八个分区共享已完成分区的结构，只区分轻背景色。
+    public pure function section-background(kind: int, hovered: bool, pressed: bool) -> color {
+        let surface = kind == 0 ? ShellPalette.danger-subtle : kind == 4 ? ShellPalette.task-waiting : kind == 5 ? ShellPalette.task-todo : kind == 7 ? ShellPalette.task-done : ShellPalette.task-progress;
+        return TaskStyle.interactive-surface(surface, hovered, pressed);
+    }
+
+    /// 标题和计数不染色，语义色集中在对应的图标上。
+    public pure function section-icon-color(kind: int) -> color {
+        return kind == 0 ? TaskStyle.row-danger : kind == 4 ? TaskStyle.row-warning : kind == 7 ? ShellPalette.success : kind == 5 ? ShellPalette.text-secondary : ShellPalette.accent;
+    }
+
+    /// 分区与任务行使用相同的轻量交互明度变化。
+    public pure function interactive-surface(surface: color, hovered: bool, pressed: bool) -> color {
+        if (pressed) { return ShellPalette.dark ? surface.brighter(0.08) : surface.darker(0.02); }
+        if (hovered) { return ShellPalette.dark ? surface.brighter(0.04) : surface.darker(0.01); }
+        return surface;
+    }
 }

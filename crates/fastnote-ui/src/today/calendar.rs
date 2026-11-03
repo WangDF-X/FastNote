@@ -2,6 +2,11 @@ use fastnote_core::{Datelike, NaiveDate};
 
 use crate::{CalendarDayData, Date};
 
+/// 选择器范围不追溯修改领域允许的既有日期。
+pub(super) const PICKER_FIRST_YEAR: i32 = 2000;
+/// 允许选择的最后一个年份（含该年）。
+pub(super) const PICKER_LAST_YEAR: i32 = 2100;
+
 fn checked_date(value: &Date) -> Option<NaiveDate> {
     if !(1900..=9999).contains(&value.year) {
         return None;
@@ -44,7 +49,7 @@ pub(super) fn month_days(year: i32, month: i32, today: Date) -> Vec<CalendarDayD
                 today: value.year == today.year
                     && value.month == today.month
                     && value.day == today.day,
-                enabled: (1900..=9999).contains(&value.year),
+                enabled: (PICKER_FIRST_YEAR..=PICKER_LAST_YEAR).contains(&value.year),
                 date: value,
             }
         })
@@ -69,7 +74,7 @@ pub(super) fn move_day(value: Date, offset: i32) -> Date {
         };
         date = next;
     }
-    if (1900..=9999).contains(&date.year()) {
+    if (PICKER_FIRST_YEAR..=PICKER_LAST_YEAR).contains(&date.year()) {
         ui_date(date)
     } else {
         value
@@ -85,13 +90,21 @@ pub(super) fn move_month(value: Date, offset: i32) -> Date {
     }
     let index = date.year() * 12 + date.month0() as i32 + offset;
     let year = index.div_euclid(12);
-    let month = index.rem_euclid(12) as u32 + 1;
-    if !(1900..=9999).contains(&year) {
+    let month = index.rem_euclid(12) + 1;
+    select_month(value, year, month)
+}
+
+/// 年月直接选择保持当前日；月末向下校正，时分由弹层独立保持。
+pub(super) fn select_month(value: Date, year: i32, month: i32) -> Date {
+    let Some(date) = checked_date(&value) else {
+        return value;
+    };
+    if !(PICKER_FIRST_YEAR..=PICKER_LAST_YEAR).contains(&year) || !(1..=12).contains(&month) {
         return value;
     }
     (1..=date.day())
         .rev()
-        .find_map(|day| NaiveDate::from_ymd_opt(year, month, day))
+        .find_map(|day| NaiveDate::from_ymd_opt(year, month as u32, day))
         .map(ui_date)
         .unwrap_or(value)
 }
@@ -149,7 +162,10 @@ mod tests {
                         day.in_month,
                         date.year() == year && date.month() == month as u32
                     );
-                    assert_eq!(day.enabled, (1900..=9999).contains(&date.year()));
+                    assert_eq!(
+                        day.enabled,
+                        (PICKER_FIRST_YEAR..=PICKER_LAST_YEAR).contains(&date.year())
+                    );
                     previous = Some(date);
                 }
                 for day in 1..=31 {
@@ -171,9 +187,9 @@ mod tests {
         assert_eq!(move_day(date(2026, 12, 31), 1), date(2027, 1, 1));
         assert_eq!(move_day(date(2024, 3, 1), -1), date(2024, 2, 29));
         assert_eq!(move_day(date(2026, 11, 3), 7), date(2026, 11, 10));
-        for value in [date(1900, 1, 1), date(9999, 12, 31)] {
+        for value in [date(2000, 1, 1), date(2100, 12, 31)] {
             assert_eq!(
-                move_day(value.clone(), if value.year == 1900 { -1 } else { 1 }),
+                move_day(value.clone(), if value.year == 2000 { -1 } else { 1 }),
                 value
             );
         }
@@ -186,8 +202,8 @@ mod tests {
         assert_eq!(move_month(date(2026, 1, 31), 1), date(2026, 2, 28));
         assert_eq!(move_month(date(2024, 3, 31), -1), date(2024, 2, 29));
         assert_eq!(move_month(date(2026, 12, 3), 1), date(2027, 1, 3));
-        assert_eq!(move_month(date(1900, 1, 1), -1), date(1900, 1, 1));
-        assert_eq!(move_month(date(9999, 12, 31), 1), date(9999, 12, 31));
+        assert_eq!(move_month(date(2000, 1, 1), -1), date(2000, 1, 1));
+        assert_eq!(move_month(date(2100, 12, 31), 1), date(2100, 12, 31));
         assert_eq!(move_month(date(2026, 11, 3), i32::MAX), date(2026, 11, 3));
     }
 
@@ -214,5 +230,35 @@ mod tests {
         for offset in [-121, 121] {
             assert_eq!(move_month(value.clone(), offset), value);
         }
+    }
+
+    #[test]
+    fn test_year_and_month_selection_changes_the_date_and_clamps_month_end() {
+        assert_eq!(select_month(date(2026, 1, 31), 2026, 2), date(2026, 2, 28));
+        assert_eq!(select_month(date(2024, 2, 29), 2025, 2), date(2025, 2, 28));
+        assert_eq!(select_month(date(2026, 1, 31), 2000, 2), date(2000, 2, 29));
+        assert_eq!(select_month(date(2026, 1, 31), 2100, 2), date(2100, 2, 28));
+        assert_eq!(select_month(date(2026, 11, 3), 2099, 12), date(2099, 12, 3));
+        let original = date(2026, 11, 3);
+        for (year, month) in [(1999, 12), (2101, 1), (2026, 0), (2026, 13)] {
+            assert_eq!(select_month(original.clone(), year, month), original);
+        }
+        assert_eq!(select_month(date(2026, 2, 30), 2027, 3), date(2026, 2, 30));
+    }
+
+    #[test]
+    fn test_picker_range_disables_adjacent_dates_without_rewriting_legacy_dates() {
+        let lower = month_days(2000, 1, date(2000, 1, 1));
+        assert!(lower
+            .iter()
+            .any(|day| day.date.year == 1999 && !day.enabled));
+        let upper = month_days(2100, 12, date(2100, 12, 31));
+        assert!(upper
+            .iter()
+            .any(|day| day.date.year == 2101 && !day.enabled));
+        let old = date(1990, 1, 31);
+        assert_eq!(move_day(old.clone(), 1), old);
+        assert_eq!(move_month(old.clone(), 1), old);
+        assert_eq!(select_month(old, 2000, 2), date(2000, 2, 29));
     }
 }

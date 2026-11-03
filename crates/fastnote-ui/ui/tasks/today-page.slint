@@ -68,7 +68,7 @@ export component TodayPage inherits Rectangle {
                 quick := TaskField {
                     horizontal-stretch: 1;
                     text <=> root.quick-title;
-                    placeholder: "记下要做的事，按 Enter 添加";
+                    placeholder: "添加一个任务";
                     label: "快速添加任务";
                     focus-key: "today:quick";
                     enabled: root.enabled && !root.busy && root.state == 1;
@@ -91,12 +91,6 @@ export component TodayPage inherits Rectangle {
             text: root.create-error;
             font-size: TaskStyle.caption; font-family: TaskStyle.font-family; color: ShellPalette.danger; wrap: word-wrap;
         }
-        Text {
-            text: "回车添加 · 点击标题编辑详情 · 右侧调整状态、日期与优先级";
-            font-size: TaskStyle.caption; font-family: TaskStyle.font-family;
-            color: ShellPalette.text-secondary;
-            wrap: word-wrap;
-        }
         if root.state == 0: PageSkeleton { vertical-stretch: 1; }
         if root.state == 2: ErrorState {
             vertical-stretch: 1;
@@ -116,8 +110,7 @@ export component TodayPage inherits Rectangle {
                 if root.open-count == 0: EmptyState {
                     height: 180px;
                     icon: @image-url("../../../../ui/icons/today.svg");
-                    title: "今天的待办已经处理完了";
-                    description: "随时在上方记下一件事，让安排从这里开始。";
+                    title: "暂无待处理任务";
                 }
                 for section in root.sections: Rectangle {
                     height: section-content.preferred-height;

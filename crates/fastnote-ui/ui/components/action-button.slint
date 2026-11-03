@@ -10,6 +10,8 @@ export component ActionButton inherits Rectangle {
     in property <length> text-size: 14px;
     in property <string> text-family: "";
     in property <color> text-color: ShellPalette.text-primary;
+    /// 语义色可只作用于图标，不必改变按钮文字。
+    in property <color> icon-color: root.text-color;
     /// 低强调行操作，保留 hover / focus 而不绘制常驻按钮边框。
     in property <bool> ghost: false;
     in property <bool> left-aligned: false;
@@ -71,7 +73,7 @@ export component ActionButton inherits Rectangle {
         y: (parent.height - 16px) / 2;
         width: 16px; height: 16px;
         source: root.icon;
-        colorize: root.filled ? ShellPalette.on-accent : root.text-color;
+        colorize: root.filled ? ShellPalette.on-accent : root.icon-color;
         accessible-role: none;
     }
     label-text := Text {

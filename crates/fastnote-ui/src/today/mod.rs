@@ -3,6 +3,7 @@
 mod calendar;
 mod datetime;
 mod presentation;
+mod summary;
 
 pub use datetime::{task_datetime_seed, TaskDateTimeSeed};
 pub use presentation::{task_context_label, task_error_message, task_status_index, TodayPresenter};

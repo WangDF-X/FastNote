@@ -104,6 +104,109 @@ fn test_task_calendar_and_counter_text_meet_contrast_in_both_themes() {
 }
 
 #[test]
+fn test_pastel_task_rows_keep_readable_text_in_default_hover_and_pressed_states() {
+    let style = include_str!("../../ui/tasks/task-style.slint");
+    for expression in [
+        "surface.brighter(0.08) : surface.darker(0.02)",
+        "surface.brighter(0.04) : surface.darker(0.01)",
+        "ShellPalette.danger.brighter(0.04) : ShellPalette.danger.darker(0.08)",
+        "ShellPalette.warning.brighter(0.04) : ShellPalette.warning.darker(0.08)",
+    ] {
+        assert!(style.contains(expression));
+    }
+    for dark in [false, true] {
+        let readable_semantic = |name| {
+            let color = token(name, dark);
+            if dark {
+                color.brighter(0.04)
+            } else {
+                color.darker(0.08)
+            }
+        };
+        for name in [
+            "task-todo",
+            "task-progress",
+            "task-waiting",
+            "task-done",
+            "danger-subtle",
+        ] {
+            let base = token(name, dark);
+            assert!(
+                contrast(base, token("surface", dark)) <= 1.4,
+                "{name} is too strong"
+            );
+            let states = if dark {
+                [base, base.brighter(0.04), base.brighter(0.08)]
+            } else {
+                [base, base.darker(0.01), base.darker(0.02)]
+            };
+            for background in states {
+                for (foreground, minimum) in [
+                    (token("text-primary", dark), 7.0),
+                    (token("text-secondary", dark), 4.5),
+                    (readable_semantic("danger"), 4.5),
+                    (readable_semantic("warning"), 4.5),
+                ] {
+                    let ratio = contrast(foreground, background);
+                    assert!(
+                        ratio >= minimum,
+                        "dark={dark}, {name}: {ratio:.2} < {minimum}"
+                    );
+                }
+            }
+        }
+        for name in ["surface", "hover", "subtle"] {
+            for semantic in ["danger", "warning"] {
+                assert!(contrast(readable_semantic(semantic), token(name, dark)) >= 4.5);
+            }
+        }
+    }
+}
+
+#[test]
+fn test_all_eight_section_surfaces_have_readable_neutral_text_and_semantic_icons() {
+    let section_surfaces = [
+        ("danger-subtle", "danger"),
+        ("task-progress", "accent"),
+        ("task-progress", "accent"),
+        ("task-progress", "accent"),
+        ("task-waiting", "warning"),
+        ("task-todo", "text-secondary"),
+        ("task-progress", "accent"),
+        ("task-done", "success"),
+    ];
+    let style = include_str!("../../ui/tasks/task-style.slint");
+    for expression in [
+        "kind == 0 ? ShellPalette.danger-subtle",
+        "kind == 4 ? ShellPalette.task-waiting",
+        "kind == 5 ? ShellPalette.task-todo",
+        "kind == 7 ? ShellPalette.task-done",
+    ] {
+        assert!(style.contains(expression));
+    }
+    for dark in [false, true] {
+        for (surface, icon) in section_surfaces {
+            let base = token(surface, dark);
+            let icon_color = match icon {
+                "danger" | "warning" if dark => token(icon, dark).brighter(0.04),
+                "danger" | "warning" => token(icon, dark).darker(0.08),
+                _ => token(icon, dark),
+            };
+            let states = if dark {
+                [base, base.brighter(0.04), base.brighter(0.08)]
+            } else {
+                [base, base.darker(0.01), base.darker(0.02)]
+            };
+            for background in states {
+                assert!(contrast(token("text-primary", dark), background) >= 7.0);
+                assert!(contrast(token("text-secondary", dark), background) >= 4.5);
+                assert!(contrast(icon_color, background) >= 3.0);
+            }
+        }
+    }
+}
+
+#[test]
 fn test_caption_close_pressed_label_meets_contrast_in_both_themes() {
     for dark in [false, true] {
         assert!(contrast(token("on-accent", dark), token("danger", dark).darker(0.15)) >= 4.5);

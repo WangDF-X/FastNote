@@ -6,7 +6,6 @@ import { TaskStyle } from "task-style.slint";
 export component TaskSelectPopup inherits PopupWindow {
     in property <[string]> model;
     in property <int> selected-index;
-    in property <int> open-version;
     in-out property <int> active-index;
     callback chosen(int);
 
@@ -15,12 +14,6 @@ export component TaskSelectPopup inherits PopupWindow {
     close-policy: close-on-click-outside;
     forward-focus: menu-keys;
 
-    /// 滚轮会解除 content-y 的绑定；每次打开显式复位，不能依赖上次的滚动位置。
-    changed open-version => {
-        if (root.open-version > 0) {
-            list.content-y = -clamp(root.active-index - 3, 0, max(0, root.model.length - TaskStyle.menu-visible-rows)) * TaskStyle.control-height;
-        }
-    }
     function accept-selection(index: int) {
         if (index >= 0 && index < root.model.length) {
             // D-TODAY-03：close 会释放虚拟行的父弹层，必须在它仍存活时回传所选索引。
@@ -65,7 +58,8 @@ export component TaskSelectPopup inherits PopupWindow {
             x: 4px; y: 4px;
             width: parent.width - 8px; height: parent.height - 8px;
             content-width: self.visible-width;
-            content-y: 0px;
+            // PopupWindow 每次 show 都创建新实例，直接初始化到已有选中项。
+            content-y: -clamp(root.selected-index - 3, 0, max(0, root.model.length - TaskStyle.menu-visible-rows)) * TaskStyle.control-height;
             for label[index] in root.model: Rectangle {
                 width: list.visible-width; height: TaskStyle.control-height;
                 border-radius: 4px;

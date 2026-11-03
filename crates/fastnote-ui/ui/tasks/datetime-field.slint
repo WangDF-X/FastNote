@@ -26,6 +26,8 @@ export component TaskDateTimeField inherits Rectangle {
     pure callback month-days(int, int, Date) -> [CalendarDayData];
     pure callback shift-day(Date, int) -> Date;
     pure callback shift-month(Date, int) -> Date;
+    pure callback select-month(Date, int, int) -> Date;
+    pure callback date-label(string, int) -> string;
 
     preferred-height: 36px;
     min-height: 36px;
@@ -51,7 +53,8 @@ export component TaskDateTimeField inherits Rectangle {
             height: 36px;
             icon: @image-url("../../../../ui/icons/calendar.svg"); with-icon: true;
             text-size: TaskStyle.body; text-family: TaskStyle.font-family; left-aligned: true;
-            label: root.date-text == "" ? "选择日期和时间" : root.date-text + (root.time-text == "" ? " · 全天" : "  " + root.time-text);
+            label: root.date-text == "" ? "选择日期" : root.date-label(root.date-text, root.today.year) + (root.time-text == "" ? " · 全天" : "  " + root.time-text);
+            accessible-label: root.label + "日期和时间，" + (root.date-text == "" ? "未设置" : root.date-text + (root.time-text == "" ? "，全天" : " " + root.time-text));
             enabled: root.enabled;
             focus-key: root.focus-key;
             activated => {
@@ -82,6 +85,8 @@ export component TaskDateTimeField inherits Rectangle {
         month-days(year, month, today) => { return root.month-days(year, month, today); }
         shift-day(date, offset) => { return root.shift-day(date, offset); }
         shift-month(date, offset) => { return root.shift-month(date, offset); }
+        select-month(date, year, month) => { return root.select-month(date, year, month); }
+        date-label(date, year) => { return root.date-label(date, year); }
         confirmed(date, hour, minute) => { root.selected(date, hour, minute); }
     }
 }

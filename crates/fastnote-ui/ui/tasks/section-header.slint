@@ -7,8 +7,9 @@ export component SectionHeader inherits Rectangle {
     in property <TodaySectionData> data;
     callback toggled();
     height: 36px;
-    border-radius: 6px;
-    background: mouse.has-hover ? ShellPalette.hover : transparent;
+    border-radius: TaskStyle.control-radius;
+    background: TaskStyle.section-background(root.data.kind, mouse.has-hover, mouse.pressed);
+    animate background { duration: 120ms; }
     forward-focus: keyboard;
     accessible-role: button;
     accessible-label: root.data.label + "，" + root.data.total + " 项，" + (root.data.collapsed ? "展开" : "折叠");
@@ -21,23 +22,30 @@ export component SectionHeader inherits Rectangle {
         x: 8px; y: 10px; width: 16px; height: 16px;
         source: root.data.collapsed ? @image-url("../../../../ui/icons/chevron-right.svg") : @image-url("../../../../ui/icons/chevron-down.svg");
         colorize: ShellPalette.text-secondary;
+        accessible-role: none;
+    }
+    Image {
+        x: 32px; y: 10px; width: TaskStyle.icon-size; height: TaskStyle.icon-size;
+        source: root.data.kind == 0 ? @image-url("../../../../ui/icons/alert.svg") : root.data.kind == 4 ? @image-url("../../../../ui/icons/pause.svg") : root.data.kind == 7 ? @image-url("../../../../ui/icons/check-circle.svg") : root.data.kind == 3 ? @image-url("../../../../ui/icons/refresh.svg") : root.data.kind == 5 ? @image-url("../../../../ui/icons/today.svg") : @image-url("../../../../ui/icons/calendar.svg");
+        colorize: TaskStyle.section-icon-color(root.data.kind);
+        accessible-role: none;
     }
     heading := Text {
-        x: 32px; y: 8px; height: 20px; text: root.data.label;
-        width: min(self.preferred-width, parent.width - 104px);
+        x: 56px; y: 8px; height: 20px; text: root.data.label;
+        width: min(self.preferred-width, parent.width - 128px);
         font-size: TaskStyle.heading; font-family: TaskStyle.font-family; font-weight: 600;
-        color: root.data.kind == 0 ? ShellPalette.danger : ShellPalette.text-primary;
+        color: ShellPalette.text-primary;
         vertical-alignment: center;
     }
     Rectangle {
         x: heading.x + heading.width + 10px; y: 8px;
         width: max(28px, count.preferred-width + 12px); height: 20px;
         border-radius: 6px;
-        background: root.data.kind == 0 ? ShellPalette.danger-subtle : ShellPalette.subtle;
+        background: ShellPalette.surface;
         count := Text {
             text: root.data.total;
             font-size: TaskStyle.caption; font-family: TaskStyle.font-family;
-            color: root.data.kind == 0 ? ShellPalette.danger : ShellPalette.text-secondary;
+            color: ShellPalette.text-secondary;
             horizontal-alignment: center; vertical-alignment: center;
         }
     }

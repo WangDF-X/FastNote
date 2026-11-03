@@ -39,6 +39,8 @@ export component TaskDrawer inherits Rectangle {
     pure callback calendar-month(int, int, Date) -> [CalendarDayData];
     pure callback calendar-day(Date, int) -> Date;
     pure callback calendar-month-move(Date, int) -> Date;
+    pure callback calendar-select-month(Date, int, int) -> Date;
+    pure callback date-label(string, int) -> string;
     callback flush();
     callback closed();
     callback deleted();
@@ -124,14 +126,14 @@ export component TaskDrawer inherits Rectangle {
                     Text { text: "任务标题"; font-size: TaskStyle.caption; font-family: TaskStyle.font-family; color: ShellPalette.text-secondary; }
                     title-field := TaskField {
                         text <=> root.title; label: "任务标题";
-                        placeholder: "请输入任务标题"; focus-key: "editor:title";
+                        placeholder: "任务标题"; focus-key: "editor:title";
                         enabled: root.enabled && !root.read-only;
                         edited(value) => { root.edited("title", value); }
                         commit => { root.flush(); }
                         accepted => { root.flush(); }
                         escaped => { root.closed(); }
                     }
-                    Text { text: "开始日期和时间"; font-size: TaskStyle.caption; font-family: TaskStyle.font-family; color: ShellPalette.text-secondary; }
+                    Text { text: "开始时间"; font-size: TaskStyle.caption; font-family: TaskStyle.font-family; color: ShellPalette.text-secondary; }
                     TaskDateTimeField {
                         label: "开始"; focus-key: "editor:start";
                         date-text: root.start-date; time-text: root.start-time;
@@ -146,8 +148,10 @@ export component TaskDrawer inherits Rectangle {
                         month-days(year, month, today) => { return root.calendar-month(year, month, today); }
                         shift-day(date, offset) => { return root.calendar-day(date, offset); }
                         shift-month(date, offset) => { return root.calendar-month-move(date, offset); }
+                        select-month(date, year, month) => { return root.calendar-select-month(date, year, month); }
+                        date-label(date, year) => { return root.date-label(date, year); }
                     }
-                    Text { text: "到期日期和时间"; font-size: TaskStyle.caption; font-family: TaskStyle.font-family; color: ShellPalette.text-secondary; }
+                    Text { text: "到期时间"; font-size: TaskStyle.caption; font-family: TaskStyle.font-family; color: ShellPalette.text-secondary; }
                     TaskDateTimeField {
                         label: "到期"; focus-key: "editor:due";
                         date-text: root.due-date; time-text: root.due-time;
@@ -162,11 +166,8 @@ export component TaskDrawer inherits Rectangle {
                         month-days(year, month, today) => { return root.calendar-month(year, month, today); }
                         shift-day(date, offset) => { return root.calendar-day(date, offset); }
                         shift-month(date, offset) => { return root.calendar-month-move(date, offset); }
-                    }
-                    Text {
-                        text: "24 小时制 · 日期与时间一起确认，不自动提醒。";
-                        color: ShellPalette.text-secondary; font-size: TaskStyle.caption; font-family: TaskStyle.font-family;
-                        wrap: word-wrap;
+                        select-month(date, year, month) => { return root.calendar-select-month(date, year, month); }
+                        date-label(date, year) => { return root.date-label(date, year); }
                     }
                     Rectangle { height: 1px; background: ShellPalette.border; }
                     Text { text: root.context-label; color: ShellPalette.text-secondary; font-size: TaskStyle.caption; font-family: TaskStyle.font-family; wrap: word-wrap; }
@@ -176,7 +177,7 @@ export component TaskDrawer inherits Rectangle {
                     }
                     TaskField {
                         text <=> root.description; label: "任务描述";
-                        placeholder: "补充说明，让下一次开始更轻松。";
+                        placeholder: "补充描述";
                         focus-key: "editor:description"; multiline: true;
                         enabled: root.enabled && !root.read-only;
                         invalid: root.description-count > 10000;
@@ -184,11 +185,11 @@ export component TaskDrawer inherits Rectangle {
                         commit => { root.flush(); }
                         escaped => { root.closed(); }
                     }
-                    Text { text: "自动保存 · 点击详情外部，保存后关闭"; color: ShellPalette.text-secondary; font-size: TaskStyle.caption; font-family: TaskStyle.font-family; wrap: word-wrap; }
                     ActionButton {
                         label: "删除任务"; focus-key: "editor:delete";
                         icon: @image-url("../../../../ui/icons/trash.svg"); with-icon: true; ghost: true;
-                        text-size: TaskStyle.body; text-family: TaskStyle.font-family; text-color: ShellPalette.danger;
+                        text-size: TaskStyle.body; text-family: TaskStyle.font-family;
+                        text-color: ShellPalette.text-primary; icon-color: ShellPalette.danger;
                         enabled: root.enabled && !root.read-only;
                         activated => { root.deleted(); }
                     }

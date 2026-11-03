@@ -144,6 +144,8 @@ export component MainWindow inherits Window {
     pure callback task-calendar-month(int, int, Date) -> [CalendarDayData];
     pure callback task-calendar-day(Date, int) -> Date;
     pure callback task-calendar-month-move(Date, int) -> Date;
+    pure callback task-calendar-select-month(Date, int, int) -> Date;
+    pure callback task-date-label(string, int) -> string;
     callback task-flush();
     callback task-close();
     callback task-retry();
@@ -554,6 +556,8 @@ export component MainWindow inherits Window {
             calendar-month(year, month, today) => { return root.task-calendar-month(year, month, today); }
             calendar-day(date, offset) => { return root.task-calendar-day(date, offset); }
             calendar-month-move(date, offset) => { return root.task-calendar-month-move(date, offset); }
+            calendar-select-month(date, year, month) => { return root.task-calendar-select-month(date, year, month); }
+            date-label(date, year) => { return root.task-date-label(date, year); }
             flush => { root.task-flush(); }
             closed => { root.task-close(); }
             deleted => { root.task-delete(root.task-selected-id); }
