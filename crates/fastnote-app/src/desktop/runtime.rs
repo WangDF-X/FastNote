@@ -7,7 +7,9 @@ use crossbeam_channel::{bounded, Receiver};
 use fastnote_core::{
     BallPosition, DesktopSetting, DesktopSettings, EntryMode, ResolvedGeometry, WindowGeometry,
 };
-use fastnote_platform::{install_event_handlers, NativeEvent, WindowsHotkey, WindowsTray};
+use fastnote_platform::{
+    install_event_handlers, NativeEvent, WindowsHotkey, WindowsThemeMonitor, WindowsTray,
+};
 use fastnote_ui::{
     BallMenuWindow, FloatingBall, ShellHandle, ShellUpdate, ToastKind, ToastRequest,
 };
@@ -17,6 +19,7 @@ use crate::{clock::SystemClock, controller::AppController};
 
 use super::gesture::BallDrag;
 use super::presentation::Presentation;
+use super::theme::ThemeState;
 use super::worker::{Reply, SettingsWorker};
 
 pub(super) enum Completion {
@@ -37,6 +40,8 @@ pub(super) struct Runtime {
     pub menu: BallMenuWindow,
     pub controller: RefCell<AppController<SystemClock>>,
     pub settings: RefCell<DesktopSettings>,
+    pub theme: RefCell<ThemeState>,
+    pub theme_monitor: RefCell<Option<WindowsThemeMonitor>>,
     pub worker: SettingsWorker,
     pub native: Receiver<NativeEvent>,
     pub tray: RefCell<Option<WindowsTray>>,
@@ -59,6 +64,7 @@ pub(super) struct Runtime {
     pub geometry_timer: Timer,
     /// 已设置过大图标的 HWND；窗口重建后 HWND 变化，用于避免每次 Resized 重复设置。
     pub main_icon: Cell<isize>,
+    pub main_caption: Cell<isize>,
     pub menu_open: Cell<bool>,
     pub drag: RefCell<Option<BallDrag>>,
     pub next_id: Cell<u64>,
@@ -95,13 +101,24 @@ impl Runtime {
         });
         let worker = SettingsWorker::spawn(None, wake.clone())?;
         let (native_tx, native_rx) = bounded(256);
-        install_event_handlers(native_tx, wake);
+        install_event_handlers(native_tx.clone(), wake.clone());
+        let theme_monitor = WindowsThemeMonitor::new(native_tx, wake)
+            .map_err(|error| {
+                tracing::warn!(
+                    phase = "system_theme_monitor",
+                    native_code = error.native_code(),
+                    "theme listener unavailable, checking theme on window events instead"
+                );
+            })
+            .ok();
         let runtime = Rc::new(Self {
             shell,
             ball: FloatingBall::new()?,
             menu: BallMenuWindow::new()?,
             controller: RefCell::new(controller),
             settings: RefCell::new(DesktopSettings::default()),
+            theme: RefCell::new(ThemeState::default()),
+            theme_monitor: RefCell::new(theme_monitor),
             worker,
             native: native_rx,
             tray: RefCell::new(None),
@@ -123,6 +140,7 @@ impl Runtime {
             ball_position: RefCell::new(None),
             geometry_timer: Timer::default(),
             main_icon: Cell::new(0),
+            main_caption: Cell::new(0),
             menu_open: Cell::new(false),
             drag: RefCell::new(None),
             next_id: Cell::new(1),
@@ -130,6 +148,7 @@ impl Runtime {
         });
         *target.borrow_mut() = Rc::downgrade(&runtime);
         runtime.connect();
+        runtime.refresh_system_theme();
         Ok(runtime)
     }
 
@@ -162,6 +181,8 @@ impl Runtime {
         self.shell
             .component()
             .set_close_behavior(settings.close_behavior.as_str().into());
+        drop(settings);
+        self.sync_theme();
     }
 
     pub(super) fn notice(&self, kind: ToastKind, message: impl Into<String>) {

@@ -11,8 +11,11 @@ import { DialogHost, DialogData, DialogTone } from "components/dialog-host.slint
 import { BannerData, BannerTone } from "components/page-banner.slint";
 import { GeneralSettings } from "components/general-settings.slint";
 import { FloatingBall, BallMenuWindow } from "floating-ball.slint";
+import { TitleBar } from "components/title-bar.slint";
+import { ThemeSwitch } from "components/theme-switch.slint";
+import { Palette } from "std-widgets.slint";
 
-export { BannerData, BannerTone, DialogData, DialogTone, ToastData, ToastTone, FloatingBall, BallMenuWindow }
+export { BannerData, BannerTone, DialogData, DialogTone, ToastData, ToastTone, FloatingBall, BallMenuWindow, ShellPalette, Palette }
 
 struct PagePresentation {
     label: string,
@@ -27,7 +30,7 @@ export component MainWindow inherits Window {
     title: "FastNote";
     // 标题栏图标（winit 只设置 ICON_SMALL）；任务栏/Alt+Tab 由
     // fastnote-platform::set_window_big_icon 从 exe 资源补齐。
-    icon: @image-url("../../../ui/branding/fastnote-app-icon.svg");
+    icon: ShellPalette.brand-icon;
     preferred-width: 1280px;
     preferred-height: 800px;
     min-width: 1024px;
@@ -35,6 +38,12 @@ export component MainWindow inherits Window {
     default-font-family: "Microsoft YaHei UI";
     default-font-size: 14px;
     background: ShellPalette.canvas;
+    no-frame: root.custom-titlebar;
+    resize-border-width: root.window-maximized ? 0px : 6px;
+    in property <bool> custom-titlebar: true;
+    in property <bool> window-maximized: false;
+    in property <bool> window-active: true;
+    private property <length> caption-height: root.custom-titlebar ? 40px : 0px;
 
     in property <string> current_page: "今日任务";
     in property <string> page-title: "今日任务";
@@ -50,6 +59,9 @@ export component MainWindow inherits Window {
     in property <string> entry-mode: "ball";
     in property <bool> entry-available: false;
     in property <string> close-behavior: "entry";
+    in property <string> theme-mode: "system";
+    in property <bool> system-dark: false;
+    in property <bool> system-theme-available: true;
     in property <bool> desktop-busy: false;
     in property <string> show-hotkey-status: "正在注册…";
     /// 仅 debug 构建为 true，显示页面状态预览条。
@@ -166,6 +178,10 @@ export component MainWindow inherits Window {
     // SHELL-02 §7.2: 应用级快捷键。子控件拒绝的按键会冒泡到这里，
     // 所以焦点在导航项上或窗口空白处时都能生效。
     shortcuts := FocusScope {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: parent.height;
         focus-on-tab-navigation: false;
         key-pressed(event) => {
             // SHELL-02 §6.1：对话框打开期间应用级快捷键不得穿透。
@@ -195,7 +211,23 @@ export component MainWindow inherits Window {
             return accept;
         }
 
+        if root.custom-titlebar: TitleBar {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: root.caption-height;
+            maximized: root.window-maximized;
+            active: root.window-active;
+            minimize => { root.route_action("desktop:minimize"); }
+            maximize => { root.route_action("desktop:maximize"); }
+            close => { root.route_action("desktop:close"); }
+        }
+
         HorizontalLayout {
+            x: 0px;
+            y: root.caption-height;
+            width: parent.width;
+            height: parent.height - self.y;
             spacing: 0px;
             padding: 0px;
 
@@ -215,7 +247,7 @@ export component MainWindow inherits Window {
                             y: 20px;
                             width: 24px;
                             height: 24px;
-                            source: @image-url("../../../ui/branding/fastnote-app-icon-small.svg");
+                            source: ShellPalette.brand-icon-small;
                             accessible-role: none;
                         }
                         Text {
@@ -269,7 +301,8 @@ export component MainWindow inherits Window {
                         ShellControl {
                             x: 12px;
                             y: 12px;
-                            width: parent.width - 24px;
+                            // 让出右侧 40px，主题按钮与设置行垂直居中且不重叠。
+                            width: parent.width - 64px;
                             navigation: true;
                             label: "设置";
                             icon: root.settings-icon;
@@ -278,6 +311,14 @@ export component MainWindow inherits Window {
                             activated => {
                                 root.route_action("navigate:设置");
                             }
+                        }
+                        // SET-02 / SHELL-01：所有页面都能在「设置」行右侧直接切换主题。
+                        ThemeSwitch {
+                            x: parent.width - 48px;
+                            y: 14px;
+                            mode: root.theme-mode;
+                            enabled: root.desktop-state == 1 && !root.desktop-busy && !root.dialog-visible;
+                            cycle => { root.route_action("desktop:theme:cycle"); }
                         }
                     }
                 }
@@ -361,9 +402,9 @@ export component MainWindow inherits Window {
         // SHELL-02 §3.1：Toast 居中于内容区，距底 24。
         ToastHost {
             x: 208px;
-            y: 0px;
+            y: root.caption-height;
             width: parent.width - 208px;
-            height: parent.height;
+            height: parent.height - self.y;
             bottom-inset: root.dev_tools ? 224px : 24px;
             toasts: root.toasts;
             hover-changed(id, hovered) => {
@@ -377,9 +418,9 @@ export component MainWindow inherits Window {
         // SHELL-02 §6：对话框覆盖整个窗口，在 Toast 之上，打开时抢走焦点。
         DialogHost {
             x: 0px;
-            y: 0px;
+            y: root.caption-height;
             width: parent.width;
-            height: parent.height;
+            height: parent.height - self.y;
             open: root.dialog-visible;
             token: root.dialog-token;
             data: root.dialog;

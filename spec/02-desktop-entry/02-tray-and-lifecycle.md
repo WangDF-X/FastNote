@@ -1,6 +1,6 @@
 ﻿# ENTRY-02 系统托盘与生命周期
 
-> 文档编号：ENTRY-02 ｜ 模块：02 桌面常驻入口 ｜ 状态：已定稿 v0.1 ｜ 更新日期：2026-10-23
+> 文档编号：ENTRY-02 ｜ 模块：02 桌面常驻入口 ｜ 状态：已定稿 v0.1 ｜ 更新日期：2026-11-02
 > 上游：[ARCH-06](../00-architecture/06-platform-integration.md)、[product §1.4](../../product.md) ｜ 下游：[SHELL-01](../01-app-shell/01-overview.md)、[SET-02](../08-settings/02-general-and-appearance.md)
 
 ---
@@ -35,7 +35,7 @@
 
 | 项 | 值 |
 | --- | --- |
-| 图标 | 白色/黑色单色 SVG 图标（跟随主题自动切换） |
+| 图标 | Windows v1 沿用已定稿彩色品牌位图 `png/fastnote-32.png`，亮/暗主题均不重新着色；原生菜单亮暗由 Windows 绘制 |
 | Tooltip | 固定文案 `FastNote` |
 | 可见性 | 仅当 `entry_mode == tray` 时显示；切换到 ball 后立即移除 |
 | 右键菜单 | 同 ENTRY-01 §4.2（与悬浮球右键菜单完全一致） |

@@ -83,6 +83,7 @@ impl Runtime {
     }
 
     pub(super) fn show_ball_window(&self) -> Result<(), ()> {
+        self.refresh_system_theme();
         let monitors = monitors().map_err(|_| ())?;
         let saved = self.ball_position.borrow();
         let (position, _) = restore_ball(saved.as_ref(), &monitors, BALL_WINDOW).ok_or(())?;
@@ -215,6 +216,7 @@ impl Runtime {
         if self.presentation.get() != Presentation::Ball || self.finished.get() {
             return;
         }
+        self.refresh_system_theme();
         let position = self.ball.window().position();
         let size = self.ball.window().size();
         let Ok(monitor) = monitor_at_point(

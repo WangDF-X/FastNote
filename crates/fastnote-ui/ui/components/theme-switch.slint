@@ -1,0 +1,53 @@
+import { ShellPalette } from "../palette.slint";
+import { ShellFocus } from "../shell-focus.slint";
+
+/// SET-02 §3.2：只显示当前偏好的单格图标，循环顺序由 core 决定。
+export component ThemeSwitch inherits Rectangle {
+    in property <string> mode: "system";
+    in property <bool> enabled: true;
+    callback cycle();
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: ShellPalette.border;
+    background: mouse.pressed ? ShellPalette.selected : mouse.has-hover ? ShellPalette.hover : ShellPalette.subtle;
+    opacity: root.enabled ? 1 : 0.45;
+    forward-focus: keyboard;
+    accessible-role: button;
+    accessible-label: root.mode == "light" ? "当前主题：浅色，点击切换主题" : root.mode == "dark" ? "当前主题：深色，点击切换主题" : "当前主题：跟随系统，点击切换主题";
+    accessible-action-default => { if (root.enabled) { root.cycle(); } }
+
+    private property <bool> focused: keyboard.has-focus;
+    private property <int> focus-tick: ShellFocus.restore-tick;
+    changed focused => { if (focused) { ShellFocus.claim("theme-switch"); } }
+    changed focus-tick => { if (ShellFocus.anchor == "theme-switch") { keyboard.focus(); } }
+
+    Image {
+        x: 8px; y: 8px; width: 20px; height: 20px;
+        source: root.mode == "light" ? @image-url("../../../../ui/icons/theme-light.svg") : root.mode == "dark" ? @image-url("../../../../ui/icons/theme-dark.svg") : @image-url("../../../../ui/icons/theme-system.svg");
+        colorize: mouse.has-hover || keyboard.has-focus ? ShellPalette.accent : ShellPalette.text-secondary;
+        accessible-role: none;
+    }
+    Rectangle {
+        x: 2px; y: 2px; width: parent.width - 4px; height: parent.height - 4px;
+        border-width: 2px; border-color: ShellPalette.accent; border-radius: 6px;
+        background: transparent;
+        visible: keyboard.has-focus;
+    }
+    keyboard := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if (!event.modifiers.control && !event.modifiers.alt && !event.modifiers.shift && (event.text == "\n" || event.text == " ")) {
+                root.cycle();
+                return accept;
+            }
+            return reject;
+        }
+        mouse := TouchArea {
+            enabled: root.enabled;
+            mouse-cursor: pointer;
+            clicked => { keyboard.focus(); root.cycle(); }
+        }
+    }
+}

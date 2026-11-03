@@ -1,6 +1,10 @@
 export global ShellPalette {
     in-out property <bool> dark: false;
 
+    // SET-02：只切换界面/标题栏/悬浮球的既有品牌资产，任务栏和托盘保持原样。
+    out property <image> brand-icon: dark ? @image-url("../../../ui/branding/fastnote-app-icon-reversed.svg") : @image-url("../../../ui/branding/fastnote-app-icon.svg");
+    out property <image> brand-icon-small: dark ? @image-url("../../../ui/branding/fastnote-app-icon-reversed.svg") : @image-url("../../../ui/branding/fastnote-app-icon-small.svg");
+
     out property <color> canvas: dark ? #101215 : #F6F7F9;
     out property <color> surface: dark ? #171A1E : #FFFFFF;
     out property <color> subtle: dark ? #1F2328 : #EEF0F3;
@@ -17,5 +21,5 @@ export global ShellPalette {
     out property <color> warning: dark ? #D9A03C : #A86400;
     out property <color> overlay: dark ? #0000008C : #0F121659;
     out property <color> shadow: dark ? #00000066 : #1418201F;
-    out property <color> on-accent: #FFFFFF;
+    out property <color> on-accent: dark ? #101215 : #FFFFFF;
 }

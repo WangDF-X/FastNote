@@ -1,6 +1,6 @@
 # ARCH-01 技术栈与运行时
 
-> 文档编号：ARCH-01 ｜ 模块：00 总览与架构 ｜ 状态：已定稿 v0.2 ｜ 更新：2026-10-27
+> 文档编号：ARCH-01 ｜ 模块：00 总览与架构 ｜ 状态：已定稿 v0.2 ｜ 更新：2026-11-02
 > 上游：[product.md](../../product.md) §1.1、§8 ｜ 下游：[ARCH-02 架构](02-architecture.md)、[ARCH-06 平台](06-platform-integration.md)
 
 ---
@@ -45,7 +45,7 @@
 | `auto-launch` | 开机启动 | 三平台分别使用注册表 / LaunchAgent / autostart。 |
 | `single-instance` | 单实例 | 第二次启动唤醒已运行实例。 |
 | `directories` | 标准数据目录 | 按 OS 约定定位数据/日志/备份目录。 |
-| `dark-light` | 跟随系统主题 | 失败时回退浅色，并允许手动指定。 |
+| `windows`（v1 Windows） / Slint/winit | 跟随系统主题 | 复用已有依赖读取注册表、监听 `WM_SETTINGCHANGE`；不新增 `dark-light`，检测失败回退浅色，并允许手动指定。 |
 | `rfd` | 原生文件选择/保存对话框 | 备份、恢复、导入、导出。 |
 | `arboard` | 剪贴板 | 复制小记、复制任务信息。 |
 | `open` | 打开数据目录 | 调用系统文件管理器。 |

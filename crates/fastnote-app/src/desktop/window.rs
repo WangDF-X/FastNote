@@ -1,7 +1,7 @@
 use std::rc::Rc;
 use std::time::Duration;
 
-use fastnote_platform::{capture_geometry, NativeWindowHandle};
+use fastnote_platform::{capture_frameless_geometry, capture_geometry, NativeWindowHandle};
 use slint::winit_030::{
     winit::{
         event::WindowEvent,
@@ -42,6 +42,20 @@ impl Runtime {
             let weak = Rc::downgrade(self);
             move |_, event| {
                 if let Some(runtime) = weak.upgrade() {
+                    if let WindowEvent::Focused(active) = event {
+                        runtime.shell.component().set_window_active(*active);
+                    }
+                    if matches!(
+                        event,
+                        WindowEvent::ThemeChanged(_) | WindowEvent::Focused(true)
+                    ) {
+                        let weak = Rc::downgrade(&runtime);
+                        Timer::single_shot(Duration::ZERO, move || {
+                            if let Some(runtime) = weak.upgrade() {
+                                runtime.refresh_system_theme();
+                            }
+                        });
+                    }
                     if matches!(
                         event,
                         WindowEvent::Moved(_)
@@ -55,6 +69,8 @@ impl Runtime {
                                 runtime.sync_minimized_timers();
                                 // 窗口创建/重建后的首个 Resized，补齐任务栏大图标。
                                 runtime.apply_main_icon();
+                                runtime.apply_main_caption();
+                                runtime.sync_window_state();
                             }
                         });
                     }
@@ -76,6 +92,14 @@ impl Runtime {
         self.ball.window().on_winit_window_event({
             let weak = Rc::downgrade(self);
             move |_, event| {
+                if matches!(event, WindowEvent::ThemeChanged(_)) {
+                    let weak = weak.clone();
+                    Timer::single_shot(Duration::ZERO, move || {
+                        if let Some(runtime) = weak.upgrade() {
+                            runtime.refresh_system_theme();
+                        }
+                    });
+                }
                 if matches!(event, WindowEvent::ScaleFactorChanged { .. }) {
                     let weak = weak.clone();
                     Timer::single_shot(Duration::ZERO, move || {
@@ -127,6 +151,14 @@ impl Runtime {
         self.menu.window().on_winit_window_event({
             let weak = Rc::downgrade(self);
             move |_, event| {
+                if matches!(event, WindowEvent::ThemeChanged(_)) {
+                    let weak = weak.clone();
+                    Timer::single_shot(Duration::ZERO, move || {
+                        if let Some(runtime) = weak.upgrade() {
+                            runtime.refresh_system_theme();
+                        }
+                    });
+                }
                 if matches!(
                     event,
                     WindowEvent::Focused(false) | WindowEvent::CloseRequested
@@ -141,6 +173,38 @@ impl Runtime {
                 EventResult::Propagate
             }
         });
+    }
+
+    pub(super) fn sync_window_state(&self) {
+        self.shell.component().window().with_winit_window(|window| {
+            self.shell
+                .component()
+                .set_window_maximized(window.is_maximized());
+            self.shell.component().set_window_active(window.has_focus());
+        });
+    }
+
+    pub(super) fn minimize_window(self: &Rc<Self>) {
+        if !self.main_visible() || self.finished.get() || self.closing.get() {
+            return;
+        }
+        if self.entry.get() == Some(fastnote_core::EntryMode::Ball) {
+            self.request_minimize();
+        } else {
+            self.shell.component().window().set_minimized(true);
+            self.shell.pause_timers();
+        }
+    }
+
+    pub(super) fn maximize_window(&self) {
+        if !self.main_visible() || self.finished.get() || self.closing.get() {
+            return;
+        }
+        let window = self.shell.component().window();
+        if let Some(maximized) = window.with_winit_window(|window| window.is_maximized()) {
+            window.set_maximized(!maximized);
+            self.shell.component().set_window_maximized(!maximized);
+        }
     }
 
     fn schedule_geometry(self: &Rc<Self>) {
@@ -169,7 +233,12 @@ impl Runtime {
             .window()
             .with_winit_window(|window| {
                 native_handle(window).ok_or(()).and_then(|handle| {
-                    capture_geometry(handle).map_err(|error| {
+                    let result = if window.is_decorated() {
+                        capture_geometry(handle)
+                    } else {
+                        capture_frameless_geometry(handle)
+                    };
+                    result.map_err(|error| {
                         tracing::warn!(
                             phase = "main_geometry",
                             error_kind = error.diagnostic_kind(),

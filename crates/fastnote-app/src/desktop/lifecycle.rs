@@ -136,6 +136,7 @@ impl Runtime {
                     self.close_failed(exit, storage_message(error.code()), error.log_id());
                 }
                 Completion::Preference { .. } | Completion::Rollback => {
+                    self.settle_theme(&pending.changes);
                     self.set_busy(false);
                     self.preference_repair.set(true);
                     self.notice(ToastKind::Error, storage_message(error.code()));
@@ -164,6 +165,7 @@ impl Runtime {
         for change in &pending.changes {
             self.settings.borrow_mut().apply(change);
         }
+        self.settle_theme(&pending.changes);
         self.sync_settings();
         match pending.completion {
             Completion::Background => {}
@@ -188,6 +190,7 @@ impl Runtime {
     }
 
     pub(super) fn cleanup(&self) {
+        self.theme_monitor.borrow_mut().take();
         self.geometry_timer.stop();
         self.shell.pause_timers();
         self.hide_menu();

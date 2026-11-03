@@ -121,8 +121,16 @@ fn test_v1_upgrade_preserves_data_and_produces_complete_v1_backup() {
     let directory = tempdir();
     let path = directory.path().join("fake.db");
     create_v1(&path);
+    Connection::open(&path)
+        .unwrap()
+        .execute(
+            "INSERT INTO app_settings VALUES ('appearance.theme', 'dark', ?1)",
+            [now().to_rfc3339()],
+        )
+        .unwrap();
     let store = SqliteSettings::open(&path, now()).unwrap();
     assert_eq!(store.load_desktop().unwrap().entry_mode.as_str(), "tray");
+    assert_eq!(store.load_desktop().unwrap().theme.as_str(), "dark");
     let connection = Connection::open(&path).unwrap();
     assert_eq!(version(&connection), 2);
     let plan: String = connection
@@ -137,6 +145,14 @@ fn test_v1_upgrade_preserves_data_and_produces_complete_v1_backup() {
     assert_eq!(files[0].extension().unwrap(), "fnsbackup");
     let backup = Connection::open(&files[0]).unwrap();
     assert_eq!(version(&backup), 1);
+    let theme: String = backup
+        .query_row(
+            "SELECT value FROM app_settings WHERE key='appearance.theme'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(theme, "dark");
     let result: String = backup
         .query_row("PRAGMA integrity_check", [], |row| row.get(0))
         .unwrap();

@@ -2,7 +2,7 @@ import { ShellPalette } from "../palette.slint";
 import { ActionButton } from "action-button.slint";
 import { ScrollView } from "std-widgets.slint";
 
-/// SHELL-01 §5.4：只接入驻留/关闭设置，完整外观和业务设置继续占位。
+/// SET-02：这里接入驻留/关闭设置，主题入口常驻左侧栏「设置」上方。
 export component GeneralSettings inherits Rectangle {
     in property <string> entry-mode;
     in property <bool> entry-available;
@@ -22,6 +22,7 @@ export component GeneralSettings inherits Rectangle {
         Text { text: "窗口与桌面入口"; font-size: 16px; font-weight: 600; color: ShellPalette.text-primary; }
         Text { text: "修改后即时生效，配置保存在本机 SQLite 数据库。"; color: ShellPalette.text-secondary; font-size: 13px; }
         Rectangle { height: 8px; }
+
 
         Rectangle {
             height: 104px;

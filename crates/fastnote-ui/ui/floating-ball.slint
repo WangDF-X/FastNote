@@ -23,7 +23,7 @@ export component FloatingBall inherits Window {
         opacity: ball-touch.has-hover || ball-touch.pressed ? 1 : 0.9;
         Image {
             x: 8px; y: 8px; width: 32px; height: 32px;
-            source: @image-url("../../../ui/branding/fastnote-app-icon-small.svg");
+            source: ShellPalette.brand-icon-small;
             accessible-role: none;
         }
         ball-touch := TouchArea {
