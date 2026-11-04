@@ -1,6 +1,6 @@
 ﻿# QA-01 需求与验收追溯
 
-> 文档编号：QA-01 ｜ 模块：10 质量与验收 ｜ 状态：已定稿 v0.1 ｜ 更新：2026-10-23
+> 文档编号：QA-01 ｜ 模块：10 质量与验收 ｜ 状态：Confirmed ｜ 更新：2026-11-04
 > 上游：[product.md](../../product.md)、[spec/README](../README.md) ｜ 下游：评审、测试、发布
 
 ---
@@ -30,6 +30,7 @@
 | §1.5 入口轻量、低干扰 | [ENTRY-01 §3](../02-desktop-entry/01-floating-ball.md)、[ARCH-01 §5](../00-architecture/01-tech-and-runtime.md) | AC-ARCH-03、AC-ENTRY-* |
 | §1.5 切换入口模式不影响数据 | [ENTRY-02 §4](../02-desktop-entry/02-tray-and-lifecycle.md) | AC-ENTRY-*、AC-ARCH-05 |
 | §1.5 关闭主界面后是否驻留由设置决定 | [ENTRY-02 §5](../02-desktop-entry/02-tray-and-lifecycle.md)、[SHELL-01 §5](../01-app-shell/01-overview.md) | AC-SHELL-02、AC-PLAT-12 |
+| §1.6 低内存常驻优先、按需加载与最多两分钟热缓存 | [ARCH-01 §5](../00-architecture/01-tech-and-runtime.md)、[SHELL-01 §5.5](../01-app-shell/01-overview.md)、[ENTRY-02 §7](../02-desktop-entry/02-tray-and-lifecycle.md)、[QA-03 §8](03-test-strategy.md) | AC-ARCH-25–32、AC-SHELL-22–24、AC-ENTRY-25/26、AC-QA-16 |
 | §3.1 悬浮球可拖动、调整大小和透明度 | [ENTRY-01 §3–4](../02-desktop-entry/01-floating-ball.md)、[SET-02](../08-settings/02-general-and-appearance.md) | AC-ENTRY-*、AC-PLAT-02 |
 | §3.1 支持后台驻留、全局快捷键、关闭后驻留 | [ENTRY-02](../02-desktop-entry/02-tray-and-lifecycle.md)、[ENTRY-03](../02-desktop-entry/03-global-hotkeys.md) | AC-ENTRY-*、AC-PLAT-04/05/12 |
 | §3.2 五个核心模块 + 设置独立入口 | [SHELL-01 §2](../01-app-shell/01-overview.md) | AC-SHELL-01 |
@@ -142,7 +143,7 @@
 | 6 | 自由调整状态和日期，仅在必要时提示 | [ARCH-03 §7.2](../00-architecture/03-domain-model.md)、[SHELL-02 §6](../01-app-shell/02-interaction-and-feedback.md) | 任意状态互转；冲突仅警告；确认后可继续 |
 | 7 | 依赖帮助理解顺序但不限制操作 | [PLAN-05 §4](../07-plan-board/05-dependencies.md) | 阻塞任务可开始（确认后）；不锁定 UI |
 | 8 | 通过悬浮球或快捷键快速进入 | [ENTRY-01](../02-desktop-entry/01-floating-ball.md)、[ENTRY-03](../02-desktop-entry/03-global-hotkeys.md) | 点击/快捷键唤起延迟与行为 |
-| 9 | 低资源长期驻留 | [ARCH-01 §5](../00-architecture/01-tech-and-runtime.md)、[QA-03 §8](03-test-strategy.md) | 内存/CPU/启动基线 |
+| 9 | 低资源长期驻留 | [ARCH-01 §5](../00-architecture/01-tech-and-runtime.md)、[QA-03 §8](03-test-strategy.md) | Release 冷≤80MB、热/活动≤130MB、120秒到期真实回收、多轮稳定、草稿与必要后台服务不丢失 |
 | 10 | 结构支持未来 AI Agent 而不改核心方式 | [ARCH-02 §9](../00-architecture/02-architecture.md) | 架构评审：Command/Query 边界、只读查询、变更提案预留 |
 
 ---
@@ -184,8 +185,18 @@
 | **已确认变更（2026-10-25）**：月视图 + 周视图 + 日期详情，Today 独立，无独立日视图 | 用户确认，替换仅月视图默认。 | CAL-01/02、ARCH-02/03 |
 | **已确认变更（2026-10-25）**：v1 系统提醒 | 任务/小记单次/每天/每周；仅运行时，最近 24 小时错过项汇总补发。 | [REM-01](../11-reminders/01-reminders-and-notifications.md)、ARCH-04/06、SHELL-02 |
 | 悬浮球大小/透明度归入「常规与待机」 | 与入口模式强耦合；避免托盘模式下外观分组整组禁用（product §6.2 列在外观下）。 | SET-01 D-SET-03、QA-02 Q-24 |
+| **已确认变更（2026-11-04）D-RES-01**：分级加载/回收与最多两分钟热缓存 | 用户明确低内存优先；允许冷重开短暂加载，禁止预载/无限缓存，以Release分态预算与真实回收验收。 | product §1.6、ARCH-01/02/04、SHELL-01、ENTRY-02、各业务模块、QA-03 §8 |
 
 > 以上补充已写入各模块文档；若产品评审不同意，按变更流程调整对应文档与验收。
+
+### 6.4 D-RES-01 实施差异（本次仅文档）
+
+| 要求 | 当前状态 / 后续验证 |
+| --- | --- |
+| 冷启动不预建主窗/业务模型，模块按需查询 | 要求已确认；当前启动预建主窗/今日模型及页面查询装配需另行整改，不因文档更新记为完成。 |
+| 重资源先释放，低成本主窗最多120秒热缓存 | 缓存状态机、真实窗口/图形资源释放、有界模型与查询分配尚待实现；`hide()` 或保留全部页面不算达标。 |
+| 隐页仅失效、代次/草稿保护、必要服务独立 | 需要覆盖旧回调、保存失败、冷热重开和提醒/DB无主窗运行的测试；不重置业务数据与轻量会话。 |
+| Release 冷热预算与多轮稳定性 | 尚未执行 QA-03 §8 的资源量测；既有 `scripts/test.ps1` 通过不能代替 L7 或给出 Debug/Release 内存差值。 |
 
 ---
 
@@ -193,13 +204,13 @@
 
 | 模块 | 文档 | 验收编号 |
 | --- | --- | --- |
-| 架构与运行时 | [ARCH-01](../00-architecture/01-tech-and-runtime.md) | AC-ARCH-01–08 |
+| 架构与运行时 | [ARCH-01](../00-architecture/01-tech-and-runtime.md) | AC-ARCH-01–08、25–32 |
 | 架构与数据流 | [ARCH-02](../00-architecture/02-architecture.md) | AC-ARCH-09–15 |
 | 领域模型 | [ARCH-03](../00-architecture/03-domain-model.md) | AC-CORE-01–10 |
 | 存储 | [ARCH-04](../00-architecture/04-storage-and-data.md) | AC-ARCH-16–24 |
 | UI 系统 | [ARCH-05](../00-architecture/05-ui-design-system.md) | AC-UI-01–08 |
 | 平台集成 | [ARCH-06](../00-architecture/06-platform-integration.md) | AC-PLAT-01–12 |
-| 应用外壳 | [SHELL-01](../01-app-shell/01-overview.md)、[SHELL-02](../01-app-shell/02-interaction-and-feedback.md) | AC-SHELL-01–20 |
+| 应用外壳 | [SHELL-01](../01-app-shell/01-overview.md)、[SHELL-02](../01-app-shell/02-interaction-and-feedback.md) | AC-SHELL-01–24 |
 | 桌面入口 | [ENTRY-01](../02-desktop-entry/01-floating-ball.md)–[03](../02-desktop-entry/03-global-hotkeys.md) | AC-ENTRY-* |
 | 今日任务 | [TODAY-01](../03-today-tasks/01-overview-and-sections.md)–[03](../03-today-tasks/03-task-detail.md) | AC-TODAY-* |
 | 日历 | [CAL-01](../04-calendar/01-overview-and-views.md)–[02](../04-calendar/02-date-operations-and-conflicts.md) | AC-CAL-* |
@@ -209,7 +220,7 @@
 | 设置 | [SET-01](../08-settings/01-overview.md)–[03](../08-settings/03-hotkeys-task-prefs-and-about.md) | AC-SET-* |
 | 数据管理 | [DATA-01](../09-data-management/01-storage-location-and-lifecycle.md)–[03](../09-data-management/03-import-export.md) | AC-DATA-* |
 | 提醒与系统通知 | [REM-01](../11-reminders/01-reminders-and-notifications.md) | AC-REM-* |
-| 质量 | [QA-02](02-risks-and-open-questions.md)、[QA-03](03-test-strategy.md) | AC-QA-01–15 |
+| 质量 | [QA-02](02-risks-and-open-questions.md)、[QA-03](03-test-strategy.md) | AC-QA-01–16 |
 
 > `*` 表示该模块文档中定义的完整编号集合；具体条目见各文档末节。
 
@@ -223,6 +234,7 @@
 - [ ] 所有模块文档的 `AC-*` 在测试计划中有对应用例或手工步骤。
 - [ ] 已知限制（Wayland、长文本、IME 等）已记录在 QA-02 与用户可见说明中。
 - [ ] 变更记录已更新，spec 版本与实现版本对应。
+- [ ] D-RES-01 的冷启动/热缓存/提前回收/草稿/旧回调测试与 Release 分态资源证据齐全，不以隐藏窗口、Debug 数字或编译成功替代真实回收。
 
 ---
 
