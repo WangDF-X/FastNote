@@ -9,13 +9,17 @@ use super::state::complete_today;
 
 impl Runtime {
     pub(super) fn today_queried(&self, id: u64, result: Result<QueryResult, TaskStoreError>) {
+        if id == 0 || self.tasks.borrow().latest_today != id {
+            return;
+        }
+        let now = self.observe_task_clock().sample.local;
         let page_visible = self.today_page_visible();
         let (view, error) = match result {
             Ok(QueryResult::Today(view)) => (Some(view), None),
             Err(error) => (None, Some(error)),
             _ => (None, Some(TaskError::Conflict.into())),
         };
-        let completion = complete_today(&mut self.tasks.borrow_mut(), id, view, page_visible);
+        let completion = complete_today(&mut self.tasks.borrow_mut(), id, view, page_visible, now);
         let Some(completion) = completion else {
             return;
         };

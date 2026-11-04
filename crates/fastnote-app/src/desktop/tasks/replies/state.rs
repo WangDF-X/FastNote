@@ -1,6 +1,6 @@
-use fastnote_core::{AppEvent, TaskDetail, TaskId, TaskScope, TodayView};
+use fastnote_core::{AppEvent, NaiveDateTime, TaskDetail, TaskId, TaskScope, TodayView};
 
-use crate::tasks::{DetailPurpose, TaskSession};
+use crate::tasks::{today_clock_stale, DetailPurpose, TaskSession};
 
 pub(super) use super::super::policy::stage_confirmation;
 
@@ -61,9 +61,16 @@ pub(super) fn complete_today(
     id: u64,
     view: Option<TodayView>,
     page_visible: bool,
+    now: NaiveDateTime,
 ) -> Option<TodayCompletion> {
     if id == 0 || tasks.latest_today != id {
         return None;
+    }
+    if view
+        .as_ref()
+        .is_some_and(|view| today_clock_stale(view, now))
+    {
+        tasks.invalidate_today_read();
     }
     let can_apply = page_visible && !tasks.today_requery;
     let applied = view.is_some_and(|view| adopt_today(tasks, id, view, can_apply));

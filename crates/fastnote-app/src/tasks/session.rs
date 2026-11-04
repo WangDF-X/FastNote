@@ -142,11 +142,9 @@ impl TaskSession {
     }
 
     pub(crate) fn needs_clock_refresh(&self, now: NaiveDateTime) -> bool {
-        self.today.as_ref().is_none_or(|view| {
-            view.date != now.date()
-                || now < view.evaluated_at
-                || view.next_overdue_at.is_some_and(|deadline| now > deadline)
-        })
+        self.today
+            .as_ref()
+            .is_none_or(|view| today_clock_stale(view, now))
     }
 
     pub(crate) fn take_ready_transition(&mut self) -> Option<Transition> {
@@ -219,6 +217,13 @@ impl TaskSession {
         };
         ids.get(next).copied()
     }
+}
+
+/// 今日读模型只比较本地自然日及已确认的到期边界，不重新解释任务排期。
+pub(crate) fn today_clock_stale(view: &TodayView, now: NaiveDateTime) -> bool {
+    view.date != now.date()
+        || now < view.evaluated_at
+        || view.next_overdue_at.is_some_and(|deadline| now > deadline)
 }
 
 #[cfg(test)]

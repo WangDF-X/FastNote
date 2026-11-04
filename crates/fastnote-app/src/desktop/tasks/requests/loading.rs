@@ -1,10 +1,8 @@
 use std::rc::Rc;
 use std::time::Duration;
 
-use fastnote_core::TaskClock;
 use slint::{Timer, TimerMode};
 
-use crate::clock::SystemClock;
 use crate::desktop::runtime::Runtime;
 use crate::tasks::DetailPurpose;
 
@@ -13,26 +11,12 @@ use super::super::policy::{needs_page_load, today_page_visible};
 impl Runtime {
     /// DB 就绪后只启动常驻日期检测；正常隐藏启动不请求业务页。
     pub(in crate::desktop) fn start_kernel_tasks(self: &Rc<Self>) {
+        self.observe_task_clock();
         let weak = Rc::downgrade(self);
         self.task_day_timer
             .start(TimerMode::Repeated, Duration::from_secs(30), move || {
                 if let Some(runtime) = weak.upgrade() {
-                    let changed = runtime
-                        .tasks
-                        .borrow()
-                        .needs_clock_refresh(SystemClock.local_datetime(SystemClock.now()));
-                    if changed {
-                        runtime.request_today();
-                        let selected = runtime
-                            .tasks
-                            .borrow()
-                            .editor
-                            .as_ref()
-                            .map(|editor| editor.detail.task.id);
-                        if let Some(id) = selected {
-                            runtime.request_task_detail(DetailPurpose::Refresh(id));
-                        }
-                    }
+                    runtime.refresh_task_clock();
                 }
             });
     }
@@ -46,6 +30,7 @@ impl Runtime {
         {
             return;
         }
+        self.observe_task_clock();
         self.ensure_current_page_resources();
         if !self.today_page_visible() {
             return;

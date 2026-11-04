@@ -1,5 +1,9 @@
 //! 本地时钟适配：只有应用层读取系统日期。
 
+mod observation;
+
+pub(crate) use observation::{ClockCheck, ClockTracker};
+
 use chrono::Local;
 use fastnote_core::{Clock, DateTime, NaiveDate, NaiveDateTime, TaskClock, Utc};
 

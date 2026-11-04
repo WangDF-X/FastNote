@@ -35,6 +35,10 @@ const SOURCES: &[(&str, &str)] = &[
     ),
     ("tasks/requests.rs", include_str!("tasks/requests.rs")),
     (
+        "tasks/requests/timing.rs",
+        include_str!("tasks/requests/timing.rs"),
+    ),
+    (
         "tasks/requests/loading.rs",
         include_str!("tasks/requests/loading.rs"),
     ),

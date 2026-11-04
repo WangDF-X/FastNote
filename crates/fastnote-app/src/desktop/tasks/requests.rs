@@ -1,11 +1,10 @@
 mod loading;
+mod timing;
 
 use std::rc::Rc;
 use std::time::Duration;
 
-use fastnote_core::{
-    Clock, Command, Query, Task, TaskClock, TaskError, TaskId, TaskPatch, TaskStatus,
-};
+use fastnote_core::{Command, Query, Task, TaskClock, TaskError, TaskId, TaskPatch, TaskStatus};
 use fastnote_ui::{task_error_message, ToastKind};
 use slint::Timer;
 use uuid::Uuid;
@@ -82,18 +81,13 @@ impl Runtime {
         {
             return;
         }
+        let date = self.observe_task_clock().sample.local.date();
         let id = self.next_id.get();
         self.next_id.set(id.saturating_add(1));
         let limits = self.tasks.borrow().limits;
         if self
             .worker
-            .query(
-                id,
-                Query::Today {
-                    date: SystemClock.today(),
-                    limits,
-                },
-            )
+            .query(id, Query::Today { date, limits })
             .is_err()
         {
             let _ = self.with_ui(|ui| {
@@ -126,6 +120,14 @@ impl Runtime {
         }
         self.detail_dirty.set(true);
         if !self.ready.get() || !may_query(Some(purpose), self.today_page_visible()) {
+            return false;
+        }
+        if self.closing.get()
+            && !matches!(
+                purpose,
+                DetailPurpose::SaveAck(_) | DetailPurpose::Delete(_)
+            )
+        {
             return false;
         }
         if let DetailPurpose::Refresh(id) = purpose {

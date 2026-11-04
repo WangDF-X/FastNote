@@ -5,7 +5,7 @@ mod session;
 mod worker;
 
 pub(crate) use editor::{DraftFields, EditorSession};
-pub(crate) use session::{DetailPurpose, PendingTask, TaskSession, Transition};
+pub(crate) use session::{today_clock_stale, DetailPurpose, PendingTask, TaskSession, Transition};
 pub(crate) use worker::{execute, query};
 
 #[cfg(test)]

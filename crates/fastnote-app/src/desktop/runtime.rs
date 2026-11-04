@@ -15,7 +15,10 @@ use fastnote_ui::{BallMenuWindow, FloatingBall, ToastKind, ToastRequest};
 use slint::Timer;
 
 use crate::tasks::TaskSession;
-use crate::{clock::SystemClock, controller::AppController};
+use crate::{
+    clock::{ClockTracker, SystemClock},
+    controller::AppController,
+};
 
 use super::effects::{DesktopFeedback, PendingEffects, UiEffect};
 use super::gesture::BallDrag;
@@ -86,6 +89,8 @@ pub(super) struct Runtime {
     pub detail_dirty: Cell<bool>,
     /// Q-SHELL-10：复用既有日期检测，随内核常驻而非随页面停止。
     pub task_day_timer: Timer,
+    /// 无 UI 时仍保留单个 UTC/本地日期观察，检测跨日、时区和时钟回拨。
+    pub task_clock: RefCell<ClockTracker>,
     pub task_syncing: Cell<bool>,
 }
 
@@ -150,6 +155,7 @@ impl Runtime {
             today_dirty: Cell::new(true),
             detail_dirty: Cell::new(true),
             task_day_timer: Timer::default(),
+            task_clock: RefCell::new(ClockTracker::default()),
             task_syncing: Cell::new(false),
         });
         register(&runtime);
