@@ -2,6 +2,8 @@ use fastnote_core::{AppEvent, TaskDetail, TaskId, TaskScope, TodayView};
 
 use crate::tasks::{DetailPurpose, TaskSession};
 
+pub(super) use super::super::policy::stage_confirmation;
+
 /// 仅描述已提交事件使哪些已实现读模型失效，不持有 UI 或正文。
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) struct Invalidations {
@@ -84,21 +86,6 @@ pub(super) fn acknowledge_save(tasks: &mut TaskSession, id: TaskId, detail: Task
         .as_mut()
         .filter(|editor| editor.detail.task.id == id)
         .is_some_and(|editor| editor.acknowledge(detail))
-}
-
-/// 先登记内核确认再呈现；回调期间不持有状态借用，拒绝时恢复已有决策。
-pub(super) fn stage_confirmation<T>(
-    stage: impl FnOnce() -> T,
-    present: impl FnOnce() -> bool,
-    rollback: impl FnOnce(T),
-) -> bool {
-    let previous = stage();
-    if present() {
-        true
-    } else {
-        rollback(previous);
-        false
-    }
 }
 
 #[cfg(test)]

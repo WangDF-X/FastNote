@@ -17,7 +17,7 @@ pub(in crate::desktop) enum FlushStatus {
 
 impl Runtime {
     pub(in crate::desktop) fn edit_task_field(self: &Rc<Self>, field: &str, value: String) {
-        if self.task_syncing.get() || !self.can_task_interact() {
+        if self.task_syncing.get() || !self.can_task_interact() || !self.can_focus_tasks() {
             return;
         }
         let result = self

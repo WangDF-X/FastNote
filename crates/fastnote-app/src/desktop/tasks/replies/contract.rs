@@ -68,7 +68,7 @@ fn test_page_reply_gate_precedes_model_creation_and_confirmation_is_kept_in_kern
 fn test_save_failure_continuations_do_not_drop_navigation_or_build_a_main_window() {
     let transitions = include_str!("../transitions.rs");
     assert!(
-        transitions.contains("Transition::Navigate(action) => self.dispatch_action(action)"),
+        transitions.contains("self.dispatch_action(action);"),
         "tasks/transitions.rs"
     );
     assert!(

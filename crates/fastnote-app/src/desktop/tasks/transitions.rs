@@ -1,9 +1,11 @@
+mod confirmations;
+
 use std::rc::Rc;
 
-use fastnote_core::{CloseBehavior, Command, TaskId};
-use fastnote_ui::{DialogKind, DialogRequest, ToastKind};
+use fastnote_core::{CloseBehavior, Command};
+use fastnote_ui::{DialogKind, DialogRequest};
 
-use crate::desktop::effects::UiEffect;
+use crate::desktop::effects::{FocusTarget, UiEffect};
 use crate::desktop::runtime::Runtime;
 use crate::tasks::{DetailPurpose, PendingTask, Transition};
 
@@ -11,11 +13,16 @@ use super::autosave::FlushStatus;
 
 impl Runtime {
     pub(in crate::desktop) fn task_transition(self: &Rc<Self>, transition: Transition) {
-        if !self.can_task_interact() {
+        if !self.can_task_interact() || !self.can_focus_tasks() {
             return;
         }
-        let current_focus = self.tasks.borrow().current_editor_focus(&transition);
-        if let Some(focus) = current_focus.filter(|_| {
+        let current_focus = {
+            let tasks = self.tasks.borrow();
+            tasks
+                .current_editor_focus(&transition)
+                .zip(tasks.editor.as_ref().map(|editor| editor.detail.task.id))
+        };
+        if let Some((focus, id)) = current_focus.filter(|_| {
             self.with_ui(|ui| {
                 ui.shell.component().get_task_detail_visible()
                     && !ui.shell.component().get_task_detail_loading()
@@ -25,8 +32,8 @@ impl Runtime {
             // 同一任务的「设置日期」只是移动焦点，不重查、不丢弃已有/非法草稿。
             let _ = self.with_ui(|ui| {
                 ui.shell.component().set_task_detail_focus(focus.into());
-                ui.shell.component().invoke_focus_task_editor();
             });
+            self.emit_ui(UiEffect::Focus(FocusTarget::TaskEditor(id)));
             return;
         }
         if !self.defer_task_transition(transition.clone()) {
@@ -61,7 +68,7 @@ impl Runtime {
     }
 
     pub(in crate::desktop) fn continue_task_transition(self: &Rc<Self>) {
-        if !self.tasks.borrow().pending.is_empty() {
+        if self.finished.get() || self.closing.get() || !self.tasks.borrow().pending.is_empty() {
             return;
         }
         let unfinished = self
@@ -84,42 +91,56 @@ impl Runtime {
         }
     }
 
-    fn perform_task_transition(self: &Rc<Self>, transition: Transition) {
-        if let Some(focus) = transition.editor_focus() {
-            let _ = self.with_ui(|ui| ui.shell.component().set_task_detail_focus(focus.into()));
-        }
+    fn perform_task_transition(self: &Rc<Self>, transition: Transition) -> bool {
+        let focus = transition.editor_focus();
         match transition {
-            Transition::Navigate(action) => self.dispatch_action(action),
-            Transition::Open(id) | Transition::OpenDates(id) => {
-                self.request_task_detail(DetailPurpose::Open(id));
+            Transition::Navigate(action) => {
+                self.dispatch_action(action);
+                true
             }
-            Transition::CloseDetail => self.close_task_editor(),
-            Transition::Close { exit } => self.request_close(exit),
-            Transition::Minimize => self.minimize_window(),
+            Transition::Open(id) | Transition::OpenDates(id) => {
+                let accepted = self.request_task_detail(DetailPurpose::Open(id));
+                if accepted {
+                    if let Some(focus) = focus {
+                        let _ = self
+                            .with_ui(|ui| ui.shell.component().set_task_detail_focus(focus.into()));
+                    }
+                }
+                accepted
+            }
+            Transition::CloseDetail => {
+                self.close_task_editor();
+                true
+            }
+            Transition::Close { exit } => {
+                self.request_close(exit);
+                true
+            }
+            Transition::Minimize => {
+                self.minimize_window();
+                true
+            }
             Transition::Status {
                 id,
                 status,
                 confirmed,
-            } => {
-                self.queue_task_command(
-                    Command::SetTaskStatus {
-                        id,
-                        status,
-                        confirmed,
-                    },
-                    PendingTask::Status { id, status },
-                );
+            } => self.queue_task_command(
+                Command::SetTaskStatus {
+                    id,
+                    status,
+                    confirmed,
+                },
+                PendingTask::Status { id, status },
+            ),
+            Transition::Delete(id) => self.request_task_detail(DetailPurpose::Delete(id)),
+            Transition::DeleteConfirmed(id) => self.queue_task_command(
+                Command::DeleteTask { id, cascade: true },
+                PendingTask::Deleted,
+            ),
+            Transition::Priority(id) => {
+                self.cycle_task_priority(id);
+                true
             }
-            Transition::Delete(id) => {
-                self.request_task_detail(DetailPurpose::Delete(id));
-            }
-            Transition::DeleteConfirmed(id) => {
-                self.queue_task_command(
-                    Command::DeleteTask { id, cascade: true },
-                    PendingTask::Deleted,
-                );
-            }
-            Transition::Priority(id) => self.cycle_task_priority(id),
         }
     }
 
@@ -144,77 +165,5 @@ impl Runtime {
                 self.tasks.borrow_mut().discard_exit_allowed = previous;
             }
         }
-    }
-
-    pub(in crate::desktop) fn request_editor_reload(self: &Rc<Self>) {
-        let selected = self
-            .tasks
-            .borrow()
-            .editor
-            .as_ref()
-            .map(|editor| (editor.detail.task.id, editor.unfinished()));
-        let Some((id, unfinished)) = selected else {
-            return;
-        };
-        if !self.tasks.borrow().pending.is_empty() {
-            self.notice(ToastKind::Info, "正在保存任务，请稍候。");
-            return;
-        }
-        if unfinished {
-            self.tasks.borrow_mut().reload_confirmation = Some(id);
-            let _ = self.with_ui(|ui| {
-                ui.shell.show_dialog(
-                    DialogRequest::new(
-                        "重新加载任务？",
-                        "未保存的输入会被丢弃，重新读取数据库中的内容。",
-                        "重新加载",
-                        DialogKind::Destructive,
-                    )
-                    .with_command(format!("task:reload-confirm:{id}")),
-                );
-            });
-        } else {
-            self.request_task_detail(DetailPurpose::Open(id));
-        }
-    }
-
-    pub(in crate::desktop) fn handle_task_action(self: &Rc<Self>, action: &str) -> bool {
-        if action == "task:discard-and-quit" {
-            let allowed = std::mem::take(&mut self.tasks.borrow_mut().discard_exit_allowed);
-            if allowed {
-                self.close_task_editor();
-                self.finish_exit();
-            }
-            return true;
-        }
-        if let Some(value) = action.strip_prefix("task:delete-confirm:") {
-            let id = value.parse::<TaskId>().ok();
-            let confirmed = self.tasks.borrow_mut().delete_confirmation.take();
-            if let Some(id) = id.filter(|id| Some(*id) == confirmed) {
-                self.task_transition(Transition::DeleteConfirmed(id));
-            }
-            return true;
-        }
-        if let Some(value) = action.strip_prefix("task:status-confirm:") {
-            let confirmed = self.tasks.borrow_mut().status_confirmation.take();
-            if let Some((id, status)) = confirmed.filter(|(id, _)| id.to_string() == value) {
-                self.task_transition(Transition::Status {
-                    id,
-                    status,
-                    confirmed: true,
-                });
-            }
-            return true;
-        }
-        if let Some(value) = action.strip_prefix("task:reload-confirm:") {
-            let id = value.parse::<TaskId>().ok();
-            let confirmed = self.tasks.borrow_mut().reload_confirmation.take();
-            if let Some(id) = id.filter(|id| Some(*id) == confirmed) {
-                self.close_task_editor();
-                self.request_task_detail(DetailPurpose::Open(id));
-            }
-            return true;
-        }
-        false
     }
 }

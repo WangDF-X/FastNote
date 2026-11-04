@@ -59,6 +59,9 @@ impl Runtime {
                 let weak = Rc::downgrade(self);
                 move |id, direction| {
                     if let (Some(runtime), Ok(id)) = (weak.upgrade(), id.parse()) {
+                        if !runtime.can_task_interact() || !runtime.can_focus_tasks() {
+                            return;
+                        }
                         let neighbor = runtime.tasks.borrow().focus_neighbor(id, direction);
                         if let Some(id) = neighbor {
                             let _ = runtime.with_ui(|ui| {
@@ -148,6 +151,9 @@ impl Runtime {
                 let weak = Rc::downgrade(self);
                 move |index| {
                     if let (Some(runtime), Ok(index)) = (weak.upgrade(), usize::try_from(index)) {
+                        if !runtime.can_task_interact() || !runtime.can_focus_tasks() {
+                            return;
+                        }
                         let changed = runtime.tasks.borrow_mut().toggle_section(index);
                         if changed {
                             runtime.apply_today();
@@ -159,6 +165,9 @@ impl Runtime {
                 let weak = Rc::downgrade(self);
                 move |index| {
                     if let (Some(runtime), Ok(index)) = (weak.upgrade(), usize::try_from(index)) {
+                        if !runtime.can_task_interact() || !runtime.can_focus_tasks() {
+                            return;
+                        }
                         let changed = runtime.tasks.borrow_mut().load_more(index);
                         if changed {
                             runtime.request_today();

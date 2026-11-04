@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::collections::VecDeque;
 
+use fastnote_core::TaskId;
 use fastnote_ui::{DialogRequest, ShellView, ToastRequest};
 use slint::winit_030::WinitWindowAccessor;
 use slint::ComponentHandle;
@@ -17,6 +18,8 @@ const MAX_PENDING_DIALOGS: usize = 32;
 pub(super) enum FocusTarget {
     Main,
     TaskCreate,
+    TaskEditor(TaskId),
+    TaskRow(TaskId),
 }
 
 /// 只描述待呈现效果，不持有主窗或组件；按 T1.2 批次逐项接入。
@@ -269,12 +272,12 @@ impl Runtime {
                 ui.shell.resume_timers();
             }
             UiEffect::Focus(FocusTarget::TaskCreate) => {
-                if ui.shell.component().get_current_page() == "今日任务"
-                    && !ui.shell.component().get_dialog_visible()
-                {
+                if self.can_focus_tasks() {
                     ui.shell.component().invoke_focus_task_create();
                 }
             }
+            UiEffect::Focus(FocusTarget::TaskEditor(id)) => self.focus_task_editor(*id),
+            UiEffect::Focus(FocusTarget::TaskRow(id)) => self.focus_task_row(*id),
             UiEffect::RefreshToday => {
                 if !self.today_dirty.get() {
                     self.apply_today();
@@ -296,5 +299,7 @@ impl Runtime {
 
 #[cfg(test)]
 mod entry_tests;
+#[cfg(test)]
+mod task_tests;
 #[cfg(test)]
 mod tests;

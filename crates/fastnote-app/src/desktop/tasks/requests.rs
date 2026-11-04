@@ -9,8 +9,12 @@ use slint::{Timer, TimerMode};
 use uuid::Uuid;
 
 use crate::clock::SystemClock;
+use crate::desktop::effects::{FocusTarget, UiEffect};
 use crate::desktop::runtime::Runtime;
 use crate::tasks::{DetailPurpose, PendingTask, Transition};
+
+use super::policy::{detail_query_pending, kernel_available, may_query, save_read_failed};
+use super::view::state::while_syncing;
 
 impl Runtime {
     pub(in crate::desktop) fn start_tasks(self: &Rc<Self>) {
@@ -40,13 +44,17 @@ impl Runtime {
     }
 
     pub(in crate::desktop) fn can_task_interact(&self) -> bool {
-        self.ready.get()
-            && !self.finished.get()
-            && !self.closing.get()
-            && !self.busy.get()
-            && self
-                .with_ui(|ui| !ui.shell.component().get_dialog_visible())
-                .unwrap_or(false)
+        self.task_kernel_available() && self.main_visible() && !self.dialog_blocked()
+    }
+
+    /// 已确认的业务不要求主窗存在；页面输入另经 can_task_interact 检查。
+    pub(in crate::desktop) fn task_kernel_available(&self) -> bool {
+        kernel_available(
+            self.ready.get(),
+            self.finished.get(),
+            self.closing.get(),
+            self.busy.get(),
+        )
     }
 
     pub(in crate::desktop) fn queue_task_command(
@@ -78,7 +86,12 @@ impl Runtime {
     }
 
     pub(in crate::desktop) fn request_today(&self) {
-        if !self.ready.get() || self.finished.get() {
+        if self.finished.get() {
+            return;
+        }
+        self.today_dirty.set(true);
+        // P1 保留既有初始读取；隐藏会话的零查询规则由 T2.3/T2.4 接入。
+        if !self.ready.get() || !may_query(None, self.with_ui(|_| ()).is_some()) {
             return;
         }
         let id = self.next_id.get();
@@ -111,7 +124,11 @@ impl Runtime {
     }
 
     pub(in crate::desktop) fn request_task_detail(&self, purpose: DetailPurpose) -> bool {
-        if !self.ready.get() || self.finished.get() {
+        if self.finished.get() {
+            return false;
+        }
+        self.detail_dirty.set(true);
+        if !self.ready.get() || !may_query(Some(purpose), self.with_ui(|_| ()).is_some()) {
             return false;
         }
         let task_id = match purpose {
@@ -120,25 +137,14 @@ impl Runtime {
             | DetailPurpose::SaveAck(id)
             | DetailPurpose::Delete(id) => id,
         };
-        if matches!(
-            purpose,
-            DetailPurpose::SaveAck(_) | DetailPurpose::Refresh(_)
-        ) && self.tasks.borrow().queries.values().any(|pending| {
-            matches!((purpose, pending),
-                (DetailPurpose::SaveAck(a), DetailPurpose::SaveAck(b))
-                    | (DetailPurpose::Refresh(a), DetailPurpose::Refresh(b)) if a == *b)
-        }) {
+        if detail_query_pending(&self.tasks.borrow(), purpose) {
             return true;
         }
         let id = self.next_id.get();
         self.next_id.set(id.saturating_add(1));
         if self.worker.query(id, Query::TaskDetail(task_id)).is_err() {
             let message = "任务查询队列不可用，请稍后重试。";
-            if matches!(purpose, DetailPurpose::SaveAck(_)) {
-                if let Some(editor) = self.tasks.borrow_mut().editor.as_mut() {
-                    editor.error = Some(message.to_owned());
-                }
-            }
+            save_read_failed(&mut self.tasks.borrow_mut(), purpose, message);
             self.notice(ToastKind::Error, message);
             self.sync_task_editor();
             return false;
@@ -153,19 +159,19 @@ impl Runtime {
             }
         }
         if matches!(purpose, DetailPurpose::Open(_)) {
-            self.task_syncing.set(true);
             let _ = self.with_ui(|ui| {
-                ui.shell.component().set_task_detail_visible(true);
-                ui.shell.component().set_task_detail_loading(true);
+                while_syncing(&self.task_syncing, || {
+                    ui.shell.component().set_task_detail_visible(true);
+                    ui.shell.component().set_task_detail_loading(true);
+                });
             });
-            self.task_syncing.set(false);
         }
         self.sync_task_editor();
         true
     }
 
     pub(in crate::desktop) fn create_task(self: &Rc<Self>, title: String) {
-        if !self.can_task_interact() {
+        if !self.can_task_interact() || !self.can_focus_tasks() {
             return;
         }
         if self.tasks.borrow().unfinished() {
@@ -283,10 +289,23 @@ impl Runtime {
     }
 
     pub(in crate::desktop) fn defer_task_focus(self: &Rc<Self>) {
+        let selected = self
+            .tasks
+            .borrow()
+            .editor
+            .as_ref()
+            .map(|editor| editor.detail.task.id);
+        let Some(id) = selected else {
+            return;
+        };
+        if self.with_ui(|_| ()).is_none() {
+            self.emit_ui(UiEffect::Focus(FocusTarget::TaskEditor(id)));
+            return;
+        }
         let weak = Rc::downgrade(self);
         Timer::single_shot(Duration::ZERO, move || {
             if let Some(runtime) = weak.upgrade() {
-                let _ = runtime.with_ui(|ui| ui.shell.component().invoke_focus_task_editor());
+                runtime.emit_ui(UiEffect::Focus(FocusTarget::TaskEditor(id)));
             }
         });
     }

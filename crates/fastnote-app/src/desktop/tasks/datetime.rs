@@ -25,7 +25,7 @@ impl Runtime {
         field: &str,
         value: Option<NaiveDateTime>,
     ) {
-        if self.task_syncing.get() || !self.can_task_interact() {
+        if self.task_syncing.get() || !self.can_task_interact() || !self.can_focus_tasks() {
             return;
         }
         let result = self

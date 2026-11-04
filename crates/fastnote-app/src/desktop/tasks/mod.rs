@@ -3,7 +3,11 @@
 mod autosave;
 mod connect;
 mod datetime;
+mod policy;
 mod replies;
 mod requests;
 mod transitions;
 mod view;
+
+#[cfg(test)]
+mod contract;
