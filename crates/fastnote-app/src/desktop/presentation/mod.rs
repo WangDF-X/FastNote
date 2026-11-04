@@ -68,6 +68,10 @@ impl Runtime {
         }
         if self.try_show_main().is_err() {
             self.notice(ToastKind::Error, "无法显示主窗口，请通过入口或快捷键重试。");
+            // 启动期尚未配置入口由 loaded 的明确兜底处理；既有入口恢复失败不能失联。
+            if self.entry.get().is_some() {
+                self.exit_if_unreachable("main_show_failure");
+            }
         }
     }
 

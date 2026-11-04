@@ -46,6 +46,9 @@ impl Runtime {
                     // 先确定主窗呈现，再配置入口；手动启动不能先闪现球。
                     self.show_main();
                 }
+                if self.finished.get() {
+                    return;
+                }
                 self.register_hotkey();
                 if self.change_entry(mode).is_err() {
                     let fallback = if mode == EntryMode::Ball {

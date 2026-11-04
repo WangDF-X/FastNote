@@ -138,6 +138,20 @@ impl Runtime {
                 .unwrap_or(false)
     }
 
+    /// 最小化主窗仍可从任务栏恢复；错误兜底判断可达性，不据此允许页面查询。
+    pub(super) fn main_surface_reachable(&self) -> bool {
+        self.main_visible()
+            && self
+                .with_ui(|ui| {
+                    let window = ui.shell.component().window();
+                    window.is_visible()
+                        && window
+                            .with_winit_window(|window| window.is_visible() != Some(false))
+                            .unwrap_or(false)
+                })
+                .unwrap_or(false)
+    }
+
     pub(super) fn sync_window_state(&self) {
         let _ = self.with_ui(|ui| {
             ui.shell.component().window().with_winit_window(|window| {
