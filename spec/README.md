@@ -34,7 +34,7 @@
 | 目录 | 模块 | 文档 | 产品章节 |
 | --- | --- | --- | --- |
 | [00-architecture](00-architecture/) | 总览与架构（技术、分层、领域、存储、UI、平台） | 6 | §1、§3、§5、§7 |
-| [01-app-shell](01-app-shell/) | 应用外壳（主窗口、导航、反馈规范） | 2 | §3.2 |
+| [01-app-shell](01-app-shell/) | 应用外壳（主窗口、导航、反馈规范、资源回收执行计划） | 3 | §3.2 |
 | [02-desktop-entry](02-desktop-entry/) | 桌面常驻入口（悬浮球、托盘、全局快捷键） | 3 | §1.2–1.5、§3.1、§6.1 |
 | [03-today-tasks](03-today-tasks/) | 今日任务（含统一任务详情面板） | 3 | §4.1、§5 |
 | [04-calendar](04-calendar/) | 日历 | 2 | §4.2 |
@@ -70,7 +70,7 @@
 5. [ARCH-04 数据存储与配置项](00-architecture/04-storage-and-data.md)
 6. [ARCH-05 UI 设计系统](00-architecture/05-ui-design-system.md)
 7. [ARCH-06 平台集成](00-architecture/06-platform-integration.md)
-8. [SHELL-01 应用外壳](01-app-shell/01-overview.md)、[SHELL-02 交互与反馈](01-app-shell/02-interaction-and-feedback.md)
+8. [SHELL-01 应用外壳](01-app-shell/01-overview.md)、[SHELL-02 交互与反馈](01-app-shell/02-interaction-and-feedback.md)、[SHELL-03 按需加载与资源回收执行计划](01-app-shell/03-resource-lifecycle-plan.md)
 9. 按开发顺序阅读功能模块：今日任务 → 计划板 → 日历 → 小记 → [定时提醒与系统通知](11-reminders/01-reminders-and-notifications.md) → 日记 → 设置 → 数据管理。
 10. [QA-01 验收追溯](10-quality/01-acceptance-traceability.md)、[QA-02 风险与开放问题](10-quality/02-risks-and-open-questions.md)、[QA-03 测试策略](10-quality/03-test-strategy.md)。
 
