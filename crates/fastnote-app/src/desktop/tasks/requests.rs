@@ -44,7 +44,9 @@ impl Runtime {
             && !self.finished.get()
             && !self.closing.get()
             && !self.busy.get()
-            && !self.shell.component().get_dialog_visible()
+            && self
+                .with_ui(|ui| !ui.shell.component().get_dialog_visible())
+                .unwrap_or(false)
     }
 
     pub(in crate::desktop) fn queue_task_command(
@@ -93,16 +95,18 @@ impl Runtime {
             )
             .is_err()
         {
-            self.shell.component().set_today_state(2);
-            self.shell
-                .component()
-                .set_today_error("查询队列不可用，请稍后重试。".into());
-            self.shell.component().set_today_error_log_id("".into());
+            let _ = self.with_ui(|ui| {
+                ui.shell.component().set_today_state(2);
+                ui.shell
+                    .component()
+                    .set_today_error("查询队列不可用，请稍后重试。".into());
+                ui.shell.component().set_today_error_log_id("".into());
+            });
             return;
         }
         self.tasks.borrow_mut().latest_today = id;
         if self.tasks.borrow().today.is_none() {
-            self.shell.component().set_today_state(0);
+            let _ = self.with_ui(|ui| ui.shell.component().set_today_state(0));
         }
     }
 
@@ -150,8 +154,10 @@ impl Runtime {
         }
         if matches!(purpose, DetailPurpose::Open(_)) {
             self.task_syncing.set(true);
-            self.shell.component().set_task_detail_visible(true);
-            self.shell.component().set_task_detail_loading(true);
+            let _ = self.with_ui(|ui| {
+                ui.shell.component().set_task_detail_visible(true);
+                ui.shell.component().set_task_detail_loading(true);
+            });
             self.task_syncing.set(false);
         }
         self.sync_task_editor();
@@ -178,12 +184,14 @@ impl Runtime {
             }
         };
         if let Err(error) = Task::new(id, title.clone(), SystemClock.now()) {
-            self.shell
-                .component()
-                .set_task_create_error(task_error_message(error).into());
+            let _ = self.with_ui(|ui| {
+                ui.shell
+                    .component()
+                    .set_task_create_error(task_error_message(error).into());
+            });
             return;
         }
-        self.shell.component().set_task_create_error("".into());
+        let _ = self.with_ui(|ui| ui.shell.component().set_task_create_error("".into()));
         self.queue_task_command(
             Command::CreateTask {
                 id,
@@ -278,7 +286,7 @@ impl Runtime {
         let weak = Rc::downgrade(self);
         Timer::single_shot(Duration::ZERO, move || {
             if let Some(runtime) = weak.upgrade() {
-                runtime.shell.component().invoke_focus_task_editor();
+                let _ = runtime.with_ui(|ui| ui.shell.component().invoke_focus_task_editor());
             }
         });
     }

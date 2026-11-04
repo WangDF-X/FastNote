@@ -111,22 +111,35 @@ UiSession（可丢弃）
 
 > 说明：T0.2/T0.3 可用任务管理器 + 现有日志完成；不因此新增常驻采样线程。若跳过 P0，P2 完成后仍必须补一次对照。
 
+**执行记录（2026-11-04）：**
+
+- [x] T0.1（2026-11-04）：已从干净的 `main`（`4f4140c`）建立 `feature/resource-lifecycle`；已 fetch 并在开发分支 rebase `origin/main`，基线 `scripts/test.ps1` 通过（格式、Clippy、332 项测试、Debug 应用构建）。
+- [ ] T0.2：Release 工作集/专用提交内存基线待用户手工量测，尚无数值记录。
+- [ ] T0.3：源码预审确认当前 `Runtime::new` 无条件构造 `ShellHandle` / `TodayPresenter`，`loaded()` 无条件调用 `start_tasks()` → `request_today()`；真实 `--hidden` 运行观察待用户确认。
+
 ### 5.2 P1 会话拆分与访问收口（约 3–4 天）
 
 **T1.1 定义 `UiSession`（S）**
 
 - 新增 `crates/fastnote-app/src/desktop/ui_session.rs`（目标 <200 行）。
-- 迁入：`shell: ShellHandle`、`today_presenter: TodayPresenter`、`task_save_timer`、`task_day_timer`、`task_feedback_timer`、`task_saving_visible: Cell<bool>`。
-- `Runtime` 改为 `ui: RefCell<Option<UiSession>>`；`impl Drop for UiSession` 停止全部定时器。
-- **不改行为**：本任务只搬家，不新增 `Option` 判断。
+- 迁入：`shell: ShellHandle`、`today_presenter: TodayPresenter`、`task_save_timer`、`task_feedback_timer`、`task_saving_visible: Cell<bool>`。复用现有 30 秒 `task_day_timer`，保留在 `Runtime` 作为内核日期检测定时器（Q-SHELL-10，2026-11-04 用户确认）。
+- `Runtime` 改为 `ui: RefCell<Option<UiSession>>`；`impl Drop for UiSession` 停止保存/保存反馈两个页面定时器。
+- 提前增加 `with_ui` 基础访问辅助，并同步机械适配现有字段访问，使本任务可以独立编译；effect 与无会话处理策略仍在 T1.2 分批完成（Q-SHELL-11，2026-11-04 用户确认）。
+- **不改行为**：本任务只搬家及接线，仍始终创建会话，不启用无主窗运行或按需查询。
 - 完成标准：`cargo test --workspace` 全绿；应用启动、关闭、球切换与改造前一致。
+
+- [ ] T1.1（2026-11-04 开始）：代码与自动检查完成；用户已于 2026-11-04 指示「提交并继续」，本次提交获授权。逐项手工回归结果尚未提供，不据此标记全部 UI 验收通过。
+  - [x] 主窗、今日模型、保存/反馈定时器与保存反馈可见状态迁入 `UiSession`；日期定时器留在内核。
+  - [x] `with_ui` 基础访问与全部旧字段访问机械适配完成；额外覆盖原清单漏列的 `tasks/autosave.rs`、`tasks/connect.rs`、`window_frame.rs` 及相关既有契约断言。
+  - [x] `scripts/test.ps1` 通过：格式、Clippy、337 项测试（新增 5 项）、Debug 应用构建；`self.shell.` / `runtime.shell.` 检索均为 0。
+  - [ ] 用户确认启动、保存、关闭/最小化、球/托盘、主题、反馈与焦点行为未回归。
 
 **T1.2 `with_ui` 与 `UiEffect`（M）**
 
 - 新增 `crates/fastnote-app/src/desktop/effects.rs`：
   - `enum UiEffect { Toast(ToastRequest), Dialog(DialogRequest), Banner(BannerRequest), Navigate(String), RefreshToday, Focus(FocusTarget), SetDesktopState(u8), SetBusy(bool) }`
   - `Runtime` 增加待呈现队列与“无会话时入队/合并”的策略（同键合并，避免堆积）。
-- 增加访问辅助：`fn with_ui<R>(&self, f: impl FnOnce(&UiSession) -> R) -> Option<R>`。
+- 使用 T1.1 提前增加的访问辅助：`fn with_ui<R>(&self, f: impl FnOnce(&UiSession) -> R) -> Option<R>`；本任务补齐无会话策略与 effect 收口。
 - 按文件分批改造，**每批单独提交、单独跑测试**：
 
 | 批次 | 文件 | 处数 | 要点 |
@@ -144,7 +157,7 @@ UiSession（可丢弃）
 
 - 新增 `desktop/session_contract.rs`（与现有源码契约测试同风格）：
   - 断言 `desktop` 源码中不再出现 `self.shell.`；
-  - 断言 `UiSession::drop` 调用三个 `Timer::stop`；
+  - 断言 `UiSession::drop` 调用保存/保存反馈两个页面 `Timer::stop`，内核日期定时器由 `Runtime::cleanup` 停止；
   - 断言 `Runtime::new` 不再无条件创建 `ShellHandle`（T2.1 后生效，可先写为“仅 hidden 分支不创建”）。
 - 完成标准：测试失败信息能直指违规文件名。
 
@@ -281,6 +294,15 @@ T0.1 → T0.2/T0.3 → T1.1 → T1.2(批次1→6) → T1.3 → T1.4 → T2.1 →
 - `scripts/test.ps1` 通过只代表自动检查通过，不代表 UI 或资源验收通过。
 - 用户手工确认项（球打开、关闭回球、路由保持、焦点）必须单独记录。
 
+### 9.1 本轮执行留档（2026-11-04）
+
+| 里程碑 | 代码版本 | 构建模式 | 自动检查 | 主窗 / 页面查询 | 内存与手工确认 |
+| --- | --- | --- | --- | --- | --- |
+| T0.1 基线 | `main` / `4f4140c` | Debug | `scripts/test.ps1` 通过，332 项测试 | 源码：`--hidden` 仍无条件构造主窗/今日模型，设置加载成功后请求今日；运行查询次数未计数 | Release 冷/热数值与真实窗口观察待量测 |
+| T1.1 结构拆分 | `feature/resource-lifecycle`，未提交，基于 `4f4140c` | Debug | `scripts/test.ps1` 通过，337 项测试；字段访问清零；无新增依赖/线程/设置键 | 仍始终创建会话，`start_tasks()` 仍请求今日；本任务不宣称已实现冷启动按需加载 | 启动、保存、关闭/最小化、球/托盘、主题、Toast/Dialog、路由/焦点均待用户确认；Release 数值未量测 |
+
+**交付边界：** 当前只完成 T1.1 代码及自动检查。T1.2 的 effect 队列/无会话策略、T1.3 的完整源码契约、T1.4 手工回归和 P2 均未完成；P3–P7 未启动，不宣称 D-RES-01 已完成。用户于 2026-11-04 指示提交 T1.1 并继续 T1.2；后续批次仍分别测试、交付，不主动提交/推送新改动。
+
 ---
 
 ## 10. 不在本次范围
@@ -295,9 +317,11 @@ T0.1 → T0.2/T0.3 → T1.1 → T1.2(批次1→6) → T1.3 → T1.4 → T2.1 →
 
 ## 11. 待确认问题
 
-> **当前状态：无新增待确认项。** 120 秒上限、80/130MB 预算、白名单有界与提前回收已在 D-RES-01 确认。
+> **当前状态：无新增待确认项。** Q-SHELL-10/11 已由用户于 2026-11-04 确认并同步 §5.2；120 秒上限、80/130MB 预算、白名单有界与提前回收仍遵循 D-RES-01，不改变产品边界。
 
 | 编号 | 位置 | 问题摘要 | 当前处理 |
 | --- | --- | --- | --- |
 | Q-SHELL-08 | §5.3 T2.3 | 今日页不可见时是否允许后台预取 | 不预取；只置失效标记，进入页面再查询（低内存优先） |
 | Q-SHELL-09 | §6.4 P6 | 草稿保护的实现形态（阻止回收 vs 内核最小草稿） | 默认阻止回收，与现有保存失败阻止关闭一致；若实测不可行再评估下沉 |
+| Q-SHELL-10 | §5.2 T1.1/T1.3、§5.3 T2.3/T2.4 | `task_day_timer` 被要求迁入可选 `UiSession` 并随其停止，但 30 秒日期检测又要求在无 UI 的内核中运行；最终所有权需一致 | 2026-11-04 用户确认：复用现有日期定时器并保留在 `Runtime`；`UiSession` 仅拥有保存/保存反馈两个页面定时器，Drop 契约同步检查这两个定时器 |
+| Q-SHELL-11 | §5.2 T1.1/T1.2、§7 | 搬入 `RefCell<Option<UiSession>>` 后，现有直接字段访问必须同步适配才能独立编译，与“只搬家、不新增 Option 判断”和下一任务分文件收口的顺序重叠 | 2026-11-04 用户确认：把 `with_ui` 基础辅助及现有字段访问的机械适配纳入 T1.1，仍始终创建会话、不改变行为；T1.2 继续按批次处理 effect、无会话语义和回包收口 |

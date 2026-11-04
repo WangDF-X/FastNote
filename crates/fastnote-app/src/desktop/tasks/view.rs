@@ -30,6 +30,9 @@ pub(super) fn error_message(error: &TaskStoreError) -> String {
 impl Runtime {
     pub(in crate::desktop) fn sync_task_editor(&self) {
         // Slint 属性变更可能同步触发失焦回调；不能跨这些调用持有 RefCell 借用。
+        let saving_visible = self
+            .with_ui(|ui| ui.task_saving_visible.get())
+            .unwrap_or(false);
         let snapshot = {
             let tasks = self.tasks.borrow();
             let busy = !tasks.pending.is_empty()
@@ -58,7 +61,7 @@ impl Runtime {
                     } else if editor.detail.context.read_only {
                         "只读"
                     } else if editor.in_flight.is_some() {
-                        if self.task_saving_visible.get() {
+                        if saving_visible {
                             "保存中…"
                         } else {
                             "自动保存"
@@ -73,17 +76,19 @@ impl Runtime {
             (busy, enabled, editor)
         };
         self.task_syncing.set(true);
-        let window = self.shell.component();
-        window.set_task_busy(snapshot.0);
-        window.set_task_editor_enabled(snapshot.1);
-        if let Some((id, fields, read_only, context, error, label)) = snapshot.2 {
-            window.set_task_selected_id(id.to_string().into());
-            apply_fields(window, fields);
-            window.set_task_read_only(read_only);
-            window.set_task_context(context.into());
-            window.set_task_error(error.into());
-            window.set_task_save_label(label.into());
-        }
+        let _ = self.with_ui(|ui| {
+            let window = ui.shell.component();
+            window.set_task_busy(snapshot.0);
+            window.set_task_editor_enabled(snapshot.1);
+            if let Some((id, fields, read_only, context, error, label)) = snapshot.2 {
+                window.set_task_selected_id(id.to_string().into());
+                apply_fields(window, fields);
+                window.set_task_read_only(read_only);
+                window.set_task_context(context.into());
+                window.set_task_error(error.into());
+                window.set_task_save_label(label.into());
+            }
+        });
         self.task_syncing.set(false);
     }
 
@@ -93,72 +98,83 @@ impl Runtime {
             (tasks.today.clone(), tasks.collapsed)
         };
         if let Some(view) = view {
-            self.today_presenter
-                .apply(self.shell.component(), &view, collapsed);
+            let _ = self.with_ui(|ui| {
+                ui.today_presenter
+                    .apply(ui.shell.component(), &view, collapsed);
+            });
         }
         self.restore_task_list_focus();
     }
 
     pub(in crate::desktop) fn restore_task_list_focus(&self) {
-        let anchor = self.shell.component().global::<ShellFocus>().get_anchor();
-        if anchor.starts_with("task:") {
-            let id = anchor
-                .rsplit(':')
-                .next()
-                .and_then(|value| value.parse::<TaskId>().ok());
-            let visible = id.is_some_and(|id| self.tasks.borrow().visible_ids().contains(&id));
-            if visible {
-                self.shell.component().invoke_restore_task_focus();
-            } else {
-                self.shell.component().invoke_focus_task_create();
+        let _ = self.with_ui(|ui| {
+            let anchor = ui.shell.component().global::<ShellFocus>().get_anchor();
+            if anchor.starts_with("task:") {
+                let id = anchor
+                    .rsplit(':')
+                    .next()
+                    .and_then(|value| value.parse::<TaskId>().ok());
+                let visible = id.is_some_and(|id| self.tasks.borrow().visible_ids().contains(&id));
+                if visible {
+                    ui.shell.component().invoke_restore_task_focus();
+                } else {
+                    ui.shell.component().invoke_focus_task_create();
+                }
+            } else if anchor.starts_with("today:section:") || anchor.starts_with("today:more:") {
+                let index = anchor
+                    .rsplit(':')
+                    .next()
+                    .and_then(|value| value.parse::<usize>().ok());
+                let exists = index.is_some_and(|index| {
+                    self.tasks.borrow().today.as_ref().is_some_and(|view| {
+                        view.sections
+                            .iter()
+                            .any(|section| section.kind as usize == index)
+                    })
+                });
+                if exists {
+                    ui.shell
+                        .component()
+                        .global::<ShellFocus>()
+                        .set_anchor(format!("today:section:{}", index.unwrap_or(0)).into());
+                    ui.shell.component().invoke_restore_task_focus();
+                } else {
+                    ui.shell.component().invoke_focus_task_create();
+                }
             }
-        } else if anchor.starts_with("today:section:") || anchor.starts_with("today:more:") {
-            let index = anchor
-                .rsplit(':')
-                .next()
-                .and_then(|value| value.parse::<usize>().ok());
-            let exists = index.is_some_and(|index| {
-                self.tasks.borrow().today.as_ref().is_some_and(|view| {
-                    view.sections
-                        .iter()
-                        .any(|section| section.kind as usize == index)
-                })
-            });
-            if exists {
-                self.shell
-                    .component()
-                    .global::<ShellFocus>()
-                    .set_anchor(format!("today:section:{}", index.unwrap_or(0)).into());
-                self.shell.component().invoke_restore_task_focus();
-            } else {
-                self.shell.component().invoke_focus_task_create();
-            }
-        }
+        });
     }
 
     pub(in crate::desktop) fn close_task_editor(&self) {
-        self.task_save_timer.stop();
-        self.task_feedback_timer.stop();
+        let _ = self.with_ui(|ui| {
+            ui.task_save_timer.stop();
+            ui.task_feedback_timer.stop();
+        });
         let selected = {
             let mut tasks = self.tasks.borrow_mut();
             tasks.cancel_open_requests();
             tasks.editor.take().map(|editor| editor.detail.task.id)
         };
         self.task_syncing.set(true);
-        let window = self.shell.component();
-        window.set_task_detail_visible(false);
-        window.set_task_detail_loading(false);
-        window.set_task_selected_id("".into());
-        window.set_task_error("".into());
+        let _ = self.with_ui(|ui| {
+            let window = ui.shell.component();
+            window.set_task_detail_visible(false);
+            window.set_task_detail_loading(false);
+            window.set_task_selected_id("".into());
+            window.set_task_error("".into());
+        });
         self.task_syncing.set(false);
         self.sync_task_editor();
-        if selected.is_some_and(|id| self.tasks.borrow().visible_ids().contains(&id)) {
-            if let Some(id) = selected {
-                window.invoke_focus_task_row(id.to_string().into());
+        let _ = self.with_ui(|ui| {
+            let window = ui.shell.component();
+            if selected.is_some_and(|id| self.tasks.borrow().visible_ids().contains(&id)) {
+                if let Some(id) = selected {
+                    window.invoke_focus_task_row(id.to_string().into());
+                }
+            } else {
+                window.invoke_focus_task_create();
             }
-        } else {
-            window.invoke_focus_task_create();
-        }
+        });
     }
 }
 

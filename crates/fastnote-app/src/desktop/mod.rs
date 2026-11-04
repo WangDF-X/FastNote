@@ -10,6 +10,7 @@ mod runtime;
 mod task_preferences;
 mod tasks;
 mod theme;
+mod ui_session;
 mod window;
 mod window_frame;
 mod worker;

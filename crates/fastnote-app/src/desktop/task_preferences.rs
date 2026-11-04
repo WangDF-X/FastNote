@@ -93,17 +93,19 @@ impl Runtime {
             .borrow()
             .clone()
             .unwrap_or_default();
-        let window = self.shell.component();
-        // 对话框由 Slint 的实时绑定禁用；不把临时模态状态写进确认投影，避免关闭后仍禁用。
-        window.set_task_preferences_enabled(
-            self.ready.get() && !self.finished.get() && !self.closing.get() && !self.busy.get(),
-        );
-        window.set_task_preferences_error(error.into());
-        window.set_task_sort_index(sort_index(preferences.sort));
-        window.set_task_show_in_progress(preferences.show_in_progress);
-        window.set_task_show_waiting(preferences.show_waiting);
-        window.set_task_show_unscheduled(preferences.show_unscheduled);
-        window.set_task_show_completed(preferences.show_completed);
+        let _ = self.with_ui(|ui| {
+            let window = ui.shell.component();
+            // 对话框由 Slint 的实时绑定禁用；不把临时模态状态写进确认投影，避免关闭后仍禁用。
+            window.set_task_preferences_enabled(
+                self.ready.get() && !self.finished.get() && !self.closing.get() && !self.busy.get(),
+            );
+            window.set_task_preferences_error(error.into());
+            window.set_task_sort_index(sort_index(preferences.sort));
+            window.set_task_show_in_progress(preferences.show_in_progress);
+            window.set_task_show_waiting(preferences.show_waiting);
+            window.set_task_show_unscheduled(preferences.show_unscheduled);
+            window.set_task_show_completed(preferences.show_completed);
+        });
     }
 
     pub(super) fn handle_task_preferences_action(self: &Rc<Self>, action: &str) -> bool {
@@ -171,12 +173,14 @@ impl Runtime {
     }
 
     fn restore_preference_focus(&self) {
-        if !self.closing.get()
-            && !self.finished.get()
-            && !self.shell.component().get_dialog_visible()
-        {
-            self.shell.component().invoke_restore_task_focus();
-        }
+        let _ = self.with_ui(|ui| {
+            if !self.closing.get()
+                && !self.finished.get()
+                && !ui.shell.component().get_dialog_visible()
+            {
+                ui.shell.component().invoke_restore_task_focus();
+            }
+        });
     }
 }
 

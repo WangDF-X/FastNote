@@ -16,7 +16,7 @@ impl Runtime {
             Ok(settings) => {
                 self.task_preferences_error.borrow_mut().take();
                 self.ready.set(true);
-                self.shell.component().set_desktop_state(1);
+                let _ = self.with_ui(|ui| ui.shell.component().set_desktop_state(1));
                 self.geometry.set(settings.geometry);
                 *self.ball_position.borrow_mut() = settings.ball_position.clone();
                 let mode = settings.entry_mode;
@@ -73,18 +73,20 @@ impl Runtime {
             }
             Err(error) => {
                 self.ready.set(false);
-                self.shell.component().set_desktop_state(2);
+                let _ = self.with_ui(|ui| ui.shell.component().set_desktop_state(2));
                 let message = if matches!(error, StoreError::NewerSchema { .. }) {
                     "数据由更高版本创建，请升级应用。"
                 } else {
                     storage_message(error.code())
                 };
-                self.shell
-                    .component()
-                    .set_storage_error_message(message.into());
-                self.shell
-                    .component()
-                    .set_storage_error_log_id(error.log_id().into());
+                let _ = self.with_ui(|ui| {
+                    ui.shell
+                        .component()
+                        .set_storage_error_message(message.into());
+                    ui.shell
+                        .component()
+                        .set_storage_error_log_id(error.log_id().into());
+                });
                 // 不能隐藏启动错误；不创建/覆盖另一份库，不显示伪可用的设置。
                 self.show_main();
             }
@@ -118,7 +120,7 @@ impl Runtime {
                 }
             }
         };
-        self.shell.component().set_show_hotkey_status(status.into());
+        let _ = self.with_ui(|ui| ui.shell.component().set_show_hotkey_status(status.into()));
     }
 
     pub(super) fn saved(self: &Rc<Self>, id: u64, result: Result<(), StoreError>) {
@@ -198,10 +200,12 @@ impl Runtime {
     pub(super) fn cleanup(&self) {
         self.theme_monitor.borrow_mut().take();
         self.geometry_timer.stop();
-        self.task_save_timer.stop();
         self.task_day_timer.stop();
-        self.task_feedback_timer.stop();
-        self.shell.pause_timers();
+        let _ = self.with_ui(|ui| {
+            ui.task_save_timer.stop();
+            ui.task_feedback_timer.stop();
+            ui.shell.pause_timers();
+        });
         self.hide_menu();
         if self.ball.hide().is_err() {
             tracing::warn!("floating ball hide failed during exit");
@@ -209,10 +213,12 @@ impl Runtime {
         self.tray.borrow_mut().take();
         self.hotkey.borrow_mut().take();
         self.entry.set(None);
-        self.shell.component().set_entry_available(false);
-        if self.shell.hide().is_err() {
-            tracing::warn!("main window hide failed during exit");
-        }
+        let _ = self.with_ui(|ui| {
+            ui.shell.component().set_entry_available(false);
+            if ui.shell.hide().is_err() {
+                tracing::warn!("main window hide failed during exit");
+            }
+        });
         self.presentation.set(Presentation::Hidden);
     }
 }

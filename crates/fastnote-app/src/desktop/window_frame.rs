@@ -44,14 +44,18 @@ impl Runtime {
         let Some(handle) = native_handle(window) else {
             return;
         };
+        let Some(border) = self.with_ui(|ui| {
+            ui.shell
+                .component()
+                .global::<ShellPalette>()
+                .get_border_strong()
+        }) else {
+            return;
+        };
         let state = WindowFrameState {
             handle: handle.0,
             maximized: window.is_maximized(),
-            border: self
-                .shell
-                .component()
-                .global::<ShellPalette>()
-                .get_border_strong(),
+            border,
         };
         if self.main_frame.get() == Some(state) {
             return;
@@ -140,7 +144,7 @@ mod tests {
         let show = include_str!("presentation/mod.rs");
         let recreating = show.split_once("if recreating {").unwrap().1;
         assert!(recreating
-            .split_once("self.shell.show()")
+            .split_once("ui.shell.show()")
             .unwrap()
             .0
             .contains("self.main_frame.set(None);"));

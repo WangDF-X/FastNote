@@ -27,7 +27,7 @@ impl Runtime {
             "desktop:retry" => {
                 if !self.busy.get() && self.worker.reload().is_ok() {
                     self.set_busy(true);
-                    self.shell.component().set_desktop_state(0);
+                    let _ = self.with_ui(|ui| ui.shell.component().set_desktop_state(0));
                 }
             }
             "desktop:entry:ball" => self.preference(DesktopSetting::EntryMode(EntryMode::Ball)),
@@ -48,7 +48,9 @@ impl Runtime {
             _ => {
                 let navigation = action.starts_with("navigate:") || action == "back";
                 if navigation
-                    && (self.shell.component().get_dialog_visible()
+                    && (self
+                        .with_ui(|ui| ui.shell.component().get_dialog_visible())
+                        .unwrap_or(false)
                         || (parse_action(action).is_ok()
                             && self.defer_task_transition(Transition::Navigate(action.to_owned()))))
                 {
@@ -136,7 +138,7 @@ impl Runtime {
         match action {
             Some(EntryAction::Show) => self.show_main(),
             Some(EntryAction::Navigate(page)) => {
-                self.shell.dispatch(format!("navigate:{page}"));
+                let _ = self.with_ui(|ui| ui.shell.dispatch(format!("navigate:{page}")));
                 self.show_main();
             }
             Some(EntryAction::Switch(mode)) => self.preference(DesktopSetting::EntryMode(mode)),
@@ -148,7 +150,7 @@ impl Runtime {
     pub(super) fn menu_action(self: &Rc<Self>, action: String) {
         self.hide_menu();
         let navigate = action.starts_with("navigate:");
-        self.shell.dispatch(action);
+        let _ = self.with_ui(|ui| ui.shell.dispatch(action));
         if navigate {
             self.show_main();
         }

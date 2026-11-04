@@ -34,12 +34,15 @@ impl Runtime {
                         if let Some(editor) = self.tasks.borrow_mut().editor.as_mut() {
                             editor.failed(message.clone());
                         }
-                        self.task_feedback_timer.stop();
+                        let _ = self.with_ui(|ui| ui.task_feedback_timer.stop());
                     }
-                    PendingTask::Created { .. } => self
-                        .shell
-                        .component()
-                        .set_task_create_error(message.clone().into()),
+                    PendingTask::Created { .. } => {
+                        let _ = self.with_ui(|ui| {
+                            ui.shell
+                                .component()
+                                .set_task_create_error(message.clone().into());
+                        });
+                    }
                     _ => {}
                 }
                 self.notice(ToastKind::Error, &message);
@@ -52,9 +55,11 @@ impl Runtime {
         if result.needs_confirmation {
             if let PendingTask::Status { id, status } = pending {
                 self.tasks.borrow_mut().status_confirmation = Some((id, status));
-                self.shell.show_dialog(DialogRequest::new("仍要修改任务状态？",
-                    "这项任务仍有未完成的子任务或前置任务。系统只提示，不会锁定操作；确认后继续修改状态。",
-                    "继续修改", DialogKind::Normal).with_command(format!("task:status-confirm:{id}")));
+                let _ = self.with_ui(|ui| {
+                    ui.shell.show_dialog(DialogRequest::new("仍要修改任务状态？",
+                        "这项任务仍有未完成的子任务或前置任务。系统只提示，不会锁定操作；确认后继续修改状态。",
+                        "继续修改", DialogKind::Normal).with_command(format!("task:status-confirm:{id}")));
+                });
             }
             self.sync_task_editor();
             // 确认框打开时不执行延迟的退出/路由，避免吞掉用户决策。
@@ -83,16 +88,18 @@ impl Runtime {
                 }
             }
             PendingTask::Created { title } => {
-                if self.shell.component().get_task_quick_title() == title {
-                    self.shell.component().set_task_quick_title("".into());
-                }
+                let _ = self.with_ui(|ui| {
+                    if ui.shell.component().get_task_quick_title() == title {
+                        ui.shell.component().set_task_quick_title("".into());
+                    }
+                });
                 let preferences = self.settings.borrow().today_preferences;
                 if preferences.show_unscheduled {
                     self.tasks.borrow_mut().collapsed[TodaySectionKind::Unscheduled as usize] =
                         Some(false);
                 }
                 if let Some(request) = hidden_task_created(preferences) {
-                    self.shell.show_toast(request);
+                    let _ = self.with_ui(|ui| ui.shell.show_toast(request));
                 }
             }
             PendingTask::Status { status, .. } => {
@@ -123,7 +130,7 @@ impl Runtime {
         self.consume_task_events(&result.events);
         self.sync_task_editor();
         if focus_quick {
-            self.shell.component().invoke_focus_task_create();
+            let _ = self.with_ui(|ui| ui.shell.component().invoke_focus_task_create());
         }
         self.continue_task_transition();
     }
@@ -171,30 +178,39 @@ impl Runtime {
             match result {
                 Ok(QueryResult::Today(view)) => {
                     self.tasks.borrow_mut().today = Some(view);
-                    self.shell.component().set_today_state(1);
-                    self.shell.component().set_today_error("".into());
-                    self.shell.component().set_today_error_log_id("".into());
+                    let _ = self.with_ui(|ui| {
+                        ui.shell.component().set_today_state(1);
+                        ui.shell.component().set_today_error("".into());
+                        ui.shell.component().set_today_error_log_id("".into());
+                    });
                     self.apply_today();
-                    if self.shell.component().get_current_page() == "今日任务" {
+                    if self
+                        .with_ui(|ui| ui.shell.component().get_current_page() == "今日任务")
+                        .unwrap_or(false)
+                    {
                         let reveal = self.tasks.borrow_mut().take_unscheduled_reveal();
                         if reveal {
-                            self.shell
-                                .component()
-                                .invoke_reveal_task_section(TodaySectionKind::Unscheduled as i32);
+                            let _ = self.with_ui(|ui| {
+                                ui.shell.component().invoke_reveal_task_section(
+                                    TodaySectionKind::Unscheduled as i32,
+                                );
+                            });
                         }
                     }
                 }
                 Err(error) => {
-                    self.shell.component().set_today_state(2);
-                    self.shell
-                        .component()
-                        .set_today_error(error_message(&error).into());
-                    self.shell.component().set_today_error_log_id(
-                        error
-                            .storage_error()
-                            .map_or("", |error| error.log_id())
-                            .into(),
-                    );
+                    let _ = self.with_ui(|ui| {
+                        ui.shell.component().set_today_state(2);
+                        ui.shell
+                            .component()
+                            .set_today_error(error_message(&error).into());
+                        ui.shell.component().set_today_error_log_id(
+                            error
+                                .storage_error()
+                                .map_or("", |error| error.log_id())
+                                .into(),
+                        );
+                    });
                 }
                 _ => {}
             }
@@ -224,8 +240,10 @@ impl Runtime {
                 }
                 self.tasks.borrow_mut().editor = Some(EditorSession::new(detail));
                 self.task_syncing.set(true);
-                self.shell.component().set_task_detail_loading(false);
-                self.shell.component().set_task_detail_visible(true);
+                let _ = self.with_ui(|ui| {
+                    ui.shell.component().set_task_detail_loading(false);
+                    ui.shell.component().set_task_detail_visible(true);
+                });
                 self.task_syncing.set(false);
                 self.sync_task_editor();
                 self.defer_task_focus();
@@ -253,8 +271,10 @@ impl Runtime {
                 {
                     editor.acknowledge(detail);
                 }
-                self.task_feedback_timer.stop();
-                self.task_saving_visible.set(false);
+                let _ = self.with_ui(|ui| {
+                    ui.task_feedback_timer.stop();
+                    ui.task_saving_visible.set(false);
+                });
                 self.sync_task_editor();
                 self.continue_task_transition();
                 let dirty = self
@@ -281,10 +301,12 @@ impl Runtime {
                         format!("将永久删除此任务及其 {} 个子任务，无法撤销。", count - 1),
                     )
                 };
-                self.shell.show_dialog(
-                    DialogRequest::new(title, body, "永久删除", DialogKind::Destructive)
-                        .with_command(format!("task:delete-confirm:{id}")),
-                );
+                let _ = self.with_ui(|ui| {
+                    ui.shell.show_dialog(
+                        DialogRequest::new(title, body, "永久删除", DialogKind::Destructive)
+                            .with_command(format!("task:delete-confirm:{id}")),
+                    );
+                });
                 self.sync_task_editor();
             }
         }
@@ -308,10 +330,12 @@ impl Runtime {
             }
             DetailPurpose::Open(_) => {
                 self.task_syncing.set(true);
-                self.shell.component().set_task_detail_loading(false);
-                self.shell
-                    .component()
-                    .set_task_detail_visible(self.tasks.borrow().editor.is_some());
+                let _ = self.with_ui(|ui| {
+                    ui.shell.component().set_task_detail_loading(false);
+                    ui.shell
+                        .component()
+                        .set_task_detail_visible(self.tasks.borrow().editor.is_some());
+                });
                 self.task_syncing.set(false);
             }
             DetailPurpose::Refresh(id) => {

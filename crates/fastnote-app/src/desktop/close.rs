@@ -26,7 +26,10 @@ impl Runtime {
         if self.finished.get() || self.closing.get() {
             return;
         }
-        if self.shell.component().get_dialog_visible() {
+        if self
+            .with_ui(|ui| ui.shell.component().get_dialog_visible())
+            .unwrap_or(false)
+        {
             return;
         }
         if self.busy.get() {
@@ -142,11 +145,18 @@ impl Runtime {
     pub(super) fn close_failed(self: &Rc<Self>, exit: bool, message: &str, log_id: &str) {
         self.show_main();
         self.notice(ToastKind::Error, message);
-        if exit && (!self.force_allowed.get() || !self.shell.component().get_dialog_visible()) {
+        if exit
+            && (!self.force_allowed.get()
+                || !self
+                    .with_ui(|ui| ui.shell.component().get_dialog_visible())
+                    .unwrap_or(false))
+        {
             self.force_allowed.set(true);
-            self.shell.show_dialog(DialogRequest::new("退出准备未完成，仍要退出？",
-                "窗口配置保存或数据库收尾未能完成。仍然退出可能无法恢复本次位置或入口配置变化；不会重建或覆盖数据文件。",
-                "仍然退出", DialogKind::Destructive).with_detail(log_id).with_command("desktop:force-quit"));
+            let _ = self.with_ui(|ui| {
+                ui.shell.show_dialog(DialogRequest::new("退出准备未完成，仍要退出？",
+                    "窗口配置保存或数据库收尾未能完成。仍然退出可能无法恢复本次位置或入口配置变化；不会重建或覆盖数据文件。",
+                    "仍然退出", DialogKind::Destructive).with_detail(log_id).with_command("desktop:force-quit"));
+            });
         }
     }
 }

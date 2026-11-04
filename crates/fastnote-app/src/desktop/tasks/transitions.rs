@@ -15,12 +15,17 @@ impl Runtime {
         }
         let current_focus = self.tasks.borrow().current_editor_focus(&transition);
         if let Some(focus) = current_focus.filter(|_| {
-            self.shell.component().get_task_detail_visible()
-                && !self.shell.component().get_task_detail_loading()
+            self.with_ui(|ui| {
+                ui.shell.component().get_task_detail_visible()
+                    && !ui.shell.component().get_task_detail_loading()
+            })
+            .unwrap_or(false)
         }) {
             // 同一任务的「设置日期」只是移动焦点，不重查、不丢弃已有/非法草稿。
-            self.shell.component().set_task_detail_focus(focus.into());
-            self.shell.component().invoke_focus_task_editor();
+            let _ = self.with_ui(|ui| {
+                ui.shell.component().set_task_detail_focus(focus.into());
+                ui.shell.component().invoke_focus_task_editor();
+            });
             return;
         }
         if !self.defer_task_transition(transition.clone()) {
@@ -80,10 +85,12 @@ impl Runtime {
 
     fn perform_task_transition(self: &Rc<Self>, transition: Transition) {
         if let Some(focus) = transition.editor_focus() {
-            self.shell.component().set_task_detail_focus(focus.into());
+            let _ = self.with_ui(|ui| ui.shell.component().set_task_detail_focus(focus.into()));
         }
         match transition {
-            Transition::Navigate(action) => self.shell.dispatch(action),
+            Transition::Navigate(action) => {
+                let _ = self.with_ui(|ui| ui.shell.dispatch(action));
+            }
             Transition::Open(id) | Transition::OpenDates(id) => {
                 self.request_task_detail(DetailPurpose::Open(id));
             }
@@ -131,9 +138,11 @@ impl Runtime {
                     || self.entry.get().is_none()));
         if exit {
             self.tasks.borrow_mut().discard_exit_allowed = true;
-            self.shell.show_dialog(DialogRequest::new("任务尚未保存，仍然退出？",
-                "当前输入未能完成保存或刷新。仍然退出会丢弃未保存的输入，数据库中已有内容不会被重建或覆盖。",
-                "放弃输入并退出", DialogKind::Destructive).with_command("task:discard-and-quit"));
+            let _ = self.with_ui(|ui| {
+                ui.shell.show_dialog(DialogRequest::new("任务尚未保存，仍然退出？",
+                    "当前输入未能完成保存或刷新。仍然退出会丢弃未保存的输入，数据库中已有内容不会被重建或覆盖。",
+                    "放弃输入并退出", DialogKind::Destructive).with_command("task:discard-and-quit"));
+            });
         }
     }
 
@@ -153,15 +162,17 @@ impl Runtime {
         }
         if unfinished {
             self.tasks.borrow_mut().reload_confirmation = Some(id);
-            self.shell.show_dialog(
-                DialogRequest::new(
-                    "重新加载任务？",
-                    "未保存的输入会被丢弃，重新读取数据库中的内容。",
-                    "重新加载",
-                    DialogKind::Destructive,
-                )
-                .with_command(format!("task:reload-confirm:{id}")),
-            );
+            let _ = self.with_ui(|ui| {
+                ui.shell.show_dialog(
+                    DialogRequest::new(
+                        "重新加载任务？",
+                        "未保存的输入会被丢弃，重新读取数据库中的内容。",
+                        "重新加载",
+                        DialogKind::Destructive,
+                    )
+                    .with_command(format!("task:reload-confirm:{id}")),
+                );
+            });
         } else {
             self.request_task_detail(DetailPurpose::Open(id));
         }

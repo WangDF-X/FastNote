@@ -11,7 +11,7 @@ use fastnote_platform::{
     install_event_handlers, NativeEvent, WindowsHotkey, WindowsThemeMonitor, WindowsTray,
 };
 use fastnote_ui::{
-    BallMenuWindow, FloatingBall, ShellHandle, ShellUpdate, ToastKind, ToastRequest, TodayPresenter,
+    BallMenuWindow, FloatingBall, ShellHandle, ShellUpdate, ToastKind, ToastRequest,
 };
 use slint::{ComponentHandle, Timer};
 
@@ -21,6 +21,7 @@ use crate::{clock::SystemClock, controller::AppController};
 use super::gesture::BallDrag;
 use super::presentation::Presentation;
 use super::theme::ThemeState;
+use super::ui_session::{with_session, UiSession};
 use super::window_frame::WindowFrameState;
 use super::worker::{DbWorker, Reply};
 
@@ -38,7 +39,7 @@ pub(super) struct PendingWrite {
 }
 
 pub(super) struct Runtime {
-    pub shell: ShellHandle,
+    pub ui: RefCell<Option<UiSession>>,
     pub ball: FloatingBall,
     pub menu: BallMenuWindow,
     pub controller: RefCell<AppController<SystemClock>>,
@@ -76,11 +77,8 @@ pub(super) struct Runtime {
     pub next_id: Cell<u64>,
     pub pending: RefCell<HashMap<u64, PendingWrite>>,
     pub tasks: RefCell<TaskSession>,
-    pub today_presenter: TodayPresenter,
-    pub task_save_timer: Timer,
+    /// Q-SHELL-10：复用既有日期检测，随内核常驻而非随页面停止。
     pub task_day_timer: Timer,
-    pub task_feedback_timer: Timer,
-    pub task_saving_visible: Cell<bool>,
     pub task_syncing: Cell<bool>,
 }
 
@@ -124,9 +122,9 @@ impl Runtime {
                 );
             })
             .ok();
-        let today_presenter = TodayPresenter::new(shell.component());
+        let ui = UiSession::new(shell);
         let runtime = Rc::new(Self {
-            shell,
+            ui: RefCell::new(Some(ui)),
             ball: FloatingBall::new()?,
             menu: BallMenuWindow::new()?,
             controller: RefCell::new(controller),
@@ -162,17 +160,18 @@ impl Runtime {
             next_id: Cell::new(1),
             pending: RefCell::new(HashMap::new()),
             tasks: RefCell::new(TaskSession::new()),
-            today_presenter,
-            task_save_timer: Timer::default(),
             task_day_timer: Timer::default(),
-            task_feedback_timer: Timer::default(),
-            task_saving_visible: Cell::new(false),
             task_syncing: Cell::new(false),
         });
         *target.borrow_mut() = Rc::downgrade(&runtime);
         runtime.connect();
         runtime.refresh_system_theme();
         Ok(runtime)
+    }
+
+    /// 临时访问主窗会话，不向内核泄漏组件所有权；缺失时不自动建窗。
+    pub(super) fn with_ui<R>(&self, f: impl FnOnce(&UiSession) -> R) -> Option<R> {
+        with_session(&self.ui, f)
     }
 
     pub(super) fn wakeup(self: &Rc<Self>) {
@@ -195,19 +194,21 @@ impl Runtime {
 
     pub(super) fn set_busy(&self, value: bool) {
         self.busy.set(value);
-        self.shell.component().set_desktop_busy(value);
+        let _ = self.with_ui(|ui| ui.shell.component().set_desktop_busy(value));
         self.sync_task_preferences();
         self.sync_task_editor();
     }
 
     pub(super) fn sync_settings(&self) {
         let settings = self.settings.borrow();
-        self.shell
-            .component()
-            .set_entry_mode(settings.entry_mode.as_str().into());
-        self.shell
-            .component()
-            .set_close_behavior(settings.close_behavior.as_str().into());
+        let _ = self.with_ui(|ui| {
+            ui.shell
+                .component()
+                .set_entry_mode(settings.entry_mode.as_str().into());
+            ui.shell
+                .component()
+                .set_close_behavior(settings.close_behavior.as_str().into());
+        });
         drop(settings);
         self.sync_theme();
         self.sync_task_preferences();
@@ -215,10 +216,12 @@ impl Runtime {
     }
 
     pub(super) fn notice(&self, kind: ToastKind, message: impl Into<String>) {
-        self.shell.show_toast(ToastRequest {
-            kind,
-            message: message.into(),
-            action: None,
+        let _ = self.with_ui(|ui| {
+            ui.shell.show_toast(ToastRequest {
+                kind,
+                message: message.into(),
+                action: None,
+            });
         });
     }
 

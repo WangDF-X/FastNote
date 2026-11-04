@@ -44,19 +44,21 @@ impl Runtime {
 
     pub(in crate::desktop) fn schedule_task_save(self: &Rc<Self>) {
         let weak = Rc::downgrade(self);
-        self.task_save_timer.start(
-            TimerMode::SingleShot,
-            Duration::from_millis(500),
-            move || {
-                if let Some(runtime) = weak.upgrade() {
-                    runtime.flush_task_editor();
-                }
-            },
-        );
+        let _ = self.with_ui(|ui| {
+            ui.task_save_timer.start(
+                TimerMode::SingleShot,
+                Duration::from_millis(500),
+                move || {
+                    if let Some(runtime) = weak.upgrade() {
+                        runtime.flush_task_editor();
+                    }
+                },
+            );
+        });
     }
 
     pub(in crate::desktop) fn flush_task_editor(self: &Rc<Self>) -> FlushStatus {
-        self.task_save_timer.stop();
+        let _ = self.with_ui(|ui| ui.task_save_timer.stop());
         if self.task_syncing.get() || self.finished.get() {
             return FlushStatus::Blocked;
         }
@@ -89,18 +91,20 @@ impl Runtime {
                     self.sync_task_editor();
                     return FlushStatus::Blocked;
                 }
-                self.task_saving_visible.set(false);
                 let weak = Rc::downgrade(self);
-                self.task_feedback_timer.start(
-                    TimerMode::SingleShot,
-                    Duration::from_millis(300),
-                    move || {
-                        if let Some(runtime) = weak.upgrade() {
-                            runtime.task_saving_visible.set(true);
-                            runtime.sync_task_editor();
-                        }
-                    },
-                );
+                let _ = self.with_ui(|ui| {
+                    ui.task_saving_visible.set(false);
+                    ui.task_feedback_timer.start(
+                        TimerMode::SingleShot,
+                        Duration::from_millis(300),
+                        move || {
+                            if let Some(runtime) = weak.upgrade() {
+                                let _ = runtime.with_ui(|ui| ui.task_saving_visible.set(true));
+                                runtime.sync_task_editor();
+                            }
+                        },
+                    );
+                });
                 FlushStatus::Pending
             }
             Err(error) => {
