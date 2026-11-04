@@ -17,6 +17,9 @@ mod window;
 mod window_frame;
 mod worker;
 
+#[cfg(test)]
+mod session_contract;
+
 use slint::winit_030::winit::platform::windows::{CornerPreference, WindowAttributesExtWindows};
 
 use runtime::Runtime;
