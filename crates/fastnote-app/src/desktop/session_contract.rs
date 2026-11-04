@@ -13,6 +13,7 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("presentation/state.rs"),
     ),
     ("runtime.rs", include_str!("runtime.rs")),
+    ("runtime/session.rs", include_str!("runtime/session.rs")),
     ("task_preferences.rs", include_str!("task_preferences.rs")),
     ("tasks/autosave.rs", include_str!("tasks/autosave.rs")),
     ("tasks/connect.rs", include_str!("tasks/connect.rs")),
@@ -53,6 +54,31 @@ fn test_desktop_sources_have_no_retired_direct_main_shell_access() {
             assert!(!source.contains(&retired), "{file}: {retired}");
         }
     }
+}
+
+#[test]
+fn test_normal_hidden_runtime_starts_absent_and_only_initializes_ui_when_requested() {
+    let runtime = include_str!("runtime.rs");
+    let compact = runtime.split_whitespace().collect::<String>();
+    assert!(compact.contains("ui:RefCell::new(None)"), "runtime.rs");
+    assert!(
+        compact.contains("if!hidden{runtime.ensure_ui()?;}"),
+        "runtime.rs"
+    );
+    assert!(!compact.contains("ShellHandle::new("), "runtime.rs");
+    assert!(!compact.contains("TodayPresenter::new("), "runtime.rs");
+    let present = include_str!("presentation/mod.rs");
+    let show = present
+        .split_once("fn show_main(")
+        .unwrap()
+        .1
+        .split_once("fn persist_ball_position(")
+        .unwrap()
+        .0;
+    assert!(
+        show.find("self.ensure_ui()").unwrap() < show.find("self.switch_presentation(").unwrap(),
+        "presentation/mod.rs"
+    );
 }
 
 #[test]

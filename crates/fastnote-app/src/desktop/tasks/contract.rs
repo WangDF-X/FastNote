@@ -245,13 +245,13 @@ fn test_page_callbacks_guard_visibility_before_mutating_kernel_input_or_paginati
 }
 
 #[test]
-fn test_p1_keeps_startup_construction_and_initial_query_until_p2() {
+fn test_p2_starts_with_optional_session_and_preserves_explicit_page_loading_hook() {
     let runtime = include_str!("../runtime.rs");
     assert!(
-        runtime.contains("let shell = ShellHandle::new("),
-        "runtime.rs"
+        include_str!("../runtime/session.rs").contains("ShellHandle::new("),
+        "runtime/session.rs"
     );
-    assert!(runtime.contains("ui: RefCell::new(Some(ui))"), "runtime.rs");
+    assert!(runtime.contains("ui: RefCell::new(None)"), "runtime.rs");
     assert!(
         include_str!("../lifecycle.rs").contains("self.start_tasks();"),
         "lifecycle.rs"

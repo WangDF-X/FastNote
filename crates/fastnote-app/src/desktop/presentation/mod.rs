@@ -66,6 +66,10 @@ impl Runtime {
         if self.finished.get() || self.closing.get() {
             return;
         }
+        if self.ensure_ui().is_err() {
+            self.notice(ToastKind::Error, "无法创建主窗口，请通过入口或快捷键重试。");
+            return;
+        }
         self.hide_menu();
         let result = if self.main_visible() {
             self.show_main_window().map_err(|_| SwitchError::ShowTarget)
@@ -77,6 +81,11 @@ impl Runtime {
             return;
         }
         self.emit_ui(UiEffect::Focus(FocusTarget::Main));
+        // 首次创建后的列表读取只为当前今日路由；完整可见性/日期策略由 T2.3/T2.4 收敛。
+        if self.today_dirty.get() && self.controller.borrow().shell_view().page_label == "今日任务"
+        {
+            self.request_today();
+        }
         self.persist_ball_position();
         if self.ready.get() && !self.settings.borrow().first_run_done {
             self.queue(

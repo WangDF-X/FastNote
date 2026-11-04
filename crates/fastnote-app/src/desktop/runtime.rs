@@ -1,6 +1,8 @@
+pub(super) mod session;
+
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 
 use crossbeam_channel::{bounded, Receiver};
 use fastnote_core::{
@@ -9,9 +11,7 @@ use fastnote_core::{
 use fastnote_platform::{
     install_event_handlers, NativeEvent, WindowsHotkey, WindowsThemeMonitor, WindowsTray,
 };
-use fastnote_ui::{
-    BallMenuWindow, FloatingBall, ShellHandle, ShellUpdate, ToastKind, ToastRequest,
-};
+use fastnote_ui::{BallMenuWindow, FloatingBall, ToastKind, ToastRequest};
 use slint::Timer;
 
 use crate::tasks::TaskSession;
@@ -95,19 +95,6 @@ impl Runtime {
         started: std::time::Instant,
     ) -> Result<Rc<Self>, Box<dyn std::error::Error>> {
         let controller = AppController::new(SystemClock);
-        let initial = controller.shell_view();
-        let target = Rc::new(RefCell::new(Weak::<Self>::new()));
-        let shell = ShellHandle::new(initial.clone(), {
-            let target = target.clone();
-            move |action| match target.borrow().upgrade() {
-                Some(runtime) => runtime.handle_action(&action),
-                None => ShellUpdate {
-                    view: initial.clone(),
-                    route_changed: false,
-                    issue: None,
-                },
-            }
-        })?;
         let wake = make_wakeup();
         let worker = DbWorker::spawn(None, wake.clone())?;
         let (native_tx, native_rx) = bounded(256);
@@ -121,9 +108,8 @@ impl Runtime {
                 );
             })
             .ok();
-        let ui = UiSession::new(shell);
         let runtime = Rc::new(Self {
-            ui: RefCell::new(Some(ui)),
+            ui: RefCell::new(None),
             pending_effects: RefCell::new(PendingEffects::default()),
             desktop_feedback: RefCell::new(DesktopFeedback::default()),
             ball: FloatingBall::new()?,
@@ -166,11 +152,17 @@ impl Runtime {
             task_day_timer: Timer::default(),
             task_syncing: Cell::new(false),
         });
-        *target.borrow_mut() = Rc::downgrade(&runtime);
         register(&runtime);
         runtime.connect_kernel();
-        runtime.connect_ui();
         runtime.refresh_system_theme();
+        if !hidden {
+            runtime.ensure_ui()?;
+        }
+        tracing::info!(
+            phase = "kernel_initialized",
+            ui_present = runtime.with_ui(|_| ()).is_some(),
+            "application kernel assembled"
+        );
         Ok(runtime)
     }
 
