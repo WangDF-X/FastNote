@@ -116,7 +116,7 @@ impl Runtime {
             if !self.task_kernel_available() || !self.tasks.borrow().pending.is_empty() {
                 return true;
             }
-            if !may_query(id.map(DetailPurpose::Open), self.with_ui(|_| ()).is_some()) {
+            if !may_query(id.map(DetailPurpose::Open), self.today_page_visible()) {
                 self.detail_dirty.set(true);
                 return true;
             }

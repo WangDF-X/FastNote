@@ -36,6 +36,10 @@ pub(super) fn error_message(error: &TaskStoreError) -> String {
 
 impl Runtime {
     pub(in crate::desktop) fn sync_task_editor(&self) {
+        if !self.today_page_visible() {
+            self.detail_dirty.set(true);
+            return;
+        }
         // Slint 属性变更可能同步触发失焦回调；不能跨这些调用持有 RefCell 借用。
         let projected = self.with_ui(|ui| {
             let saving_visible = ui.task_saving_visible.get();
@@ -80,12 +84,14 @@ impl Runtime {
                         },
                     )
                 });
-                (busy, enabled, editor)
+                (busy, enabled, editor, tasks.latest_open != 0)
             };
             while_syncing(&self.task_syncing, || {
                 let window = ui.shell.component();
                 window.set_task_busy(snapshot.0);
                 window.set_task_editor_enabled(snapshot.1);
+                window.set_task_detail_loading(snapshot.3);
+                window.set_task_detail_visible(snapshot.2.is_some() || snapshot.3);
                 if let Some((id, fields, read_only, context, error, label)) = snapshot.2 {
                     window.set_task_selected_id(id.to_string().into());
                     apply_fields(window, fields);
@@ -102,6 +108,10 @@ impl Runtime {
     }
 
     pub(in crate::desktop) fn apply_today(&self) {
+        if !self.today_page_visible() {
+            self.today_dirty.set(true);
+            return;
+        }
         let projected = self.with_ui(|ui| {
             let (view, collapsed) = {
                 let tasks = self.tasks.borrow();

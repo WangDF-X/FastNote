@@ -58,7 +58,7 @@ impl Runtime {
         }
         let page = self.controller.borrow().shell_view().page_label;
         if self.with_ui(|ui| ui.ensure_page_resources(page)) == Some(true) {
-            tracing::info!(phase = "page_resources_created", page = "today");
+            tracing::info!(phase = "page_resources_created", query_scope = "today");
         }
     }
 }

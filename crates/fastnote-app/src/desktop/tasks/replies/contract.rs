@@ -33,24 +33,23 @@ fn test_page_reply_gate_precedes_model_creation_and_confirmation_is_kept_in_kern
     let replies = include_str!("../replies.rs");
     assert!(
         replies
-            .find("if !may_apply_detail(purpose, has_ui)")
+            .find("if !may_apply_detail(purpose, page_visible)")
             .unwrap()
             < replies.find("EditorSession::new(detail)").unwrap(),
         "tasks/replies.rs"
     );
+    let today = include_str!("today.rs");
     assert!(
-        replies.find("if !adopt_today(").unwrap()
-            < replies
-                .find("self.emit_ui(UiEffect::RefreshToday)")
-                .unwrap(),
+        today.find("complete_today(").unwrap()
+            < today.find("self.emit_ui(UiEffect::RefreshToday)").unwrap(),
+        "tasks/replies/today.rs"
+    );
+    assert!(
+        replies.contains("if should_refresh(changed.today, page_visible)"),
         "tasks/replies.rs"
     );
     assert!(
-        replies.contains("if should_refresh(changed.today, has_ui)"),
-        "tasks/replies.rs"
-    );
-    assert!(
-        replies.contains("if should_refresh(changed.detail, has_ui)"),
+        replies.contains("if should_refresh(changed.detail, page_visible)"),
         "tasks/replies.rs"
     );
     assert!(replies.contains("stage_confirmation("), "tasks/replies.rs");
@@ -86,6 +85,7 @@ fn test_save_failure_continuations_do_not_drop_navigation_or_build_a_main_window
     for (file, source) in [
         ("tasks/replies.rs", include_str!("../replies.rs")),
         ("tasks/replies/failures.rs", include_str!("failures.rs")),
+        ("tasks/replies/today.rs", include_str!("today.rs")),
     ] {
         for factory in [
             "MainWindow::new",

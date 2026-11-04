@@ -5,13 +5,23 @@ pub(super) fn kernel_available(ready: bool, finished: bool, closing: bool, busy:
     ready && !finished && !closing && !busy
 }
 
-/// SHELL-03 R3：无会话只允许保存基线/删除确认的必要读取，不允许页面预取。
-pub(super) fn may_query(purpose: Option<DetailPurpose>, has_ui: bool) -> bool {
-    has_ui
+/// SHELL-03 R3/T2.3：不可见页只允许保存基线/删除确认的必要读取，不允许预取。
+pub(super) fn may_query(purpose: Option<DetailPurpose>, page_visible: bool) -> bool {
+    page_visible
         || matches!(
             purpose,
             Some(DetailPurpose::SaveAck(_) | DetailPurpose::Delete(_))
         )
+}
+
+/// 路由确认与外壳投影必须一致；隐藏、无原生窗口和最小化都不算页面可见。
+pub(super) fn today_page_visible(content_visible: bool, kernel_page: &str, ui_page: &str) -> bool {
+    content_visible && kernel_page == "今日任务" && ui_page == "今日任务"
+}
+
+/// 重复显示/恢复不失效在途请求，也不会为了短暂 loading 并发查第二次。
+pub(super) fn needs_page_load(dirty: bool, has_snapshot: bool, pending_id: u64) -> bool {
+    pending_id == 0 && (dirty || !has_snapshot)
 }
 
 /// 复用既有在途查询；不新增会话代次，也不把不同目的或不同任务合并。

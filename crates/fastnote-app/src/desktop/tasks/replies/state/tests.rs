@@ -48,7 +48,7 @@ fn test_no_ui_today_reply_does_not_cache_snapshot_or_change_fold_and_page_state(
 }
 
 #[test]
-fn test_current_today_reply_is_cached_only_with_an_existing_session() {
+fn test_current_today_reply_is_cached_only_with_a_visible_page() {
     let date = "2026-11-04".parse().unwrap();
     let at = "2026-11-04T12:00:00".parse().unwrap();
     let mut tasks = TaskSession::new();

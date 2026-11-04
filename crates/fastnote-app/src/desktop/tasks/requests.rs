@@ -1,3 +1,5 @@
+mod loading;
+
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -5,7 +7,7 @@ use fastnote_core::{
     Clock, Command, Query, Task, TaskClock, TaskError, TaskId, TaskPatch, TaskStatus,
 };
 use fastnote_ui::{task_error_message, ToastKind};
-use slint::{Timer, TimerMode};
+use slint::Timer;
 use uuid::Uuid;
 
 use crate::clock::SystemClock;
@@ -17,34 +19,8 @@ use super::policy::{detail_query_pending, kernel_available, may_query, save_read
 use super::view::state::while_syncing;
 
 impl Runtime {
-    pub(in crate::desktop) fn start_tasks(self: &Rc<Self>) {
-        self.request_today();
-        let weak = Rc::downgrade(self);
-        self.task_day_timer
-            .start(TimerMode::Repeated, Duration::from_secs(30), move || {
-                if let Some(runtime) = weak.upgrade() {
-                    let changed = runtime
-                        .tasks
-                        .borrow()
-                        .needs_clock_refresh(SystemClock.local_datetime(SystemClock.now()));
-                    if changed {
-                        runtime.request_today();
-                        let selected = runtime
-                            .tasks
-                            .borrow()
-                            .editor
-                            .as_ref()
-                            .map(|editor| editor.detail.task.id);
-                        if let Some(id) = selected {
-                            runtime.request_task_detail(DetailPurpose::Refresh(id));
-                        }
-                    }
-                }
-            });
-    }
-
     pub(in crate::desktop) fn can_task_interact(&self) -> bool {
-        self.task_kernel_available() && self.main_visible() && !self.dialog_blocked()
+        self.task_kernel_available() && self.today_page_visible() && !self.dialog_blocked()
     }
 
     /// 已确认的业务不要求主窗存在；页面输入另经 can_task_interact 检查。
@@ -90,8 +66,20 @@ impl Runtime {
             return;
         }
         self.today_dirty.set(true);
-        // P1 保留既有初始读取；隐藏会话的零查询规则由 T2.3/T2.4 接入。
-        if !self.ready.get() || !may_query(None, self.with_ui(|_| ()).is_some()) {
+        let pending = {
+            let mut tasks = self.tasks.borrow_mut();
+            if tasks.latest_today != 0 {
+                tasks.invalidate_today_read();
+                true
+            } else {
+                false
+            }
+        };
+        if !self.ready.get()
+            || self.closing.get()
+            || !may_query(None, self.today_page_visible())
+            || pending
+        {
             return;
         }
         let id = self.next_id.get();
@@ -117,7 +105,16 @@ impl Runtime {
             });
             return;
         }
-        self.tasks.borrow_mut().latest_today = id;
+        {
+            let mut tasks = self.tasks.borrow_mut();
+            tasks.latest_today = id;
+            tasks.today_requery = false;
+        }
+        tracing::info!(
+            phase = "page_query_queued",
+            request_id = id,
+            query_scope = "today"
+        );
         if self.tasks.borrow().today.is_none() {
             let _ = self.with_ui(|ui| ui.shell.component().set_today_state(0));
         }
@@ -128,8 +125,19 @@ impl Runtime {
             return false;
         }
         self.detail_dirty.set(true);
-        if !self.ready.get() || !may_query(Some(purpose), self.with_ui(|_| ()).is_some()) {
+        if !self.ready.get() || !may_query(Some(purpose), self.today_page_visible()) {
             return false;
+        }
+        if let DetailPurpose::Refresh(id) = purpose {
+            if !self
+                .tasks
+                .borrow()
+                .editor
+                .as_ref()
+                .is_some_and(|editor| editor.detail.task.id == id && editor.in_flight.is_none())
+            {
+                return false;
+            }
         }
         let task_id = match purpose {
             DetailPurpose::Open(id)
@@ -158,6 +166,16 @@ impl Runtime {
                 _ => {}
             }
         }
+        tracing::info!(
+            phase = "detail_query_queued",
+            request_id = id,
+            query_scope = match purpose {
+                DetailPurpose::Open(_) => "task_open",
+                DetailPurpose::Refresh(_) => "task_refresh",
+                DetailPurpose::SaveAck(_) => "task_save_ack",
+                DetailPurpose::Delete(_) => "task_delete_confirmation",
+            }
+        );
         if matches!(purpose, DetailPurpose::Open(_)) {
             let _ = self.with_ui(|ui| {
                 while_syncing(&self.task_syncing, || {

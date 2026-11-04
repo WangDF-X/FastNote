@@ -41,6 +41,7 @@ impl Runtime {
                     ),
                 }
                 let first = !self.initialized.replace(true);
+                self.start_kernel_tasks();
                 if !first || !self.hidden_start {
                     // 先确定主窗呈现，再配置入口；手动启动不能先闪现球。
                     self.show_main();
@@ -77,7 +78,6 @@ impl Runtime {
                         elapsed_ms = self.started.elapsed().as_millis() as u64
                     );
                 }
-                self.start_tasks();
             }
             Err(error) => {
                 self.ready.set(false);

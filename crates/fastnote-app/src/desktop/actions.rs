@@ -69,12 +69,13 @@ impl Runtime {
                 let update = self.controller.borrow_mut().handle_action(action);
                 if update.route_changed {
                     self.today_dirty.set(true);
+                    self.tasks.borrow_mut().invalidate_today_read();
                     self.close_task_editor();
                     if self.main_content_visible() {
                         self.ensure_current_page_resources();
                     }
-                    if should_refresh_today(&update, self.with_ui(|_| ()).is_some()) {
-                        self.request_today();
+                    if should_refresh_today(&update, self.main_content_visible()) {
+                        self.defer_page_tasks();
                     }
                 }
                 return update;

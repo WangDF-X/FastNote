@@ -65,7 +65,10 @@ pub(crate) struct TaskSession {
     pub editor: Option<EditorSession>,
     pub pending: HashMap<u64, PendingTask>,
     pub queries: HashMap<u64, DetailPurpose>,
+    /// 当前今日读取的在途 ID；每次完成后清零，不作为会话生命周期代次。
     pub latest_today: u64,
+    /// 读取期间又有失效；先结束当前读取，再按最新条件补读一次。
+    pub today_requery: bool,
     pub latest_open: u64,
     pub latest_delete: u64,
     pub after_save: Option<Transition>,
@@ -89,6 +92,27 @@ impl TaskSession {
         self.latest_open = 0;
         self.queries
             .retain(|_, purpose| !matches!(purpose, DetailPurpose::Open(_)));
+    }
+
+    /// 页面变为不可见后撤销普通读意图，保存基线/删除确认不随页面取消。
+    pub(crate) fn cancel_page_reads(&mut self) {
+        self.cancel_open_requests();
+        self.queries
+            .retain(|_, purpose| !matches!(purpose, DetailPurpose::Refresh(_)));
+    }
+
+    /// 合并读取期间的失效，不并发发起第二个今日查询。
+    pub(crate) fn invalidate_today_read(&mut self) {
+        self.today_requery |= self.latest_today != 0;
+    }
+
+    /// 接受当前回包后释放在途状态；旧 ID 不能结束新查询。
+    pub(crate) fn finish_today_read(&mut self, id: u64) -> Option<bool> {
+        if id == 0 || self.latest_today != id {
+            return None;
+        }
+        self.latest_today = 0;
+        Some(std::mem::take(&mut self.today_requery))
     }
 
     pub(crate) fn current_editor_focus(&self, transition: &Transition) -> Option<&'static str> {

@@ -163,6 +163,9 @@ impl SafeFields {
                 | "io_kind"
                 | "native_code"
                 | "phase"
+                | "request_id"
+                | "query_scope"
+                | "ui_present"
         )
     }
     fn add(&mut self, name: &str, value: &str) {
@@ -206,5 +209,19 @@ mod tests {
         assert!(!fields.0.contains('\n'));
         assert!(fields.0.contains("fake-id"));
         assert!(fields.0.contains("E_STORAGE_IO"));
+    }
+
+    #[test]
+    fn test_lifecycle_diagnostics_keep_only_request_scope_and_construction_metadata() {
+        let mut fields = SafeFields::default();
+        fields.add("request_id", "7");
+        fields.add("query_scope", "today");
+        fields.add("ui_present", "false");
+        fields.add("task_description", "假正文，不能记录");
+        fields.add("page_title", "假标题，不能记录");
+        assert!(fields.0.contains("request_id=7"));
+        assert!(fields.0.contains("query_scope=today"));
+        assert!(fields.0.contains("ui_present=false"));
+        assert!(!fields.0.contains("假"));
     }
 }

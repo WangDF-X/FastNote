@@ -126,11 +126,14 @@ impl Runtime {
         self.main_visible()
             && self
                 .with_ui(|ui| {
-                    ui.shell
-                        .component()
-                        .window()
-                        .with_winit_window(|window| !window.is_minimized().unwrap_or(false))
-                        .unwrap_or(false)
+                    let window = ui.shell.component().window();
+                    window.is_visible()
+                        && window
+                            .with_winit_window(|window| {
+                                !window.is_minimized().unwrap_or(false)
+                                    && window.is_visible() != Some(false)
+                            })
+                            .unwrap_or(false)
                 })
                 .unwrap_or(false)
     }
@@ -161,6 +164,7 @@ impl Runtime {
                 ui.shell.component().window().set_minimized(true);
                 ui.shell.pause_timers();
             });
+            self.task_page_hidden();
         }
     }
 

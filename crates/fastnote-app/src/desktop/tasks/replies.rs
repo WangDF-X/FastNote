@@ -1,5 +1,6 @@
 mod failures;
 mod state;
+mod today;
 
 use std::rc::Rc;
 
@@ -16,8 +17,8 @@ use crate::tasks::{DetailPurpose, EditorSession, PendingTask};
 
 use super::view::error_message;
 use state::{
-    acknowledge_save, adopt_today, invalidations, mark_save_committed, mark_save_failed,
-    may_apply_detail, should_refresh, stage_confirmation,
+    acknowledge_save, invalidations, mark_save_committed, mark_save_failed, may_apply_detail,
+    should_refresh, stage_confirmation,
 };
 
 impl Runtime {
@@ -156,6 +157,7 @@ impl Runtime {
         let changed = invalidations(events, selected);
         if changed.today {
             self.today_dirty.set(true);
+            self.tasks.borrow_mut().invalidate_today_read();
         }
         if changed.detail {
             self.detail_dirty.set(true);
@@ -163,7 +165,7 @@ impl Runtime {
     }
 
     fn consume_task_events(&self, events: &[AppEvent]) {
-        let has_ui = self.with_ui(|_| ()).is_some();
+        let page_visible = self.today_page_visible();
         let selected = self
             .tasks
             .borrow()
@@ -172,10 +174,10 @@ impl Runtime {
             .filter(|editor| editor.in_flight.is_none())
             .map(|editor| editor.detail.task.id);
         let changed = invalidations(events, selected);
-        if should_refresh(changed.today, has_ui) {
+        if should_refresh(changed.today, page_visible) {
             self.request_today();
         }
-        if should_refresh(changed.detail, has_ui) {
+        if should_refresh(changed.detail, page_visible) {
             if let Some(id) = selected {
                 self.request_task_detail(DetailPurpose::Refresh(id));
             }
@@ -193,57 +195,7 @@ impl Runtime {
         }
         let purpose = self.tasks.borrow_mut().queries.remove(&id);
         let Some(purpose) = purpose else {
-            if id == 0 || self.tasks.borrow().latest_today != id {
-                return;
-            }
-            self.today_dirty.set(true);
-            let has_ui = self.with_ui(|_| ()).is_some();
-            match result {
-                Ok(QueryResult::Today(view)) => {
-                    if !adopt_today(&mut self.tasks.borrow_mut(), id, view, has_ui) {
-                        return;
-                    }
-                    self.today_dirty.set(false);
-                    let _ = self.with_ui(|ui| {
-                        ui.shell.component().set_today_state(1);
-                        ui.shell.component().set_today_error("".into());
-                        ui.shell.component().set_today_error_log_id("".into());
-                    });
-                    self.emit_ui(UiEffect::RefreshToday);
-                    if self
-                        .with_ui(|ui| ui.shell.component().get_current_page() == "今日任务")
-                        .unwrap_or(false)
-                    {
-                        let reveal = self.tasks.borrow_mut().take_unscheduled_reveal();
-                        if reveal {
-                            let _ = self.with_ui(|ui| {
-                                ui.shell.component().invoke_reveal_task_section(
-                                    TodaySectionKind::Unscheduled as i32,
-                                );
-                            });
-                        }
-                    }
-                }
-                Err(error) => {
-                    if !has_ui {
-                        self.notice(ToastKind::Error, error_message(&error));
-                        return;
-                    }
-                    let _ = self.with_ui(|ui| {
-                        ui.shell.component().set_today_state(2);
-                        ui.shell
-                            .component()
-                            .set_today_error(error_message(&error).into());
-                        ui.shell.component().set_today_error_log_id(
-                            error
-                                .storage_error()
-                                .map_or("", |error| error.log_id())
-                                .into(),
-                        );
-                    });
-                }
-                _ => {}
-            }
+            self.today_queried(id, result);
             return;
         };
         if matches!(purpose, DetailPurpose::Open(_)) && self.tasks.borrow().latest_open != id {
@@ -252,12 +204,12 @@ impl Runtime {
         if matches!(purpose, DetailPurpose::Delete(_)) && self.tasks.borrow().latest_delete != id {
             return;
         }
-        let has_ui = self.with_ui(|_| ()).is_some();
-        if !may_apply_detail(purpose, has_ui) {
+        if matches!(purpose, DetailPurpose::Open(_)) {
+            self.tasks.borrow_mut().latest_open = 0;
+        }
+        let page_visible = self.today_page_visible();
+        if !may_apply_detail(purpose, page_visible) {
             self.detail_dirty.set(true);
-            if let Err(error) = result {
-                self.notice(ToastKind::Error, error_message(&error));
-            }
             return;
         }
         let detail = match result {
@@ -288,15 +240,16 @@ impl Runtime {
                 self.defer_task_focus();
             }
             DetailPurpose::Refresh(id) => {
-                if let Some(editor) = self
-                    .tasks
-                    .borrow_mut()
+                let mut tasks = self.tasks.borrow_mut();
+                let Some(editor) = tasks
                     .editor
                     .as_mut()
                     .filter(|editor| editor.detail.task.id == id)
-                {
-                    editor.refresh(detail);
-                }
+                else {
+                    return;
+                };
+                editor.refresh(detail);
+                drop(tasks);
                 self.detail_dirty.set(false);
                 self.sync_task_editor();
                 self.continue_task_transition();
@@ -317,8 +270,12 @@ impl Runtime {
                     .editor
                     .as_ref()
                     .is_some_and(|editor| editor.dirty() && editor.in_flight.is_none());
-                if dirty && self.tasks.borrow().after_save.is_none() && has_ui {
-                    self.schedule_task_save();
+                if dirty && self.tasks.borrow().after_save.is_none() {
+                    if self.today_page_visible() {
+                        self.schedule_task_save();
+                    } else {
+                        self.flush_task_editor();
+                    }
                 }
             }
             DetailPurpose::Delete(id) => {

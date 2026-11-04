@@ -13,9 +13,9 @@ pub(super) fn dispatch_or_handle(
     }
 }
 
-/// SHELL-03 T1.2 批次 2：无会话导航只失效，不为导航发起今日查询。
-pub(super) fn should_refresh_today(update: &ShellUpdate, has_ui: bool) -> bool {
-    update.route_changed && update.view.page_label == "今日任务" && has_ui
+/// SHELL-03 T2.3：只有可见主窗的今日路由进入才安排页面加载，隐藏导航只失效。
+pub(super) fn should_refresh_today(update: &ShellUpdate, content_visible: bool) -> bool {
+    update.route_changed && update.view.page_label == "今日任务" && content_visible
 }
 
 #[cfg(test)]

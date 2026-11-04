@@ -53,7 +53,7 @@ fn test_no_ui_page_queries_are_rejected_but_confirmation_reads_remain_allowed() 
 }
 
 #[test]
-fn test_existing_ui_retains_p1_query_policy_until_p2_visibility_gating() {
+fn test_visible_today_page_permits_page_and_confirmation_reads() {
     assert!(may_query(None, true));
     for purpose in [
         DetailPurpose::Open(id(1)),
@@ -62,6 +62,33 @@ fn test_existing_ui_retains_p1_query_policy_until_p2_visibility_gating() {
         DetailPurpose::Delete(id(1)),
     ] {
         assert!(may_query(Some(purpose), true));
+    }
+}
+
+#[test]
+fn test_page_visibility_requires_native_content_and_both_confirmed_and_projected_today_route() {
+    assert!(today_page_visible(true, "今日任务", "今日任务"));
+    for state in [
+        (false, "今日任务", "今日任务"),
+        (true, "日历", "日历"),
+        (true, "今日任务", "日历"),
+        (true, "日历", "今日任务"),
+    ] {
+        assert!(!today_page_visible(state.0, state.1, state.2));
+        assert!(!may_query(
+            None,
+            today_page_visible(state.0, state.1, state.2)
+        ));
+    }
+}
+
+#[test]
+fn test_page_load_only_queries_missing_or_invalid_snapshot_without_an_in_flight_read() {
+    assert!(needs_page_load(true, true, 0));
+    assert!(needs_page_load(false, false, 0));
+    assert!(!needs_page_load(false, true, 0));
+    for (dirty, snapshot) in [(false, false), (false, true), (true, false), (true, true)] {
+        assert!(!needs_page_load(dirty, snapshot, 7));
     }
 }
 

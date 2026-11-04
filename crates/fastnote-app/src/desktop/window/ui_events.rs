@@ -60,6 +60,7 @@ impl Runtime {
                                 Timer::single_shot(Duration::ZERO, move || {
                                     if let Some(runtime) = weak.upgrade() {
                                         runtime.refresh_system_theme();
+                                        runtime.sync_minimized_timers();
                                     }
                                 });
                             }

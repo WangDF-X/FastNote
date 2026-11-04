@@ -13,6 +13,8 @@ pub(super) struct UiSession {
     pub task_saving_visible: Cell<bool>,
     /// 原生与任务回调只绑定一次；重建会话会重新初始化此标记。
     pub callbacks_connected: Cell<bool>,
+    /// 只跟踪原生内容的恢复边沿，避免每次 worker 唤醒都重启页面查询。
+    pub content_active: Cell<bool>,
 }
 
 impl UiSession {
@@ -25,6 +27,7 @@ impl UiSession {
             task_feedback_timer: Timer::default(),
             task_saving_visible: Cell::new(false),
             callbacks_connected: Cell::new(false),
+            content_active: Cell::new(false),
         }
     }
 

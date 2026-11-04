@@ -95,7 +95,7 @@ fn test_invalid_navigation_without_shell_retains_route_and_returns_safe_issue() 
 }
 
 #[test]
-fn test_today_navigation_requests_query_only_when_an_existing_session_is_available() {
+fn test_today_navigation_only_schedules_queries_for_visible_main_content() {
     let date = "2026-11-04".parse().unwrap();
     let mut controller = AppController::new(FixedClock(date));
     let calendar = controller.handle_action("navigate:日历");
@@ -114,7 +114,8 @@ fn test_entry_dispatch_and_no_session_query_guard_are_wired_to_production_action
     assert!(source.contains("self.dispatch_action(format!(\"navigate:{page}\"));"));
     assert!(source.contains("self.dispatch_action(action);"));
     assert!(source.contains("self.today_dirty.set(true);"));
-    assert!(source.contains("if should_refresh_today(&update, self.with_ui(|_| ()).is_some())"));
+    assert!(source.contains("if should_refresh_today(&update, self.main_content_visible())"));
+    assert!(source.contains("self.defer_page_tasks();"));
     assert!(source.contains("self.set_desktop_state(0);"));
     assert!(source.contains("self.dialog_blocked()"));
 }

@@ -136,7 +136,7 @@ fn test_preference_save_failure_returns_before_applying_snapshot_and_success_req
     let replies = include_str!("../tasks/replies.rs");
     assert!(replies.contains("if preferences.show_unscheduled {"));
     assert!(replies.contains("self.emit_ui(UiEffect::Toast(request))"));
-    assert!(replies.contains("take_unscheduled_reveal();"));
+    assert!(include_str!("../tasks/replies/today.rs").contains("take_unscheduled_reveal()"));
 }
 
 #[test]

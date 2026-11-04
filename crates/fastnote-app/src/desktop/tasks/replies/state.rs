@@ -30,23 +30,50 @@ pub(super) fn invalidations(events: &[AppEvent], selected: Option<TaskId>) -> In
     result
 }
 
-/// 无会话只失效，不能因事件为页面发起后台预取。
-pub(super) fn should_refresh(invalidated: bool, has_ui: bool) -> bool {
-    invalidated && has_ui
+/// 无可见页只失效，不能因事件为页面发起后台预取。
+pub(super) fn should_refresh(invalidated: bool, page_visible: bool) -> bool {
+    invalidated && page_visible
 }
 
 /// 迟到列表读结果不能在无主窗时填回大型页面快照；既有请求 ID 检查不变。
-pub(super) fn adopt_today(tasks: &mut TaskSession, id: u64, view: TodayView, has_ui: bool) -> bool {
-    if id == 0 || id != tasks.latest_today || !has_ui {
+pub(super) fn adopt_today(
+    tasks: &mut TaskSession,
+    id: u64,
+    view: TodayView,
+    page_visible: bool,
+) -> bool {
+    if id == 0 || id != tasks.latest_today || !page_visible {
         return false;
     }
     tasks.today = Some(view);
     true
 }
 
-/// 保存确认/删除确认仍属内核闭环；普通打开/刷新读结果仅为已存在的页面使用。
-pub(super) fn may_apply_detail(purpose: DetailPurpose, has_ui: bool) -> bool {
-    has_ui
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct TodayCompletion {
+    pub applied: bool,
+    pub requery: bool,
+}
+
+/// 当前请求成功/失败/不可见都释放在途状态；期间再失效的快照不能当作最新数据。
+pub(super) fn complete_today(
+    tasks: &mut TaskSession,
+    id: u64,
+    view: Option<TodayView>,
+    page_visible: bool,
+) -> Option<TodayCompletion> {
+    if id == 0 || tasks.latest_today != id {
+        return None;
+    }
+    let can_apply = page_visible && !tasks.today_requery;
+    let applied = view.is_some_and(|view| adopt_today(tasks, id, view, can_apply));
+    let requery = tasks.finish_today_read(id)?;
+    Some(TodayCompletion { applied, requery })
+}
+
+/// 保存确认/删除确认仍属内核闭环；普通打开/刷新读结果仅为可见页面使用。
+pub(super) fn may_apply_detail(purpose: DetailPurpose, page_visible: bool) -> bool {
+    page_visible
         || matches!(
             purpose,
             DetailPurpose::SaveAck(_) | DetailPurpose::Delete(_)
@@ -88,5 +115,7 @@ pub(super) fn acknowledge_save(tasks: &mut TaskSession, id: TaskId, detail: Task
         .is_some_and(|editor| editor.acknowledge(detail))
 }
 
+#[cfg(test)]
+mod loading_tests;
 #[cfg(test)]
 mod tests;

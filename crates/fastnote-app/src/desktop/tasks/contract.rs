@@ -24,6 +24,14 @@ fn test_no_session_query_gate_precedes_id_allocation_and_worker_calls() {
         today.find("!may_query(None,").unwrap() < today.find(".query(").unwrap(),
         "tasks/requests.rs"
     );
+    assert!(
+        today.contains("self.today_page_visible()"),
+        "tasks/requests.rs"
+    );
+    assert!(
+        today.find("tasks.latest_today != 0").unwrap() < today.find("self.next_id.get()").unwrap(),
+        "tasks/requests.rs"
+    );
     let detail = between(requests, "fn request_task_detail(", "fn create_task(");
     assert!(
         detail.contains("self.detail_dirty.set(true);"),
@@ -43,12 +51,21 @@ fn test_no_session_query_gate_precedes_id_allocation_and_worker_calls() {
         detail.contains("save_read_failed(&mut self.tasks.borrow_mut(), purpose, message)"),
         "tasks/requests.rs"
     );
+    assert!(
+        detail.contains("self.today_page_visible()"),
+        "tasks/requests.rs"
+    );
 }
 
 #[test]
 fn test_optional_ui_access_precedes_expensive_editor_and_today_snapshot_clones() {
     let view = include_str!("view.rs");
     let editor = between(view, "fn sync_task_editor(", "fn apply_today(");
+    assert!(
+        editor.find("!self.today_page_visible()").unwrap()
+            < editor.find("editor.fields.clone()").unwrap(),
+        "tasks/view.rs"
+    );
     assert!(
         editor.find("self.with_ui(|ui|").unwrap() < editor.find("editor.fields.clone()").unwrap(),
         "tasks/view.rs"
@@ -62,6 +79,11 @@ fn test_optional_ui_access_precedes_expensive_editor_and_today_snapshot_clones()
         "tasks/view.rs"
     );
     let today = between(view, "fn apply_today(", "fn restore_task_list_focus(");
+    assert!(
+        today.find("!self.today_page_visible()").unwrap()
+            < today.find("tasks.today.clone()").unwrap(),
+        "tasks/view.rs"
+    );
     assert!(
         today.find("self.with_ui(|ui|").unwrap() < today.find("tasks.today.clone()").unwrap(),
         "tasks/view.rs"
@@ -253,18 +275,21 @@ fn test_p2_starts_with_optional_session_and_preserves_explicit_page_loading_hook
     );
     assert!(runtime.contains("ui: RefCell::new(None)"), "runtime.rs");
     assert!(
-        include_str!("../lifecycle.rs").contains("self.start_tasks();"),
+        include_str!("../lifecycle.rs").contains("self.start_kernel_tasks();"),
         "lifecycle.rs"
     );
-    let requests = between(
-        include_str!("requests.rs"),
-        "fn start_tasks(",
-        "fn can_task_interact(",
+    let loading = include_str!("requests/loading.rs");
+    assert!(
+        loading.contains("fn start_page_tasks("),
+        "tasks/requests/loading.rs"
     );
     assert!(
-        requests.find("self.request_today();").unwrap()
-            < requests.find("self.task_day_timer").unwrap(),
-        "tasks/requests.rs"
+        loading.contains("!self.today_page_visible()"),
+        "tasks/requests/loading.rs"
+    );
+    assert!(
+        include_str!("../presentation/mod.rs").contains("self.start_page_tasks();"),
+        "presentation/mod.rs"
     );
 }
 
@@ -272,6 +297,10 @@ fn test_p2_starts_with_optional_session_and_preserves_explicit_page_loading_hook
 fn test_request_view_and_transition_paths_never_construct_main_ui_resources() {
     for (file, source) in [
         ("tasks/requests.rs", include_str!("requests.rs")),
+        (
+            "tasks/requests/loading.rs",
+            include_str!("requests/loading.rs"),
+        ),
         ("tasks/view.rs", include_str!("view.rs")),
         ("tasks/transitions.rs", include_str!("transitions.rs")),
         (

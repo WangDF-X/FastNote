@@ -84,12 +84,10 @@ impl Runtime {
             self.switch_presentation(Presentation::Main)
         };
         result?;
+        let active = self.main_content_visible();
+        let _ = self.with_ui(|ui| ui.content_active.set(active));
         self.emit_ui(UiEffect::Focus(FocusTarget::Main));
-        // 首次创建后的列表读取只为当前今日路由；完整可见性/日期策略由 T2.3/T2.4 收敛。
-        if self.today_dirty.get() && self.controller.borrow().shell_view().page_label == "今日任务"
-        {
-            self.request_today();
-        }
+        self.start_page_tasks();
         self.persist_ball_position();
         if self.ready.get() && !self.settings.borrow().first_run_done {
             self.queue(
@@ -136,16 +134,24 @@ impl Runtime {
         ) {
             MinimizeAction::Ignore => {}
             MinimizeAction::Pause => {
+                self.task_page_hidden();
                 let _ = self.with_ui(|ui| ui.shell.pause_timers());
             }
             MinimizeAction::Resume => {
+                if !self.main_content_visible() {
+                    return;
+                }
                 let _ = self.with_ui(|ui| ui.shell.resume_timers());
+                if self.with_ui(|ui| !ui.content_active.replace(true)) == Some(true) {
+                    self.start_page_tasks();
+                }
             }
             MinimizeAction::RestoreMain => {
                 self.show_main();
                 self.notice(ToastKind::Error, "设置尚未加载，暂时无法收起到悬浮球。");
             }
             MinimizeAction::Collapse => {
+                self.task_page_hidden();
                 let _ = self.with_ui(|ui| ui.shell.pause_timers());
                 self.request_minimize();
             }
@@ -240,9 +246,12 @@ impl Surfaces for Runtime {
     fn hide(&self, view: Presentation) -> Result<(), ()> {
         match view {
             Presentation::Hidden => Ok(()),
-            Presentation::Main => self
-                .with_ui(|ui| ui.shell.hide().map_err(|_| ()))
-                .unwrap_or(Ok(())),
+            Presentation::Main => {
+                self.with_ui(|ui| ui.shell.hide().map_err(|_| ()))
+                    .unwrap_or(Ok(()))?;
+                self.task_page_hidden();
+                Ok(())
+            }
             Presentation::Ball => self.ball.hide().map_err(|_| ()),
         }
     }

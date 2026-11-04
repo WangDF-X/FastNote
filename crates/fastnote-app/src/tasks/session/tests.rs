@@ -250,3 +250,29 @@ fn test_absent_or_empty_reveal_target_is_consumed_without_a_future_scroll_reques
     session.request_unscheduled_reveal();
     assert!(!session.take_unscheduled_reveal());
 }
+
+#[test]
+fn test_hiding_cancels_only_page_reads_and_preserves_confirmation_and_input() {
+    let mut session = session();
+    let mut editor = EditorSession::new(detail(1));
+    editor
+        .edit("title", "隐藏时需保留的假输入".to_owned())
+        .unwrap();
+    session.editor = Some(editor);
+    session.latest_open = 1;
+    session.queries.insert(1, DetailPurpose::Open(id(1)));
+    session.queries.insert(2, DetailPurpose::Refresh(id(1)));
+    session.queries.insert(3, DetailPurpose::SaveAck(id(1)));
+    session.queries.insert(4, DetailPurpose::Delete(id(1)));
+    session.cancel_page_reads();
+    assert_eq!(session.latest_open, 0);
+    assert!(!session.queries.contains_key(&1));
+    assert!(!session.queries.contains_key(&2));
+    assert!(session.queries.contains_key(&3));
+    assert!(session.queries.contains_key(&4));
+    assert_eq!(
+        session.editor.as_ref().unwrap().fields.title,
+        "隐藏时需保留的假输入"
+    );
+    assert!(session.unfinished());
+}
