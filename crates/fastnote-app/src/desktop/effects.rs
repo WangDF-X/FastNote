@@ -16,6 +16,7 @@ const MAX_PENDING_DIALOGS: usize = 32;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum FocusTarget {
     Main,
+    TaskCreate,
 }
 
 /// 只描述待呈现效果，不持有主窗或组件；按 T1.2 批次逐项接入。
@@ -25,6 +26,8 @@ pub(super) enum UiEffect {
     Dialog(DialogRequest),
     /// 已确认路由的规范动作，仅用于展示校验，不重新执行业务动作。
     Navigate(String),
+    /// 只投影已确认的今日快照，不发起页面查询。
+    RefreshToday,
     Focus(FocusTarget),
     SetDesktopState(u8),
     SetBusy(bool),
@@ -45,6 +48,7 @@ impl UiEffect {
                     && (!left.confirm_command.is_empty() || left.title == right.title)
             }
             (Self::Navigate(_), Self::Navigate(_)) => true,
+            (Self::RefreshToday, Self::RefreshToday) => true,
             (Self::Focus(_), Self::Focus(_))
             | (Self::SetDesktopState(_), Self::SetDesktopState(_))
             | (Self::SetBusy(_), Self::SetBusy(_)) => true,
@@ -263,6 +267,18 @@ impl Runtime {
                 window.set_minimized(false);
                 window.with_winit_window(|window| window.focus_window());
                 ui.shell.resume_timers();
+            }
+            UiEffect::Focus(FocusTarget::TaskCreate) => {
+                if ui.shell.component().get_current_page() == "今日任务"
+                    && !ui.shell.component().get_dialog_visible()
+                {
+                    ui.shell.component().invoke_focus_task_create();
+                }
+            }
+            UiEffect::RefreshToday => {
+                if !self.today_dirty.get() {
+                    self.apply_today();
+                }
             }
             UiEffect::SetDesktopState(state) => {
                 let feedback = self.desktop_feedback.borrow().clone();

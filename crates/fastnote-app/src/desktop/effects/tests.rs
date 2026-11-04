@@ -286,3 +286,61 @@ fn test_startup_replies_and_presentation_use_effects_without_creating_windows() 
         );
     }
 }
+
+#[test]
+fn test_today_projection_intents_are_coalesced_without_replacing_confirmation() {
+    let mut pending = PendingEffects::default();
+    pending.push(UiEffect::RefreshToday);
+    pending.push(UiEffect::Dialog(
+        fastnote_ui::DialogRequest::new(
+            "继续修改？",
+            "操作需要确认。",
+            "继续",
+            fastnote_ui::DialogKind::Normal,
+        )
+        .with_command("task:status-confirm:fake"),
+    ));
+    for _ in 0..1_000 {
+        pending.push(UiEffect::RefreshToday);
+    }
+    assert_eq!(pending.entries.len(), 2);
+    assert_eq!(pending.entries.front(), Some(&UiEffect::RefreshToday));
+    assert!(pending.has_dialog());
+}
+
+#[test]
+fn test_no_ui_focus_intent_is_kept_without_invoking_a_component() {
+    let pending = RefCell::new(PendingEffects::default());
+    let ui = RefCell::new(None::<u8>);
+    let invoked = Cell::new(false);
+    assert!(dispatch_effect(
+        &pending,
+        UiEffect::Focus(FocusTarget::TaskCreate),
+        |_| { with_session(&ui, |_| invoked.set(true)).is_some() }
+    ));
+    assert!(!invoked.get());
+    assert_eq!(*ui.borrow(), None);
+    assert_eq!(
+        pending.borrow().entries,
+        VecDeque::from([UiEffect::Focus(FocusTarget::TaskCreate)])
+    );
+}
+
+#[test]
+fn test_today_effect_is_projection_only_and_does_not_query_or_create_ui() {
+    let effects = include_str!("../effects.rs");
+    let projection = effects
+        .split_once("UiEffect::RefreshToday => {")
+        .unwrap()
+        .1
+        .split_once("UiEffect::SetDesktopState(")
+        .unwrap()
+        .0;
+    assert!(
+        projection.contains("if !self.today_dirty.get()"),
+        "effects.rs"
+    );
+    assert!(projection.contains("self.apply_today();"), "effects.rs");
+    assert!(!projection.contains("request_today("), "effects.rs");
+    assert!(!projection.contains("ensure_ui("), "effects.rs");
+}

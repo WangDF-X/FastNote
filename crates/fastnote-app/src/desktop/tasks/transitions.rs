@@ -3,6 +3,7 @@ use std::rc::Rc;
 use fastnote_core::{CloseBehavior, Command, TaskId};
 use fastnote_ui::{DialogKind, DialogRequest, ToastKind};
 
+use crate::desktop::effects::UiEffect;
 use crate::desktop::runtime::Runtime;
 use crate::tasks::{DetailPurpose, PendingTask, Transition};
 
@@ -88,9 +89,7 @@ impl Runtime {
             let _ = self.with_ui(|ui| ui.shell.component().set_task_detail_focus(focus.into()));
         }
         match transition {
-            Transition::Navigate(action) => {
-                let _ = self.with_ui(|ui| ui.shell.dispatch(action));
-            }
+            Transition::Navigate(action) => self.dispatch_action(action),
             Transition::Open(id) | Transition::OpenDates(id) => {
                 self.request_task_detail(DetailPurpose::Open(id));
             }
@@ -129,7 +128,7 @@ impl Runtime {
         transition: Option<Transition>,
     ) {
         let minimize = matches!(transition, Some(Transition::Minimize));
-        if minimize {
+        if minimize && self.with_ui(|_| ()).is_some() {
             self.show_main();
         }
         let exit = matches!(transition, Some(Transition::Close { exit: true }))
@@ -137,12 +136,13 @@ impl Runtime {
                 && (self.settings.borrow().close_behavior == CloseBehavior::Quit
                     || self.entry.get().is_none()));
         if exit {
-            self.tasks.borrow_mut().discard_exit_allowed = true;
-            let _ = self.with_ui(|ui| {
-                ui.shell.show_dialog(DialogRequest::new("任务尚未保存，仍然退出？",
+            let previous =
+                std::mem::replace(&mut self.tasks.borrow_mut().discard_exit_allowed, true);
+            if !self.emit_ui(UiEffect::Dialog(DialogRequest::new("任务尚未保存，仍然退出？",
                     "当前输入未能完成保存或刷新。仍然退出会丢弃未保存的输入，数据库中已有内容不会被重建或覆盖。",
-                    "放弃输入并退出", DialogKind::Destructive).with_command("task:discard-and-quit"));
-            });
+                    "放弃输入并退出", DialogKind::Destructive).with_command("task:discard-and-quit"))) {
+                self.tasks.borrow_mut().discard_exit_allowed = previous;
+            }
         }
     }
 
