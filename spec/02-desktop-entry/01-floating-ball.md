@@ -1,6 +1,6 @@
 ﻿# ENTRY-01 悬浮球入口
 
-> 文档编号：ENTRY-01 ｜ 模块：02 桌面常驻入口 ｜ 状态：In Progress ｜ 更新日期：2026-11-03
+> 文档编号：ENTRY-01 ｜ 模块：02 桌面常驻入口 ｜ 状态：In Progress ｜ 更新日期：2026-11-04
 > 上游：[ARCH-06](../00-architecture/06-platform-integration.md)、[product §1.2–1.4](../../product.md) ｜ 下游：[SHELL-01](../01-app-shell/01-overview.md)、[ENTRY-02](02-tray-and-lifecycle.md)、[SET-02](../08-settings/02-general-and-appearance.md)
 
 ---
@@ -170,6 +170,8 @@
 - 手动启动只显示主窗；`--hidden` 才只显示球。切换失败清理目标并恢复原呈现；球创建失败时恢复主窗并提示。
 - 应用进入后台休眠时暂停重绘（`AppEvent::EntryStateChanged{visible=false}`）。
 - 切换入口模式：先销毁旧球再创建新入口（托盘或反之），不并行存在。
+
+**D-RES-01（2026-11-04 已确认）：** 球模式的冷驻留不预建主窗/业务列表；主窗保存确认后隐藏，低成本资源最多热缓存 120 秒，球拖动/悬停/右键菜单不延长期限。到期或超预算回收主窗不销毁球/必要服务，也不重置应用路由与轻量会话。下次左键可冷重建原路由；真正资源释放及草稿保护沿用 [ENTRY-02 §7](02-tray-and-lifecycle.md) / [ARCH-01 §5](../00-architecture/01-tech-and-runtime.md)，不是把主窗永久隐藏在后台。
 
 ---
 
