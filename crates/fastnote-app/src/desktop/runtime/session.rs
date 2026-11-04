@@ -47,7 +47,19 @@ impl Runtime {
                 "main session constructed on demand"
             );
         }
+        self.ensure_current_page_resources();
         Ok(())
+    }
+
+    /// 首次显示/可见路由进入才加载当前页面；数据失败界面不装配今日模型。
+    pub(in crate::desktop) fn ensure_current_page_resources(&self) {
+        if !self.ready.get() || self.finished.get() {
+            return;
+        }
+        let page = self.controller.borrow().shell_view().page_label;
+        if self.with_ui(|ui| ui.ensure_page_resources(page)) == Some(true) {
+            tracing::info!(phase = "page_resources_created", page = "today");
+        }
     }
 }
 

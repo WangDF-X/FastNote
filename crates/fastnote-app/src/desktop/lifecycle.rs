@@ -1,3 +1,5 @@
+mod recovery;
+
 use std::rc::Rc;
 
 use fastnote_core::{restore_main, DesktopSetting, DesktopSettings, EntryMode};
@@ -64,7 +66,10 @@ impl Runtime {
                     }
                 }
                 if self.entry.get().is_none() {
-                    self.show_main();
+                    self.show_recovery_main("startup_entry_recovery");
+                    if self.finished.get() {
+                        return;
+                    }
                 }
                 if first {
                     tracing::info!(
@@ -83,7 +88,7 @@ impl Runtime {
                 };
                 self.set_storage_error(message, error.log_id());
                 // 不能隐藏启动错误；不创建/覆盖另一份库，不显示伪可用的设置。
-                self.show_main();
+                self.show_recovery_main("storage_error_recovery");
             }
         }
     }
@@ -151,7 +156,10 @@ impl Runtime {
             if let Some(DesktopSetting::EntryMode(mode)) = pending.changes.first() {
                 if self.change_entry(*mode).is_err() {
                     if self.entry.get().is_none() {
-                        self.show_main();
+                        self.show_recovery_main("preference_entry_recovery");
+                        if self.finished.get() {
+                            return;
+                        }
                         self.notice(ToastKind::Error, "桌面入口不可用，关闭主窗口时将退出应用。");
                     }
                     self.notice(ToastKind::Error, "入口切换失败，正在恢复原配置。");

@@ -66,20 +66,24 @@ impl Runtime {
         if self.finished.get() || self.closing.get() {
             return;
         }
-        if self.ensure_ui().is_err() {
-            self.notice(ToastKind::Error, "无法创建主窗口，请通过入口或快捷键重试。");
-            return;
+        if self.try_show_main().is_err() {
+            self.notice(ToastKind::Error, "无法显示主窗口，请通过入口或快捷键重试。");
         }
+    }
+
+    /// 强制错误恢复需要知道显示结果；普通入口保留可重试的失败反馈。
+    pub(super) fn try_show_main(self: &Rc<Self>) -> Result<(), SwitchError> {
+        if self.finished.get() || self.closing.get() {
+            return Err(SwitchError::ShowTarget);
+        }
+        self.ensure_ui()?;
         self.hide_menu();
         let result = if self.main_visible() {
             self.show_main_window().map_err(|_| SwitchError::ShowTarget)
         } else {
             self.switch_presentation(Presentation::Main)
         };
-        if result.is_err() {
-            self.notice(ToastKind::Error, "无法显示主窗口，请通过入口或快捷键重试。");
-            return;
-        }
+        result?;
         self.emit_ui(UiEffect::Focus(FocusTarget::Main));
         // 首次创建后的列表读取只为当前今日路由；完整可见性/日期策略由 T2.3/T2.4 收敛。
         if self.today_dirty.get() && self.controller.borrow().shell_view().page_label == "今日任务"
@@ -94,6 +98,7 @@ impl Runtime {
                 false,
             );
         }
+        Ok(())
     }
 
     fn persist_ball_position(&self) {

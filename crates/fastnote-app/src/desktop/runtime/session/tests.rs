@@ -88,3 +88,36 @@ fn test_normal_hidden_startup_creates_no_main_session_until_explicit_ensure() {
         assert_eq!(calls.get(), 1);
     }
 }
+
+#[test]
+fn test_first_show_uses_live_settings_feedback_and_current_route_without_reexecuting_actions() {
+    let source = include_str!("../session.rs");
+    assert!(
+        source.contains("self.controller.borrow().shell_view()"),
+        "runtime/session.rs"
+    );
+    for restore in [
+        "self.sync_settings();",
+        "self.sync_entry_availability();",
+        "UiEffect::SetBusy(self.busy.get())",
+        "self.flush_ui_effects();",
+        "self.ensure_current_page_resources();",
+    ] {
+        assert!(source.contains(restore), "runtime/session.rs: {restore}");
+    }
+    let projection = source.split_once("if created {").unwrap().1;
+    assert!(!projection.contains("handle_action("), "runtime/session.rs");
+    assert!(!projection.contains(".dispatch("), "runtime/session.rs");
+    let resources = source
+        .split_once("fn ensure_current_page_resources(")
+        .unwrap()
+        .1
+        .split_once("/// 不跨工厂借用")
+        .unwrap()
+        .0;
+    assert!(
+        resources.contains("!self.ready.get()"),
+        "runtime/session.rs"
+    );
+    assert!(!resources.contains("request_today("), "runtime/session.rs");
+}

@@ -6,6 +6,10 @@ const SOURCES: &[(&str, &str)] = &[
     ("effects.rs", include_str!("effects.rs")),
     ("gesture.rs", include_str!("gesture.rs")),
     ("lifecycle.rs", include_str!("lifecycle.rs")),
+    (
+        "lifecycle/recovery.rs",
+        include_str!("lifecycle/recovery.rs"),
+    ),
     ("mod.rs", include_str!("mod.rs")),
     ("presentation/mod.rs", include_str!("presentation/mod.rs")),
     (

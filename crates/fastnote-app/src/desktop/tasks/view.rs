@@ -107,12 +107,9 @@ impl Runtime {
                 let tasks = self.tasks.borrow();
                 (tasks.today.clone(), tasks.collapsed)
             };
-            if let Some(view) = view {
-                ui.today_presenter
-                    .apply(ui.shell.component(), &view, collapsed);
-            }
+            view.is_some_and(|view| ui.apply_today(&view, collapsed))
         });
-        if projected.is_none() {
+        if projected != Some(true) {
             self.today_dirty.set(true);
             return;
         }
