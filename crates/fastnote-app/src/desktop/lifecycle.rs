@@ -194,6 +194,7 @@ impl Runtime {
     }
 
     pub(super) fn cleanup(&self) {
+        super::wakeup::unregister(self);
         self.pending_effects.borrow_mut().clear();
         self.theme_monitor.borrow_mut().take();
         self.geometry_timer.stop();

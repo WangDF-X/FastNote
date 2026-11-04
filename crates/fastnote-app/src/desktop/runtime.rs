@@ -1,7 +1,6 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
-use std::sync::Arc;
 
 use crossbeam_channel::{bounded, Receiver};
 use fastnote_core::{
@@ -13,7 +12,7 @@ use fastnote_platform::{
 use fastnote_ui::{
     BallMenuWindow, FloatingBall, ShellHandle, ShellUpdate, ToastKind, ToastRequest,
 };
-use slint::{ComponentHandle, Timer};
+use slint::Timer;
 
 use crate::tasks::TaskSession;
 use crate::{clock::SystemClock, controller::AppController};
@@ -23,6 +22,7 @@ use super::gesture::BallDrag;
 use super::presentation::Presentation;
 use super::theme::ThemeState;
 use super::ui_session::{with_session, UiSession};
+use super::wakeup::{make_wakeup, register};
 use super::window_frame::WindowFrameState;
 use super::worker::{DbWorker, Reply};
 
@@ -108,15 +108,7 @@ impl Runtime {
                 },
             }
         })?;
-        let weak_window = shell.component().as_weak();
-        let wake: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
-            if weak_window
-                .upgrade_in_event_loop(|window| window.invoke_desktop_wakeup())
-                .is_err()
-            {
-                tracing::debug!("UI loop unavailable during settings wakeup");
-            }
-        });
+        let wake = make_wakeup();
         let worker = DbWorker::spawn(None, wake.clone())?;
         let (native_tx, native_rx) = bounded(256);
         install_event_handlers(native_tx.clone(), wake.clone());
@@ -175,7 +167,9 @@ impl Runtime {
             task_syncing: Cell::new(false),
         });
         *target.borrow_mut() = Rc::downgrade(&runtime);
-        runtime.connect();
+        register(&runtime);
+        runtime.connect_kernel();
+        runtime.connect_ui();
         runtime.refresh_system_theme();
         Ok(runtime)
     }
@@ -211,16 +205,18 @@ impl Runtime {
     }
 
     pub(super) fn sync_settings(&self) {
-        let settings = self.settings.borrow();
+        let (entry_mode, close_behavior) = {
+            let settings = self.settings.borrow();
+            (settings.entry_mode, settings.close_behavior)
+        };
         let _ = self.with_ui(|ui| {
             ui.shell
                 .component()
-                .set_entry_mode(settings.entry_mode.as_str().into());
+                .set_entry_mode(entry_mode.as_str().into());
             ui.shell
                 .component()
-                .set_close_behavior(settings.close_behavior.as_str().into());
+                .set_close_behavior(close_behavior.as_str().into());
         });
-        drop(settings);
         self.sync_theme();
         self.sync_task_preferences();
         self.sync_task_editor();

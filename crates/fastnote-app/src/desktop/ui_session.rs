@@ -10,6 +10,8 @@ pub(super) struct UiSession {
     pub task_save_timer: Timer,
     pub task_feedback_timer: Timer,
     pub task_saving_visible: Cell<bool>,
+    /// 原生与任务回调只绑定一次；重建会话会重新初始化此标记。
+    pub callbacks_connected: Cell<bool>,
 }
 
 impl UiSession {
@@ -22,6 +24,7 @@ impl UiSession {
             task_save_timer: Timer::default(),
             task_feedback_timer: Timer::default(),
             task_saving_visible: Cell::new(false),
+            callbacks_connected: Cell::new(false),
         }
     }
 

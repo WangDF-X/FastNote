@@ -22,75 +22,8 @@ pub(super) fn native_handle(window: &Window) -> Option<NativeWindowHandle> {
 }
 
 impl Runtime {
-    pub(super) fn connect(self: &Rc<Self>) {
-        let _ = self.with_ui(|ui| {
-            let window = ui.shell.component();
-            window.on_desktop_wakeup({
-                let weak = Rc::downgrade(self);
-                move || {
-                    if let Some(runtime) = weak.upgrade() {
-                        runtime.wakeup();
-                    }
-                }
-            });
-            let weak_window = window.as_weak();
-            window.window().on_close_requested(move || {
-                // 等异步保存完成再 hide/quit，不能在 winit 借用回调里直接销毁原生窗口。
-                let _ = weak_window.upgrade_in_event_loop(|window| {
-                    window.invoke_route_action("desktop:close".into())
-                });
-                slint::CloseRequestResponse::KeepWindowShown
-            });
-            window.window().on_winit_window_event({
-                let weak = Rc::downgrade(self);
-                move |_, event| {
-                    if let Some(runtime) = weak.upgrade() {
-                        if let WindowEvent::Focused(active) = event {
-                            let _ = runtime
-                                .with_ui(|ui| ui.shell.component().set_window_active(*active));
-                            if !active {
-                                let weak = Rc::downgrade(&runtime);
-                                Timer::single_shot(Duration::ZERO, move || {
-                                    if let Some(runtime) = weak.upgrade() {
-                                        runtime.flush_task_editor();
-                                    }
-                                });
-                            }
-                        }
-                        if matches!(
-                            event,
-                            WindowEvent::ThemeChanged(_) | WindowEvent::Focused(true)
-                        ) {
-                            let weak = Rc::downgrade(&runtime);
-                            Timer::single_shot(Duration::ZERO, move || {
-                                if let Some(runtime) = weak.upgrade() {
-                                    runtime.refresh_system_theme();
-                                }
-                            });
-                        }
-                        if matches!(
-                            event,
-                            WindowEvent::Moved(_)
-                                | WindowEvent::Resized(_)
-                                | WindowEvent::ScaleFactorChanged { .. }
-                        ) {
-                            runtime.schedule_geometry();
-                            let weak = Rc::downgrade(&runtime);
-                            Timer::single_shot(Duration::ZERO, move || {
-                                if let Some(runtime) = weak.upgrade() {
-                                    runtime.sync_minimized_timers();
-                                    // 窗口创建/重建后的首个 Resized，补齐任务栏大图标。
-                                    runtime.apply_main_icon();
-                                    runtime.apply_main_caption();
-                                    runtime.sync_window_state();
-                                }
-                            });
-                        }
-                    }
-                    EventResult::Propagate
-                }
-            });
-        });
+    /// 入口回调属于内核，主窗缺失时仍保持球/托盘菜单可用。
+    pub(super) fn connect_kernel(self: &Rc<Self>) {
         self.ball.on_pointer_phase({
             let weak = Rc::downgrade(self);
             move |phase| {
@@ -186,7 +119,20 @@ impl Runtime {
                 EventResult::Propagate
             }
         });
-        self.connect_tasks();
+    }
+
+    /// 可见内容不包括托盘模式原生最小化；读取窗口状态不保留 winit 引用。
+    pub(super) fn main_content_visible(&self) -> bool {
+        self.main_visible()
+            && self
+                .with_ui(|ui| {
+                    ui.shell
+                        .component()
+                        .window()
+                        .with_winit_window(|window| !window.is_minimized().unwrap_or(false))
+                        .unwrap_or(false)
+                })
+                .unwrap_or(false)
     }
 
     pub(super) fn sync_window_state(&self) {
@@ -279,3 +225,4 @@ impl Runtime {
         Ok(())
     }
 }
+mod ui_events;

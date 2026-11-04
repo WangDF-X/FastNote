@@ -12,6 +12,7 @@ mod task_preferences;
 mod tasks;
 mod theme;
 mod ui_session;
+mod wakeup;
 mod window;
 mod window_frame;
 mod worker;
