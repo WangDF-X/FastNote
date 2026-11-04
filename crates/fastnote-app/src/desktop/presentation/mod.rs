@@ -8,6 +8,7 @@ use fastnote_ui::ToastKind;
 use slint::winit_030::WinitWindowAccessor;
 use slint::{ComponentHandle, Timer};
 
+use super::effects::{FocusTarget, UiEffect};
 use super::runtime::{Completion, Runtime};
 use super::window::native_handle;
 use state::{switch, Surfaces};
@@ -17,10 +18,13 @@ use state::{minimize_action, MinimizeAction};
 
 impl Runtime {
     pub(super) fn main_visible(&self) -> bool {
-        self.presentation.get() == Presentation::Main
+        self.presentation.get() == Presentation::Main && self.with_ui(|_| ()).is_some()
     }
 
     pub(super) fn switch_presentation(&self, target: Presentation) -> Result<(), SwitchError> {
+        if target == Presentation::Main && self.with_ui(|_| ()).is_none() {
+            return Err(SwitchError::ShowTarget);
+        }
         let capture_failed = self.presentation.get() == Presentation::Ball
             && target != Presentation::Ball
             && self.capture_ball_position().is_err();
@@ -72,12 +76,7 @@ impl Runtime {
             self.notice(ToastKind::Error, "无法显示主窗口，请通过入口或快捷键重试。");
             return;
         }
-        let _ = self.with_ui(|ui| {
-            let window = ui.shell.component().window();
-            window.set_minimized(false);
-            window.with_winit_window(|window| window.focus_window());
-            ui.shell.resume_timers();
-        });
+        self.emit_ui(UiEffect::Focus(FocusTarget::Main));
         self.persist_ball_position();
         if self.ready.get() && !self.settings.borrow().first_run_done {
             self.queue(
@@ -140,6 +139,7 @@ impl Runtime {
     }
 
     fn show_main_window(&self) -> Result<(), ()> {
+        self.flush_ui_effects();
         self.refresh_system_theme();
         self.with_ui(|ui| {
             let window = ui.shell.component().window();

@@ -18,6 +18,7 @@ use slint::{ComponentHandle, Timer};
 use crate::tasks::TaskSession;
 use crate::{clock::SystemClock, controller::AppController};
 
+use super::effects::{DesktopFeedback, PendingEffects, UiEffect};
 use super::gesture::BallDrag;
 use super::presentation::Presentation;
 use super::theme::ThemeState;
@@ -40,6 +41,8 @@ pub(super) struct PendingWrite {
 
 pub(super) struct Runtime {
     pub ui: RefCell<Option<UiSession>>,
+    pub pending_effects: RefCell<PendingEffects>,
+    pub desktop_feedback: RefCell<DesktopFeedback>,
     pub ball: FloatingBall,
     pub menu: BallMenuWindow,
     pub controller: RefCell<AppController<SystemClock>>,
@@ -125,6 +128,8 @@ impl Runtime {
         let ui = UiSession::new(shell);
         let runtime = Rc::new(Self {
             ui: RefCell::new(Some(ui)),
+            pending_effects: RefCell::new(PendingEffects::default()),
+            desktop_feedback: RefCell::new(DesktopFeedback::default()),
             ball: FloatingBall::new()?,
             menu: BallMenuWindow::new()?,
             controller: RefCell::new(controller),
@@ -194,7 +199,7 @@ impl Runtime {
 
     pub(super) fn set_busy(&self, value: bool) {
         self.busy.set(value);
-        let _ = self.with_ui(|ui| ui.shell.component().set_desktop_busy(value));
+        self.emit_ui(UiEffect::SetBusy(value));
         self.sync_task_preferences();
         self.sync_task_editor();
     }
@@ -216,13 +221,11 @@ impl Runtime {
     }
 
     pub(super) fn notice(&self, kind: ToastKind, message: impl Into<String>) {
-        let _ = self.with_ui(|ui| {
-            ui.shell.show_toast(ToastRequest {
-                kind,
-                message: message.into(),
-                action: None,
-            });
-        });
+        self.emit_ui(UiEffect::Toast(ToastRequest {
+            kind,
+            message: message.into(),
+            action: None,
+        }));
     }
 
     pub(super) fn queue(
