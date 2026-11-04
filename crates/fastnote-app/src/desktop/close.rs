@@ -3,6 +3,7 @@ use std::rc::Rc;
 use fastnote_core::{CloseBehavior, DesktopSetting};
 use fastnote_ui::{DialogKind, DialogRequest, ToastKind};
 
+use super::effects::UiEffect;
 use super::presentation::minimize_to_ball;
 use super::runtime::{Completion, Runtime};
 use crate::tasks::Transition;
@@ -21,15 +22,18 @@ fn close_plan(explicit_exit: bool, behavior: CloseBehavior, has_entry: bool) -> 
     }
 }
 
+fn restore_if_present(has_ui: bool, restore: impl FnOnce()) {
+    if has_ui {
+        restore();
+    }
+}
+
 impl Runtime {
     pub(super) fn request_close(self: &Rc<Self>, explicit_exit: bool) {
         if self.finished.get() || self.closing.get() {
             return;
         }
-        if self
-            .with_ui(|ui| ui.shell.component().get_dialog_visible())
-            .unwrap_or(false)
-        {
+        if self.dialog_blocked() {
             return;
         }
         if self.busy.get() {
@@ -55,7 +59,8 @@ impl Runtime {
 
     /// 系统最小化切回球，不把关闭设置 `quit` 误当作退出命令。
     pub(super) fn request_minimize(self: &Rc<Self>) {
-        if !minimize_to_ball(self.presentation.get(), self.entry.get())
+        if !self.main_visible()
+            || !minimize_to_ball(self.presentation.get(), self.entry.get())
             || self.finished.get()
             || self.closing.get()
             || self.busy.get()
@@ -63,7 +68,7 @@ impl Runtime {
             return;
         }
         if !self.ready.get() {
-            self.show_main();
+            restore_if_present(self.with_ui(|_| ()).is_some(), || self.show_main());
             return;
         }
         if self.defer_task_transition(Transition::Minimize) {
@@ -90,7 +95,7 @@ impl Runtime {
             self.set_busy(true);
         } else if plan == ClosePlan::Hide {
             // 系统已最小化时也必须恢复主窗，让用户看见保存队列错误。
-            self.show_main();
+            restore_if_present(self.with_ui(|_| ()).is_some(), || self.show_main());
         }
     }
 
@@ -143,20 +148,15 @@ impl Runtime {
     }
 
     pub(super) fn close_failed(self: &Rc<Self>, exit: bool, message: &str, log_id: &str) {
-        self.show_main();
+        restore_if_present(self.with_ui(|_| ()).is_some(), || self.show_main());
         self.notice(ToastKind::Error, message);
-        if exit
-            && (!self.force_allowed.get()
-                || !self
-                    .with_ui(|ui| ui.shell.component().get_dialog_visible())
-                    .unwrap_or(false))
-        {
-            self.force_allowed.set(true);
-            let _ = self.with_ui(|ui| {
-                ui.shell.show_dialog(DialogRequest::new("退出准备未完成，仍要退出？",
-                    "窗口配置保存或数据库收尾未能完成。仍然退出可能无法恢复本次位置或入口配置变化；不会重建或覆盖数据文件。",
-                    "仍然退出", DialogKind::Destructive).with_detail(log_id).with_command("desktop:force-quit"));
-            });
+        if exit && (!self.force_allowed.get() || !self.dialog_blocked()) {
+            let request = DialogRequest::new("退出准备未完成，仍要退出？",
+                "窗口配置保存或数据库收尾未能完成。仍然退出可能无法恢复本次位置或入口配置变化；不会重建或覆盖数据文件。",
+                "仍然退出", DialogKind::Destructive).with_detail(log_id).with_command("desktop:force-quit");
+            if self.emit_ui(UiEffect::Dialog(request)) {
+                self.force_allowed.set(true);
+            }
         }
     }
 }
@@ -234,5 +234,19 @@ mod tests {
         ));
         assert!(!matches_final_geometry(&changes, Some(geometry), None));
         assert!(matches_final_geometry(&[], None, None));
+    }
+
+    #[test]
+    fn test_close_failure_without_session_does_not_invoke_window_restoration() {
+        let restored = std::cell::Cell::new(false);
+        restore_if_present(false, || restored.set(true));
+        assert!(!restored.get());
+    }
+
+    #[test]
+    fn test_close_failure_with_existing_session_restores_it_once() {
+        let restored = std::cell::Cell::new(0);
+        restore_if_present(true, || restored.set(restored.get() + 1));
+        assert_eq!(restored.get(), 1);
     }
 }

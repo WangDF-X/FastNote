@@ -1,6 +1,6 @@
 use std::cell::{Cell, RefCell};
 
-use fastnote_ui::{ShellHandle, TodayPresenter};
+use fastnote_ui::{ShellHandle, ShellView, TodayPresenter};
 use slint::Timer;
 
 /// SHELL-03 T1.1：主窗及页面资源的唯一持有者，不强持有 Runtime。
@@ -23,6 +23,21 @@ impl UiSession {
             task_feedback_timer: Timer::default(),
             task_saving_visible: Cell::new(false),
         }
+    }
+
+    /// 仅应用已由内核确认的路由展示，不能重新分发导航/保存/退出动作。
+    pub(super) fn apply_route_view(&self, view: &ShellView) {
+        let Self { shell, .. } = self;
+        let window = shell.component();
+        window.set_current_page(view.page_label.into());
+        window.set_page_title(view.title.into());
+        window.set_route_context(view.context.clone().into());
+        window.set_route_debug(view.route_debug.clone().into());
+        window.set_can_go_back(view.can_go_back);
+        window.set_plan_detail(view.is_plan_detail);
+        window.set_general_settings(view.is_general_settings);
+        window.set_settings_section(view.settings_section.clone().into());
+        window.invoke_focus_route_header();
     }
 }
 
@@ -133,5 +148,29 @@ mod tests {
             include_str!("lifecycle.rs").contains("self.task_day_timer.stop();"),
             "lifecycle.rs"
         );
+    }
+
+    #[test]
+    fn test_route_projection_matches_shell_view_without_reexecuting_actions() {
+        let app = include_str!("ui_session.rs")
+            .split_once("impl Drop for UiSession")
+            .unwrap()
+            .0;
+        let shared = include_str!("../../../fastnote-ui/src/shell/view.rs");
+        for setter in [
+            "set_current_page",
+            "set_page_title",
+            "set_route_context",
+            "set_route_debug",
+            "set_can_go_back",
+            "set_plan_detail",
+            "set_general_settings",
+            "set_settings_section",
+        ] {
+            assert!(app.contains(setter), "ui_session.rs: {setter}");
+            assert!(shared.contains(setter), "shell/view.rs: {setter}");
+        }
+        assert!(!app.contains(".dispatch("), "ui_session.rs");
+        assert!(!app.contains("handle_action("), "ui_session.rs");
     }
 }

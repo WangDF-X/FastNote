@@ -80,6 +80,8 @@ pub(super) struct Runtime {
     pub next_id: Cell<u64>,
     pub pending: RefCell<HashMap<u64, PendingWrite>>,
     pub tasks: RefCell<TaskSession>,
+    /// 无会话导航及后续任务事件只失效，进入今日页时再查询。
+    pub today_dirty: Cell<bool>,
     /// Q-SHELL-10：复用既有日期检测，随内核常驻而非随页面停止。
     pub task_day_timer: Timer,
     pub task_syncing: Cell<bool>,
@@ -165,6 +167,7 @@ impl Runtime {
             next_id: Cell::new(1),
             pending: RefCell::new(HashMap::new()),
             tasks: RefCell::new(TaskSession::new()),
+            today_dirty: Cell::new(true),
             task_day_timer: Timer::default(),
             task_syncing: Cell::new(false),
         });

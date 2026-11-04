@@ -1,15 +1,23 @@
+mod dispatch;
+
 use std::rc::Rc;
 
 use fastnote_core::{CloseBehavior, DesktopSetting, EntryMode, ThemeMode};
 use fastnote_platform::{EntryAction, NativeEvent};
 use fastnote_ui::{ShellUpdate, ToastKind};
 
+use super::effects::UiEffect;
 use super::runtime::{Completion, Runtime};
 use crate::routing::parse_action;
 use crate::tasks::Transition;
 
+use dispatch::{dispatch_or_handle, should_refresh_today};
+
 impl Runtime {
     pub(super) fn handle_action(self: &Rc<Self>, action: &str) -> ShellUpdate {
+        if self.finished.get() {
+            return self.unchanged_shell();
+        }
         if self.handle_task_preferences_action(action) || self.handle_task_action(action) {
             return ShellUpdate {
                 view: self.controller.borrow().shell_view(),
@@ -27,7 +35,7 @@ impl Runtime {
             "desktop:retry" => {
                 if !self.busy.get() && self.worker.reload().is_ok() {
                     self.set_busy(true);
-                    let _ = self.with_ui(|ui| ui.shell.component().set_desktop_state(0));
+                    self.set_desktop_state(0);
                 }
             }
             "desktop:entry:ball" => self.preference(DesktopSetting::EntryMode(EntryMode::Ball)),
@@ -48,9 +56,7 @@ impl Runtime {
             _ => {
                 let navigation = action.starts_with("navigate:") || action == "back";
                 if navigation
-                    && (self
-                        .with_ui(|ui| ui.shell.component().get_dialog_visible())
-                        .unwrap_or(false)
+                    && (self.dialog_blocked()
                         || (parse_action(action).is_ok()
                             && self.defer_task_transition(Transition::Navigate(action.to_owned()))))
                 {
@@ -62,8 +68,9 @@ impl Runtime {
                 }
                 let update = self.controller.borrow_mut().handle_action(action);
                 if update.route_changed {
+                    self.today_dirty.set(true);
                     self.close_task_editor();
-                    if update.view.page_label == "今日任务" {
+                    if should_refresh_today(&update, self.with_ui(|_| ()).is_some()) {
                         self.request_today();
                     }
                 }
@@ -78,7 +85,13 @@ impl Runtime {
     }
 
     fn preference(self: &Rc<Self>, change: DesktopSetting) {
-        if !self.can_task_interact() {
+        if !can_change_desktop(
+            self.ready.get(),
+            self.finished.get(),
+            self.closing.get(),
+            self.busy.get(),
+            self.dialog_blocked(),
+        ) {
             return;
         }
         let previous = match &change {
@@ -138,7 +151,7 @@ impl Runtime {
         match action {
             Some(EntryAction::Show) => self.show_main(),
             Some(EntryAction::Navigate(page)) => {
-                let _ = self.with_ui(|ui| ui.shell.dispatch(format!("navigate:{page}")));
+                self.dispatch_action(format!("navigate:{page}"));
                 self.show_main();
             }
             Some(EntryAction::Switch(mode)) => self.preference(DesktopSetting::EntryMode(mode)),
@@ -150,9 +163,41 @@ impl Runtime {
     pub(super) fn menu_action(self: &Rc<Self>, action: String) {
         self.hide_menu();
         let navigate = action.starts_with("navigate:");
-        let _ = self.with_ui(|ui| ui.shell.dispatch(action));
+        self.dispatch_action(action);
         if navigate {
             self.show_main();
+        }
+    }
+
+    /// 桌面入口不依赖外壳存在；无会话时立即确认路由，仅排队展示，不重放业务。
+    pub(super) fn dispatch_action(self: &Rc<Self>, action: String) {
+        if self.finished.get() {
+            return;
+        }
+        let update = dispatch_or_handle(
+            &action,
+            |action| {
+                self.with_ui(|ui| ui.shell.dispatch(action.to_owned()))
+                    .is_some()
+            },
+            |action| self.handle_action(action),
+        );
+        if let Some(update) = update {
+            if update.route_changed {
+                self.pending_effects.borrow_mut().discard_route_toasts();
+                self.emit_ui(UiEffect::Navigate(update.view.route_debug));
+            }
+            if let Some(issue) = update.issue {
+                self.notice(ToastKind::Error, issue.message());
+            }
+        }
+    }
+
+    fn unchanged_shell(&self) -> ShellUpdate {
+        ShellUpdate {
+            view: self.controller.borrow().shell_view(),
+            route_changed: false,
+            issue: None,
         }
     }
 
@@ -175,6 +220,16 @@ impl Runtime {
             );
         }
     }
+}
+
+fn can_change_desktop(
+    ready: bool,
+    finished: bool,
+    closing: bool,
+    busy: bool,
+    dialog: bool,
+) -> bool {
+    ready && !finished && !closing && !busy && !dialog
 }
 
 fn should_write_preference(
@@ -241,6 +296,20 @@ mod tests {
                 None,
                 false
             ));
+        }
+    }
+
+    #[test]
+    fn test_desktop_preferences_do_not_require_ui_but_respect_kernel_and_modal_guards() {
+        assert!(can_change_desktop(true, false, false, false, false));
+        for (ready, finished, closing, busy, dialog) in [
+            (false, false, false, false, false),
+            (true, true, false, false, false),
+            (true, false, true, false, false),
+            (true, false, false, true, false),
+            (true, false, false, false, true),
+        ] {
+            assert!(!can_change_desktop(ready, finished, closing, busy, dialog));
         }
     }
 }

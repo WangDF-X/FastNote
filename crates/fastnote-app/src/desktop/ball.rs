@@ -53,7 +53,7 @@ impl Runtime {
         };
         if result.is_ok() {
             self.entry.set(Some(mode));
-            let _ = self.with_ui(|ui| ui.shell.component().set_entry_available(true));
+            self.sync_entry_availability();
             if mode == EntryMode::Ball {
                 self.tray.borrow_mut().take();
             }
@@ -78,7 +78,7 @@ impl Runtime {
         if !restored {
             self.entry.set(None);
         }
-        let _ = self.with_ui(|ui| ui.shell.component().set_entry_available(restored));
+        self.sync_entry_availability();
         Err(())
     }
 
