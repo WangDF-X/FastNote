@@ -7,7 +7,7 @@ mod policy;
 mod replies;
 mod requests;
 mod transitions;
-mod view;
+pub(in crate::desktop) mod view;
 
 #[cfg(test)]
 mod contract;

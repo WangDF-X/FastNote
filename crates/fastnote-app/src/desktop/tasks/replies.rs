@@ -198,6 +198,7 @@ impl Runtime {
             self.today_queried(id, result);
             return;
         };
+        let stamp = self.tasks.borrow_mut().read_stamps.remove(&id);
         if matches!(purpose, DetailPurpose::Open(_)) && self.tasks.borrow().latest_open != id {
             return;
         }
@@ -206,6 +207,17 @@ impl Runtime {
         }
         if matches!(purpose, DetailPurpose::Open(_)) {
             self.tasks.borrow_mut().latest_open = 0;
+        }
+        if matches!(purpose, DetailPurpose::Open(_) | DetailPurpose::Refresh(_))
+            && !stamp.is_some_and(|stamp| self.ui_epoch.get().accepts(stamp))
+        {
+            self.detail_dirty.set(true);
+            tracing::info!(
+                phase = "page_reply_discarded",
+                request_id = id,
+                query_scope = "task_detail"
+            );
+            return;
         }
         let page_visible = self.today_page_visible();
         if !may_apply_detail(purpose, page_visible) {

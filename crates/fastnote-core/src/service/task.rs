@@ -1,4 +1,4 @@
-use crate::derive::{build_today_view, derive_task_summary};
+use crate::derive::{derive_task_summary, TodayCollector};
 use crate::{
     AppEvent, Command, CommandResult, PlanId, Query, QueryResult, ReminderOwner, Task, TaskClock,
     TaskDetail, TaskError, TaskId, TaskRepository, TaskScope, TaskStatus, TaskSummary, WarningCode,
@@ -83,13 +83,24 @@ impl<'a, R: TaskRepository, C: TaskClock> TaskService<'a, R, C> {
     /// 统一今日分组/排序或详情标记；不存在返回稳定领域错误。
     pub fn query(&self, query: Query) -> Result<QueryResult, R::Error> {
         match query {
-            Query::Today { date, limits } => Ok(QueryResult::Today(build_today_view(
-                self.repository.today_tasks(date)?,
-                date,
-                &self.clock,
-                self.repository.today_preferences()?,
-                limits,
-            ))),
+            Query::Today { date, limits } => {
+                let mut collector = TodayCollector::new(
+                    date,
+                    &self.clock,
+                    self.repository.today_preferences()?,
+                    limits,
+                );
+                self.repository
+                    .visit_today_tasks(date, &mut |task| collector.push(task))?;
+                let mut view = collector.finish();
+                self.repository.complete_today_projection(&mut view)?;
+                for section in &mut view.sections {
+                    for task in &mut section.items {
+                        task.is_blocked = task.context.blocking_count > 0;
+                    }
+                }
+                Ok(QueryResult::Today(view))
+            }
             Query::TaskDetail(id) => Ok(QueryResult::TaskDetail(Box::new(self.detail(id)?))),
         }
     }

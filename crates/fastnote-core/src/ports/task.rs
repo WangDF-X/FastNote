@@ -1,6 +1,6 @@
 use chrono::NaiveDate;
 
-use crate::{Task, TaskDetail, TaskError, TaskId, TaskSummary, TodayPreferences};
+use crate::{Task, TaskDetail, TaskError, TaskId, TaskSummary, TodayPreferences, TodayView};
 
 /// 统一任务仓储；实现必须在 DB 线程内使用单连接和原子写事务。
 pub trait TaskRepository {
@@ -9,6 +9,21 @@ pub trait TaskRepository {
 
     /// 今日候选投影，不读取长描述；core 统一归组和派生。
     fn today_tasks(&self, date: NaiveDate) -> Result<Vec<TaskSummary>, Self::Error>;
+    /// 有界查询的逐行候选入口；关系信息可延后为已选前缀补齐，实际 SQLite 必须流式读取。
+    fn visit_today_tasks(
+        &self,
+        date: NaiveDate,
+        visitor: &mut dyn FnMut(TaskSummary),
+    ) -> Result<(), Self::Error> {
+        for task in self.today_tasks(date)? {
+            visitor(task);
+        }
+        Ok(())
+    }
+    /// 仅补齐排序前缀的关系投影，不读取长正文；默认实现用于已返回完整投影的假仓储。
+    fn complete_today_projection(&self, _view: &mut TodayView) -> Result<(), Self::Error> {
+        Ok(())
+    }
     /// 同一快照中的任务与计划/子任务/依赖信息；不存在为 None。
     fn task_detail(&self, id: TaskId) -> Result<Option<TaskDetail>, Self::Error>;
     /// 读取已登记的今日偏好；非法值回退默认。

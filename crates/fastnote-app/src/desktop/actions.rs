@@ -57,6 +57,7 @@ impl Runtime {
                 let navigation = action.starts_with("navigate:") || action == "back";
                 if navigation
                     && (self.dialog_blocked()
+                        || self.transient_input_blocks_close()
                         || (parse_action(action).is_ok()
                             && self.defer_task_transition(Transition::Navigate(action.to_owned()))))
                 {
@@ -68,9 +69,14 @@ impl Runtime {
                 }
                 let update = self.controller.borrow_mut().handle_action(action);
                 if update.route_changed {
+                    self.capture_task_resume();
                     self.today_dirty.set(true);
                     self.tasks.borrow_mut().invalidate_today_read();
                     self.close_task_editor();
+                    self.release_heavy_page();
+                    if let Some(feedback) = self.retained_feedback.borrow_mut().as_mut() {
+                        feedback.discard_route_toasts();
+                    }
                     if self.main_content_visible() {
                         self.ensure_current_page_resources();
                     }
@@ -165,6 +171,7 @@ impl Runtime {
     }
 
     pub(super) fn menu_action(self: &Rc<Self>, action: String) {
+        self.check_ui_lease();
         self.hide_menu();
         let navigate = action.starts_with("navigate:");
         self.dispatch_action(action);

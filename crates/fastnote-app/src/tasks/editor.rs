@@ -96,11 +96,38 @@ impl EditorSession {
     }
 
     pub(crate) fn dirty(&self) -> bool {
-        self.fields != DraftFields::from_task(&self.detail.task)
+        let task = &self.detail.task;
+        self.fields.title != task.title
+            || self.fields.description != task.description
+            || self.fields.start_date
+                != task
+                    .start_date
+                    .map(|date| date.to_string())
+                    .unwrap_or_default()
+            || self.fields.due_date
+                != task
+                    .due_date
+                    .map(|date| date.to_string())
+                    .unwrap_or_default()
+            || self.fields.start_time
+                != task
+                    .start_time
+                    .map(|time| time.format("%H:%M").to_string())
+                    .unwrap_or_default()
+            || self.fields.due_time
+                != task
+                    .due_time
+                    .map(|time| time.format("%H:%M").to_string())
+                    .unwrap_or_default()
     }
 
     pub(crate) fn unfinished(&self) -> bool {
         self.dirty() || self.in_flight.is_some()
+    }
+
+    /// 已提交但未读回、失败提示都必须先解决，不能被回收当作干净正文。
+    pub(crate) fn resource_protected(&self) -> bool {
+        self.unfinished() || self.committed || self.error.is_some()
     }
 
     pub(crate) fn edit(&mut self, field: &str, value: String) -> Result<bool, TaskError> {
@@ -213,6 +240,7 @@ impl EditorSession {
         } else {
             self.fields = DraftFields::from_task(&detail.task);
             self.detail = detail;
+            self.error = None;
         }
     }
 }

@@ -15,13 +15,19 @@ impl Runtime {
         if self.finished.get() {
             return Err(SwitchError::ShowTarget);
         }
+        self.check_ui_lease();
+        let mut epoch = self.ui_epoch.get();
+        if self.ui.borrow().is_none() && !epoch.mount() {
+            return Err(SwitchError::ShowTarget);
+        }
+        let generation = epoch.session().ok_or(SwitchError::ShowTarget)?;
         let created = ensure_session(&self.ui, || {
             let initial = self.controller.borrow().shell_view();
             let target = Rc::new(RefCell::new(Rc::downgrade(self)));
             let shell = ShellHandle::new(initial.clone(), {
                 let target = target.clone();
                 move |action| {
-                    let runtime = target.borrow().upgrade();
+                    let runtime = target.borrow().upgrade().filter(|runtime| runtime.ui_epoch.get().session() == Some(generation));
                     match runtime {
                         Some(runtime) => runtime.handle_action(&action),
                         None => ShellUpdate { view: initial.clone(), route_changed: false, issue: None },
@@ -34,16 +40,22 @@ impl Runtime {
             Ok::<_, SwitchError>(UiSession::new(shell))
         })?;
         if created {
+            self.ui_epoch.set(epoch);
+            self.ui_mounted();
             self.main_icon.set(0);
             self.main_caption.set(0);
             self.main_frame.set(None);
             self.connect_ui();
+            if let Some(feedback) = self.retained_feedback.borrow_mut().take() {
+                let _ = self.with_ui(|ui| ui.shell.restore_retained_feedback(feedback));
+            }
             self.sync_settings();
             self.sync_entry_availability();
             self.emit_ui(UiEffect::SetBusy(self.busy.get()));
             self.flush_ui_effects();
             tracing::info!(
                 phase = "ui_session_created",
+                session_generation = generation,
                 "main session constructed on demand"
             );
         }

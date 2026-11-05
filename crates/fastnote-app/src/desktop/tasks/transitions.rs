@@ -46,7 +46,7 @@ impl Runtime {
         self: &Rc<Self>,
         transition: Transition,
     ) -> bool {
-        if !self.tasks.borrow().unfinished() {
+        if !self.tasks.borrow().transition_protected() {
             return false;
         }
         self.tasks.borrow_mut().after_save = Some(transition);
@@ -76,7 +76,7 @@ impl Runtime {
             .borrow()
             .editor
             .as_ref()
-            .is_some_and(|editor| editor.unfinished());
+            .is_some_and(|editor| editor.resource_protected());
         if unfinished {
             let has_transition = self.tasks.borrow().after_save.is_some();
             if has_transition && self.flush_task_editor() == FlushStatus::Blocked {

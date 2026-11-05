@@ -32,7 +32,7 @@ pub(crate) fn query(
 ) -> Result<QueryResult, TaskStoreError> {
     let result = store
         .ok_or_else(unavailable)
-        .and_then(|store| TaskService::new(store, SystemClock).query(query));
+        .and_then(|store| store.query_tasks(query, SystemClock));
     diagnose(path, "task_query", &result);
     result
 }

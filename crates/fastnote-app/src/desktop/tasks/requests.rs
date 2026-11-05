@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::clock::SystemClock;
 use crate::desktop::effects::{FocusTarget, UiEffect};
 use crate::desktop::runtime::Runtime;
-use crate::tasks::{DetailPurpose, PendingTask, Transition};
+use crate::tasks::{DetailPurpose, PageScope, PendingTask, Transition};
 
 use super::policy::{detail_query_pending, kernel_available, may_query, save_read_failed};
 use super::view::state::while_syncing;
@@ -81,6 +81,9 @@ impl Runtime {
         {
             return;
         }
+        let Some(stamp) = self.ui_epoch.get().stamp(PageScope::Today) else {
+            return;
+        };
         let date = self.observe_task_clock().sample.local.date();
         let id = self.next_id.get();
         self.next_id.set(id.saturating_add(1));
@@ -103,11 +106,14 @@ impl Runtime {
             let mut tasks = self.tasks.borrow_mut();
             tasks.latest_today = id;
             tasks.today_requery = false;
+            tasks.read_stamps.insert(id, stamp);
         }
         tracing::info!(
             phase = "page_query_queued",
             request_id = id,
-            query_scope = "today"
+            query_scope = "today",
+            session_generation = stamp.session_generation,
+            page_generation = stamp.page_generation
         );
         if self.tasks.borrow().today.is_none() {
             let _ = self.with_ui(|ui| ui.shell.component().set_today_state(0));
@@ -147,6 +153,15 @@ impl Runtime {
             | DetailPurpose::SaveAck(id)
             | DetailPurpose::Delete(id) => id,
         };
+        let stamp = match purpose {
+            DetailPurpose::Open(_) | DetailPurpose::Refresh(_) => {
+                let Some(stamp) = self.ui_epoch.get().stamp(PageScope::Today) else {
+                    return false;
+                };
+                Some(stamp)
+            }
+            DetailPurpose::SaveAck(_) | DetailPurpose::Delete(_) => None,
+        };
         if detail_query_pending(&self.tasks.borrow(), purpose) {
             return true;
         }
@@ -162,8 +177,17 @@ impl Runtime {
         {
             let mut tasks = self.tasks.borrow_mut();
             tasks.queries.insert(id, purpose);
+            if let Some(stamp) = stamp {
+                tasks.read_stamps.insert(id, stamp);
+            }
             match purpose {
-                DetailPurpose::Open(_) => tasks.latest_open = id,
+                DetailPurpose::Open(task_id) => {
+                    tasks.latest_open = id;
+                    if tasks.resume.selected != Some(task_id) {
+                        tasks.resume.focus_pending = false;
+                    }
+                    tasks.resume.selected = Some(task_id);
+                }
                 DetailPurpose::Delete(_) => tasks.latest_delete = id,
                 _ => {}
             }
@@ -176,7 +200,9 @@ impl Runtime {
                 DetailPurpose::Refresh(_) => "task_refresh",
                 DetailPurpose::SaveAck(_) => "task_save_ack",
                 DetailPurpose::Delete(_) => "task_delete_confirmation",
-            }
+            },
+            session_generation = stamp.map_or(0, |stamp| stamp.session_generation),
+            page_generation = stamp.map_or(0, |stamp| stamp.page_generation)
         );
         if matches!(purpose, DetailPurpose::Open(_)) {
             let _ = self.with_ui(|ui| {
@@ -322,9 +348,13 @@ impl Runtime {
             self.emit_ui(UiEffect::Focus(FocusTarget::TaskEditor(id)));
             return;
         }
-        let weak = Rc::downgrade(self);
+        let weak = self.page_target();
         Timer::single_shot(Duration::ZERO, move || {
             if let Some(runtime) = weak.upgrade() {
+                if runtime.tasks.borrow().resume.focus_pending {
+                    runtime.defer_task_resume();
+                    return;
+                }
                 runtime.emit_ui(UiEffect::Focus(FocusTarget::TaskEditor(id)));
             }
         });

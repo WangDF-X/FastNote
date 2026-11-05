@@ -9,12 +9,13 @@ use fastnote_core::{
     BallPosition, DesktopSetting, DesktopSettings, EntryMode, ResolvedGeometry, WindowGeometry,
 };
 use fastnote_platform::{
-    install_event_handlers, NativeEvent, WindowsHotkey, WindowsThemeMonitor, WindowsTray,
+    install_event_handlers, NativeEvent, NativeWindowHandle, WindowsHotkey, WindowsThemeMonitor,
+    WindowsTray,
 };
-use fastnote_ui::{BallMenuWindow, FloatingBall, ToastKind, ToastRequest};
+use fastnote_ui::{BallMenuWindow, FloatingBall, RetainedFeedback, ToastKind, ToastRequest};
 use slint::Timer;
 
-use crate::tasks::TaskSession;
+use crate::tasks::{TaskSession, UiEpoch};
 use crate::{
     clock::{ClockTracker, SystemClock},
     controller::AppController,
@@ -22,6 +23,7 @@ use crate::{
 
 use super::effects::{DesktopFeedback, PendingEffects, UiEffect};
 use super::gesture::BallDrag;
+use super::lease::UiLease;
 use super::presentation::Presentation;
 use super::theme::ThemeState;
 use super::ui_session::{with_session, UiSession};
@@ -44,6 +46,13 @@ pub(super) struct PendingWrite {
 
 pub(super) struct Runtime {
     pub ui: RefCell<Option<UiSession>>,
+    pub ui_epoch: Cell<UiEpoch>,
+    pub ui_lease: RefCell<UiLease>,
+    pub hot_lease_timer: Timer,
+    pub retained_feedback: RefCell<Option<RetainedFeedback>>,
+    pub main_native: Cell<Option<NativeWindowHandle>>,
+    /// 实际 hide 成功即记录，入口显示/重模型清理的耗时不能额外延长 120 秒。
+    pub ui_hidden_at: Cell<Option<u64>>,
     pub pending_effects: RefCell<PendingEffects>,
     pub desktop_feedback: RefCell<DesktopFeedback>,
     pub ball: FloatingBall,
@@ -79,6 +88,8 @@ pub(super) struct Runtime {
     /// 原生外沿的最近配置；窗口重建时清空，不能只按 HWND 数值去重。
     pub main_frame: Cell<Option<WindowFrameState>>,
     pub menu_open: Cell<bool>,
+    pub ball_native_pending: Cell<bool>,
+    pub menu_native_pending: Cell<bool>,
     pub drag: RefCell<Option<BallDrag>>,
     pub next_id: Cell<u64>,
     pub pending: RefCell<HashMap<u64, PendingWrite>>,
@@ -115,6 +126,12 @@ impl Runtime {
             .ok();
         let runtime = Rc::new(Self {
             ui: RefCell::new(None),
+            ui_epoch: Cell::new(UiEpoch::default()),
+            ui_lease: RefCell::new(UiLease::default()),
+            hot_lease_timer: Timer::default(),
+            retained_feedback: RefCell::new(None),
+            main_native: Cell::new(None),
+            ui_hidden_at: Cell::new(None),
             pending_effects: RefCell::new(PendingEffects::default()),
             desktop_feedback: RefCell::new(DesktopFeedback::default()),
             ball: FloatingBall::new()?,
@@ -148,6 +165,8 @@ impl Runtime {
             main_caption: Cell::new(0),
             main_frame: Cell::new(None),
             menu_open: Cell::new(false),
+            ball_native_pending: Cell::new(false),
+            menu_native_pending: Cell::new(false),
             drag: RefCell::new(None),
             next_id: Cell::new(1),
             pending: RefCell::new(HashMap::new()),
@@ -178,6 +197,7 @@ impl Runtime {
     }
 
     pub(super) fn wakeup(self: &Rc<Self>) {
+        self.check_ui_lease();
         while let Some(reply) = self.worker.try_reply() {
             match reply {
                 Reply::Loaded(result) => self.loaded(result),
@@ -193,6 +213,7 @@ impl Runtime {
             self.native_action(event);
         }
         self.sync_minimized_timers();
+        self.check_ui_lease();
     }
 
     pub(super) fn set_busy(&self, value: bool) {

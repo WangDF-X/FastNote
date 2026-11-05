@@ -31,7 +31,14 @@ impl Runtime {
                 let transition = self.tasks.borrow_mut().after_save.take();
                 self.failed_task_transition(transition);
             }
-            DetailPurpose::Open(_) => {
+            DetailPurpose::Open(id) => {
+                if error.domain_error() == Some(TaskError::NotFound) {
+                    self.tasks
+                        .borrow_mut()
+                        .resume
+                        .selected
+                        .take_if(|selected| *selected == id);
+                }
                 self.task_syncing.set(true);
                 let _ = self.with_ui(|ui| {
                     ui.shell.component().set_task_detail_loading(false);
@@ -40,6 +47,7 @@ impl Runtime {
                         .set_task_detail_visible(self.tasks.borrow().editor.is_some());
                 });
                 self.task_syncing.set(false);
+                self.defer_task_resume();
             }
             DetailPurpose::Refresh(id) => {
                 let clean_deleted =

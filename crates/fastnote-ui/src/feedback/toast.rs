@@ -9,6 +9,8 @@ use std::collections::VecDeque;
 pub const MAX_VISIBLE_TOASTS: usize = 3;
 /// 相同文案在该窗口内只显示一条。
 pub const DEDUP_WINDOW_MS: u64 = 2_000;
+/// P3：隐藏/卸载期间只保留有界的安全反馈，不改变活动态队列的 FIFO 行为。
+pub const MAX_RETAINED_TOASTS: usize = 32;
 
 const SUCCESS_MS: u64 = 3_000;
 const INFO_MS: u64 = 3_000;
@@ -182,6 +184,23 @@ impl ToastQueue {
         self.pending.clear();
     }
 
+    /// 移交冷驻留前收紧容量，保留可见项的剩余时长/ID；重建后不保留旧鼠标悬停。
+    pub fn retain_for_unload(&mut self) {
+        let limit = MAX_RETAINED_TOASTS.saturating_sub(self.visible.len());
+        while self.pending.len() > limit {
+            self.pending.pop_front();
+        }
+        if self.recent.len() > MAX_RETAINED_TOASTS {
+            self.recent.drain(..self.recent.len() - MAX_RETAINED_TOASTS);
+        }
+        for item in &mut self.visible {
+            item.hovered = false;
+        }
+        self.visible.shrink_to_fit();
+        self.pending.shrink_to_fit();
+        self.recent.shrink_to_fit();
+    }
+
     fn is_duplicate(&self, message: &str) -> bool {
         self.recent.iter().any(|(seen, _)| seen == message)
     }
@@ -215,6 +234,8 @@ impl ToastQueue {
 }
 
 #[cfg(test)]
+mod retention_tests;
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -223,17 +244,6 @@ mod tests {
             kind,
             message: message.to_owned(),
             action: None,
-        }
-    }
-
-    fn with_action(kind: ToastKind, message: &str, command: &str) -> ToastRequest {
-        ToastRequest {
-            kind,
-            message: message.to_owned(),
-            action: Some(ToastAction {
-                label: "查看".to_owned(),
-                command: command.to_owned(),
-            }),
         }
     }
 
@@ -341,32 +351,6 @@ mod tests {
 
         assert_eq!(queue.visible().len(), 1);
         assert_eq!(queue.visible()[0].message, "第一条");
-    }
-
-    #[test]
-    fn test_take_action_returns_command_and_closes_toast() {
-        let mut queue = ToastQueue::new();
-        let PushOutcome::Shown(id) = queue.push(with_action(
-            ToastKind::Success,
-            "已创建任务",
-            "navigate:今日任务",
-        )) else {
-            panic!("toast should be shown immediately");
-        };
-
-        assert_eq!(queue.take_action(id).as_deref(), Some("navigate:今日任务"));
-        assert!(queue.is_empty());
-    }
-
-    #[test]
-    fn test_take_action_without_action_keeps_toast() {
-        let mut queue = ToastQueue::new();
-        let PushOutcome::Shown(id) = queue.push(request(ToastKind::Info, "已切换")) else {
-            panic!("toast should be shown immediately");
-        };
-
-        assert_eq!(queue.take_action(id), None);
-        assert_eq!(queue.visible().len(), 1);
     }
 
     #[test]

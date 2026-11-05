@@ -1,5 +1,6 @@
 use std::cell::{Cell, RefCell};
 
+use super::presentation::activation::MainActivation;
 use fastnote_core::TodayView;
 use fastnote_ui::{ShellHandle, ShellView, TodayPresenter};
 use slint::Timer;
@@ -15,6 +16,7 @@ pub(super) struct UiSession {
     pub callbacks_connected: Cell<bool>,
     /// 只跟踪原生内容的恢复边沿，避免每次 worker 唤醒都重启页面查询。
     pub content_active: Cell<bool>,
+    pub main_activation: Cell<MainActivation>,
 }
 
 impl UiSession {
@@ -28,6 +30,7 @@ impl UiSession {
             task_saving_visible: Cell::new(false),
             callbacks_connected: Cell::new(false),
             content_active: Cell::new(false),
+            main_activation: Cell::new(MainActivation::Idle),
         }
     }
 
@@ -35,8 +38,40 @@ impl UiSession {
     pub(super) fn ensure_page_resources(&self, page: &str) -> bool {
         let Self { shell, .. } = self;
         ensure_page_resource(&self.today_presenter, page, || {
-            TodayPresenter::new(shell.component())
+            let presenter = TodayPresenter::new(shell.component());
+            shell.component().set_today_mounted(true);
+            presenter
         })
+    }
+
+    /// P4：先丢弃页面绑定及重模型，再允许外壳进入限时热驻留。
+    pub(super) fn release_page_resources(&self) {
+        let Self { shell, .. } = self;
+        if let Some(presenter) = self.today_presenter.borrow_mut().take() {
+            presenter.release(shell.component());
+        }
+        self.release_editor_resources();
+        shell.component().set_today_state(0);
+        self.task_save_timer.stop();
+        self.task_feedback_timer.stop();
+    }
+
+    /// 关闭已保存详情也必须清空控件绑定的正文，不能仅让抽屉不可见。
+    pub(super) fn release_editor_resources(&self) {
+        let Self { shell, .. } = self;
+        let window = shell.component();
+        window.set_task_detail_visible(false);
+        window.set_task_detail_loading(false);
+        window.set_task_title("".into());
+        window.set_task_description("".into());
+        window.set_task_start_date("".into());
+        window.set_task_start_time("".into());
+        window.set_task_due_date("".into());
+        window.set_task_due_time("".into());
+        window.set_task_context("".into());
+        window.set_task_selected_id("".into());
+        window.set_task_error("".into());
+        window.set_task_save_label("".into());
     }
 
     /// 回包只能投影已经安装的模型，不能在此顺手加载页面。

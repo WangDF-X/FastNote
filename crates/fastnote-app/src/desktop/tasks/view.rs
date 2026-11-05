@@ -1,4 +1,4 @@
-pub(super) mod state;
+pub(in crate::desktop) mod state;
 
 use fastnote_core::{TaskClock, TaskError, TaskId};
 use fastnote_store::{StoreError, TaskStoreError};
@@ -175,6 +175,7 @@ impl Runtime {
             ui.task_save_timer.stop();
             ui.task_feedback_timer.stop();
             while_syncing(&self.task_syncing, || {
+                ui.release_editor_resources();
                 let window = ui.shell.component();
                 window.set_task_detail_visible(false);
                 window.set_task_detail_loading(false);
@@ -198,6 +199,7 @@ impl Runtime {
         let _ = self.with_ui(|ui| {
             ui.task_save_timer.stop();
             ui.task_feedback_timer.stop();
+            while_syncing(&self.task_syncing, || ui.release_editor_resources());
         });
         self.sync_task_editor();
         true

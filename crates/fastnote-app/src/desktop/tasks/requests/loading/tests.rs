@@ -131,7 +131,7 @@ fn test_route_queries_wait_for_projection_and_show_queries_wait_for_real_visibil
         "tasks/requests/loading.rs"
     );
     assert!(
-        deferred.contains("Rc::downgrade(self)"),
+        deferred.contains("self.page_target()"),
         "tasks/requests/loading.rs"
     );
     let presentation = include_str!("../../../presentation/mod.rs");

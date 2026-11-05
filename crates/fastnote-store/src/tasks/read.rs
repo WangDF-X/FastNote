@@ -9,6 +9,9 @@ use rusqlite::{params, types::Type, Connection, OptionalExtension, Row};
 
 use super::TaskStoreError;
 
+mod projection;
+pub(super) use projection::complete_today;
+
 // 列表不读取长描述/后代计数。统一列顺序供同一解码器使用。
 const COLUMNS: &str = "t.id, t.plan_id, t.parent_id, t.kind, t.title, {description},
     t.status, t.priority, t.start_date, t.due_date, t.completed_at,
@@ -40,26 +43,58 @@ fn columns(detail: bool) -> String {
         )
 }
 
+// 分组/排序仅需标量字段；关系子查询延后为已选 200–1000 条执行，避免对全部历史求计数。
+const CANDIDATE_COLUMNS: &str = "t.id,t.plan_id,t.parent_id,t.kind,t.title,'',t.status,t.priority,
+    t.start_date,t.due_date,t.completed_at,t.status_changed_at,t.sort_order,t.created_at,t.updated_at,
+    NULL,NULL,0,0,0,0,0,0,t.start_time,t.due_time";
+
 pub(super) fn today(
     connection: &Connection,
     date: NaiveDate,
 ) -> Result<Vec<TaskSummary>, TaskStoreError> {
+    let mut tasks = Vec::new();
+    visit_candidates(connection, date, true, &mut |task| tasks.push(task))?;
+    Ok(tasks)
+}
+
+/// SQLite 行缓冲 + core 有界 collector；不物化全部候选/正文/计划树。
+pub(super) fn visit_today(
+    connection: &Connection,
+    date: NaiveDate,
+    visitor: &mut dyn FnMut(TaskSummary),
+) -> Result<(), TaskStoreError> {
+    visit_candidates(connection, date, false, visitor)
+}
+
+fn visit_candidates(
+    connection: &Connection,
+    date: NaiveDate,
+    complete: bool,
+    visitor: &mut dyn FnMut(TaskSummary),
+) -> Result<(), TaskStoreError> {
     // UTC 与本地日期最多相差一天，候选宽取后交 core 精确判断；不把 UTC 日期当本地今日。
     let sql = format!(
         "SELECT {} FROM tasks t LEFT JOIN plans p ON p.id=t.plan_id
         WHERE t.kind='task' AND (p.id IS NULL OR p.status='active')
         AND (t.status<>'done' OR (julianday(t.completed_at)>=julianday(?1)-1
-            AND julianday(t.completed_at)<julianday(?1)+2))",
-        columns(false)
+            AND julianday(t.completed_at)<julianday(?1)+2))
+        ORDER BY t.priority DESC, t.created_at DESC, t.id ASC",
+        if complete {
+            columns(false)
+        } else {
+            CANDIDATE_COLUMNS.to_owned()
+        }
     );
+    // 只是输入顺序优化，最终排序仍由 core 精确比较；不以文本时间代替领域时间。
     let mut statement = connection.prepare(&sql)?;
-    let result = statement
-        .query_map([date.format("%Y-%m-%d").to_string()], |row| {
-            let (task, context) = decode(row)?;
-            Ok(TaskSummary::from_task(&task, context))
-        })?
-        .collect::<Result<_, _>>()?;
-    Ok(result)
+    let result = statement.query_map([date.format("%Y-%m-%d").to_string()], |row| {
+        let (task, context) = decode(row)?;
+        Ok(TaskSummary::from_task(&task, context))
+    })?;
+    for task in result {
+        visitor(task?);
+    }
+    Ok(())
 }
 
 pub(super) fn detail(

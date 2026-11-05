@@ -3,8 +3,6 @@ use std::collections::VecDeque;
 
 use fastnote_core::TaskId;
 use fastnote_ui::{DialogRequest, ShellView, ToastRequest};
-use slint::winit_030::WinitWindowAccessor;
-use slint::ComponentHandle;
 
 use super::runtime::Runtime;
 use super::ui_session::UiSession;
@@ -111,6 +109,12 @@ impl PendingEffects {
     pub(super) fn discard_route_toasts(&mut self) {
         self.entries
             .retain(|effect| !matches!(effect, UiEffect::Toast(_)));
+    }
+
+    /// 页代次失效时清除旧页面投影/焦点；状态和安全反馈仍由内核保留。
+    pub(super) fn discard_page_effects(&mut self) {
+        self.entries
+            .retain(|effect| !matches!(effect, UiEffect::Focus(_) | UiEffect::RefreshToday));
     }
 
     /// 无主窗时未呈现的确认也会阻止导航、关闭和偏好修改。
@@ -266,9 +270,9 @@ impl Runtime {
                 }
             }
             UiEffect::Focus(FocusTarget::Main) => {
-                let window = ui.shell.component().window();
-                window.set_minimized(false);
-                window.with_winit_window(|window| window.focus_window());
+                let mut activation = ui.main_activation.get();
+                activation.request(false);
+                ui.main_activation.set(activation);
                 ui.shell.resume_timers();
             }
             UiEffect::Focus(FocusTarget::TaskCreate) => {

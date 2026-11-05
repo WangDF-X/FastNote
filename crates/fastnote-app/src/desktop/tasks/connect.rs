@@ -8,7 +8,7 @@ impl Runtime {
         let _ = self.with_ui(|ui| {
             let window = ui.shell.component();
             window.on_task_create({
-                let weak = Rc::downgrade(self);
+                let weak = self.ui_target();
                 move |title| {
                     if let Some(runtime) = weak.upgrade() {
                         runtime.create_task(title.to_string());
@@ -16,7 +16,7 @@ impl Runtime {
                 }
             });
             window.on_task_open({
-                let weak = Rc::downgrade(self);
+                let weak = self.ui_target();
                 move |id| {
                     if let (Some(runtime), Ok(id)) = (weak.upgrade(), id.parse()) {
                         runtime.task_transition(Transition::Open(id));
@@ -24,7 +24,7 @@ impl Runtime {
                 }
             });
             window.on_task_toggle({
-                let weak = Rc::downgrade(self);
+                let weak = self.ui_target();
                 move |id| {
                     if let (Some(runtime), Ok(id)) = (weak.upgrade(), id.parse()) {
                         runtime.toggle_task(id);
@@ -32,7 +32,7 @@ impl Runtime {
                 }
             });
             window.on_task_open_dates({
-                let weak = Rc::downgrade(self);
+                let weak = self.ui_target();
                 move |id| {
                     if let (Some(runtime), Ok(id)) = (weak.upgrade(), id.parse()) {
                         runtime.task_transition(Transition::OpenDates(id));
@@ -40,7 +40,7 @@ impl Runtime {
                 }
             });
             window.on_task_delete({
-                let weak = Rc::downgrade(self);
+                let weak = self.ui_target();
                 move |id| {
                     if let (Some(runtime), Ok(id)) = (weak.upgrade(), id.parse()) {
                         runtime.task_transition(Transition::Delete(id));
@@ -48,7 +48,7 @@ impl Runtime {
                 }
             });
             window.on_task_priority({
-                let weak = Rc::downgrade(self);
+                let weak = self.ui_target();
                 move |id| {
                     if let (Some(runtime), Ok(id)) = (weak.upgrade(), id.parse()) {
                         runtime.task_transition(Transition::Priority(id));
@@ -56,7 +56,7 @@ impl Runtime {
                 }
             });
             window.on_task_focus_move({
-                let weak = Rc::downgrade(self);
+                let weak = self.ui_target();
                 move |id, direction| {
                     if let (Some(runtime), Ok(id)) = (weak.upgrade(), id.parse()) {
                         if !runtime.can_task_interact() || !runtime.can_focus_tasks() {
@@ -74,7 +74,7 @@ impl Runtime {
                 }
             });
             window.on_task_edit({
-                let weak = Rc::downgrade(self);
+                let weak = self.ui_target();
                 move |field, value| {
                     if let Some(runtime) = weak.upgrade() {
                         runtime.edit_task_field(field.as_str(), value.to_string());
@@ -82,7 +82,7 @@ impl Runtime {
                 }
             });
             window.on_task_set_status({
-                let weak = Rc::downgrade(self);
+                let weak = self.ui_target();
                 move |id, index| {
                     if let (Some(runtime), Ok(id)) = (weak.upgrade(), id.parse()) {
                         runtime.select_task_status(id, index);
@@ -90,7 +90,7 @@ impl Runtime {
                 }
             });
             window.on_task_datetime({
-                let weak = Rc::downgrade(self);
+                let weak = self.ui_target();
                 move |field, date, hour, minute| {
                     if let Some(runtime) = weak.upgrade() {
                         runtime.select_task_datetime(field.as_str(), date, hour, minute);
@@ -98,7 +98,7 @@ impl Runtime {
                 }
             });
             window.on_task_clear_datetime({
-                let weak = Rc::downgrade(self);
+                let weak = self.ui_target();
                 move |field| {
                     if let Some(runtime) = weak.upgrade() {
                         runtime.update_task_datetime(field.as_str(), None);
@@ -106,7 +106,7 @@ impl Runtime {
                 }
             });
             window.on_task_flush({
-                let weak = Rc::downgrade(self);
+                let weak = self.ui_target();
                 move || {
                     if let Some(runtime) = weak.upgrade() {
                         if !runtime.task_syncing.get() {
@@ -116,7 +116,7 @@ impl Runtime {
                 }
             });
             window.on_task_close({
-                let weak = Rc::downgrade(self);
+                let weak = self.ui_target();
                 move || {
                     if let Some(runtime) = weak.upgrade() {
                         runtime.task_transition(Transition::CloseDetail);
@@ -124,7 +124,7 @@ impl Runtime {
                 }
             });
             window.on_task_retry({
-                let weak = Rc::downgrade(self);
+                let weak = self.ui_target();
                 move || {
                     if let Some(runtime) = weak.upgrade() {
                         runtime.retry_task_save();
@@ -132,7 +132,7 @@ impl Runtime {
                 }
             });
             window.on_task_reload({
-                let weak = Rc::downgrade(self);
+                let weak = self.ui_target();
                 move || {
                     if let Some(runtime) = weak.upgrade() {
                         runtime.request_editor_reload();
@@ -140,7 +140,7 @@ impl Runtime {
                 }
             });
             window.on_today_retry({
-                let weak = Rc::downgrade(self);
+                let weak = self.ui_target();
                 move || {
                     if let Some(runtime) = weak.upgrade() {
                         runtime.request_today();
@@ -148,7 +148,7 @@ impl Runtime {
                 }
             });
             window.on_today_section({
-                let weak = Rc::downgrade(self);
+                let weak = self.ui_target();
                 move |index| {
                     if let (Some(runtime), Ok(index)) = (weak.upgrade(), usize::try_from(index)) {
                         if !runtime.can_task_interact() || !runtime.can_focus_tasks() {
@@ -162,7 +162,7 @@ impl Runtime {
                 }
             });
             window.on_today_more({
-                let weak = Rc::downgrade(self);
+                let weak = self.ui_target();
                 move |index| {
                     if let (Some(runtime), Ok(index)) = (weak.upgrade(), usize::try_from(index)) {
                         if !runtime.can_task_interact() || !runtime.can_focus_tasks() {

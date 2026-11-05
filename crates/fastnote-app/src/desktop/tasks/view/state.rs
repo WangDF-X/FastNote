@@ -5,10 +5,7 @@ use fastnote_core::TaskId;
 use crate::tasks::{DetailPurpose, TaskSession};
 
 /// 属性投影期间禁止失焦保存；嵌套投影和提前返回都恢复调用前状态。
-pub(in crate::desktop::tasks) fn while_syncing<R>(
-    syncing: &Cell<bool>,
-    project: impl FnOnce() -> R,
-) -> R {
+pub(in crate::desktop) fn while_syncing<R>(syncing: &Cell<bool>, project: impl FnOnce() -> R) -> R {
     struct Restore<'a> {
         syncing: &'a Cell<bool>,
         previous: bool,
@@ -28,6 +25,7 @@ pub(in crate::desktop::tasks) fn while_syncing<R>(
 /// 调用者已保存或明确放弃后关闭编辑器；保留保存确认读取，不受 UI 是否存在影响。
 pub(super) fn close_editor(tasks: &mut TaskSession) -> Option<TaskId> {
     tasks.cancel_open_requests();
+    tasks.resume.selected = None;
     tasks.editor.take().map(|editor| editor.detail.task.id)
 }
 

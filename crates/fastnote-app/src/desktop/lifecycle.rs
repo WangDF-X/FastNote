@@ -229,5 +229,6 @@ impl Runtime {
             }
         });
         self.presentation.set(Presentation::Hidden);
+        self.exit_ui_resources();
     }
 }

@@ -1,3 +1,5 @@
+pub(in crate::desktop) mod activation;
+mod native;
 mod state;
 
 use std::rc::Rc;
@@ -67,6 +69,7 @@ impl Runtime {
             return;
         }
         if self.try_show_main().is_err() {
+            self.failed_ui_show();
             self.notice(ToastKind::Error, "无法显示主窗口，请通过入口或快捷键重试。");
             // 启动期尚未配置入口由 loaded 的明确兜底处理；既有入口恢复失败不能失联。
             if self.entry.get().is_some() {
@@ -88,9 +91,11 @@ impl Runtime {
             self.switch_presentation(Presentation::Main)
         };
         result?;
+        self.ui_shown();
         let active = self.main_content_visible();
         let _ = self.with_ui(|ui| ui.content_active.set(active));
         self.emit_ui(UiEffect::Focus(FocusTarget::Main));
+        self.defer_main_activation();
         self.start_page_tasks();
         self.persist_ball_position();
         if self.ready.get() && !self.settings.borrow().first_run_done {
@@ -119,6 +124,10 @@ impl Runtime {
 
     pub(super) fn sync_minimized_timers(self: &Rc<Self>) {
         if !self.main_visible() || self.finished.get() {
+            return;
+        }
+        if self.main_activation_pending() {
+            self.advance_main_activation();
             return;
         }
         let minimized = self
@@ -168,6 +177,9 @@ impl Runtime {
         self.with_ui(|ui| {
             let window = ui.shell.component().window();
             let recreating = !window.has_winit_window();
+            let mut activation = ui.main_activation.get();
+            activation.request(recreating);
+            ui.main_activation.set(activation);
             let geometry = self
                 .geometry
                 .get()
@@ -199,18 +211,10 @@ impl Runtime {
                 }
             }
             ui.shell.show().map_err(|_| ())?;
+            window.with_winit_window(|window| self.main_native.set(native_handle(window)));
             self.apply_main_caption();
             self.sync_theme();
-            window.set_minimized(false);
-            if recreating {
-                if let Some(geometry) = self.geometry.get().or(geometry) {
-                    window.set_size(slint::LogicalSize::new(
-                        geometry.w as f32,
-                        geometry.h as f32,
-                    ));
-                    window.set_maximized(geometry.maximized);
-                }
-            }
+            // show 可能只登记待创建窗口；恢复尺寸/最大化/前台激活交给 native.rs 的就绪阶段。
             Ok(())
         })
         .unwrap_or(Err(()))
@@ -251,12 +255,20 @@ impl Surfaces for Runtime {
         match view {
             Presentation::Hidden => Ok(()),
             Presentation::Main => {
+                self.capture_task_resume();
                 self.with_ui(|ui| ui.shell.hide().map_err(|_| ()))
                     .unwrap_or(Ok(()))?;
+                let _ = self.with_ui(|ui| ui.main_activation.set(activation::MainActivation::Idle));
+                self.ui_hidden_at
+                    .set(Some(fastnote_platform::uptime_milliseconds()));
                 self.task_page_hidden();
                 Ok(())
             }
-            Presentation::Ball => self.ball.hide().map_err(|_| ()),
+            Presentation::Ball => {
+                self.ball.hide().map_err(|_| ())?;
+                self.ball_native_pending.set(false);
+                Ok(())
+            }
         }
     }
 

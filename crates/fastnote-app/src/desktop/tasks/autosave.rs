@@ -43,14 +43,28 @@ impl Runtime {
     }
 
     pub(in crate::desktop) fn schedule_task_save(self: &Rc<Self>) {
-        let weak = Rc::downgrade(self);
+        let weak = self.page_target();
+        let editor = self
+            .tasks
+            .borrow()
+            .editor
+            .as_ref()
+            .map(|editor| (editor.detail.task.id, editor.generation));
         let _ = self.with_ui(|ui| {
             ui.task_save_timer.start(
                 TimerMode::SingleShot,
                 Duration::from_millis(500),
                 move || {
                     if let Some(runtime) = weak.upgrade() {
-                        runtime.flush_task_editor();
+                        let current = runtime
+                            .tasks
+                            .borrow()
+                            .editor
+                            .as_ref()
+                            .map(|editor| (editor.detail.task.id, editor.generation));
+                        if editor.is_some() && current == editor {
+                            runtime.flush_task_editor();
+                        }
                     }
                 },
             );
@@ -69,6 +83,9 @@ impl Runtime {
             };
             if editor.in_flight.is_some() {
                 return FlushStatus::Pending;
+            }
+            if editor.committed || (editor.error.is_some() && !editor.dirty()) {
+                return FlushStatus::Blocked;
             }
             editor
                 .begin_save()
@@ -91,7 +108,13 @@ impl Runtime {
                     self.sync_task_editor();
                     return FlushStatus::Blocked;
                 }
-                let weak = Rc::downgrade(self);
+                let weak = self.page_target();
+                let generation = self.tasks.borrow().editor.as_ref().and_then(|editor| {
+                    editor
+                        .in_flight
+                        .as_ref()
+                        .map(|snapshot| snapshot.generation)
+                });
                 let _ = self.with_ui(|ui| {
                     ui.task_saving_visible.set(false);
                     ui.task_feedback_timer.start(
@@ -99,6 +122,21 @@ impl Runtime {
                         Duration::from_millis(300),
                         move || {
                             if let Some(runtime) = weak.upgrade() {
+                                let current = runtime
+                                    .tasks
+                                    .borrow()
+                                    .editor
+                                    .as_ref()
+                                    .filter(|editor| editor.detail.task.id == id)
+                                    .and_then(|editor| {
+                                        editor
+                                            .in_flight
+                                            .as_ref()
+                                            .map(|snapshot| snapshot.generation)
+                                    });
+                                if current != generation || generation.is_none() {
+                                    return;
+                                }
                                 let _ = runtime.with_ui(|ui| ui.task_saving_visible.set(true));
                                 runtime.sync_task_editor();
                             }
@@ -130,7 +168,18 @@ impl Runtime {
         if let Some(id) = committed {
             self.request_task_detail(DetailPurpose::SaveAck(id));
         } else {
-            self.flush_task_editor();
+            let refresh = self
+                .tasks
+                .borrow()
+                .editor
+                .as_ref()
+                .filter(|editor| editor.error.is_some() && !editor.unfinished())
+                .map(|editor| editor.detail.task.id);
+            if let Some(id) = refresh {
+                self.request_task_detail(DetailPurpose::Refresh(id));
+            } else {
+                self.flush_task_editor();
+            }
         }
     }
 }

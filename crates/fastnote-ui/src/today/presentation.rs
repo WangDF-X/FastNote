@@ -39,6 +39,20 @@ impl TodayPresenter {
         }
     }
 
+    /// 页面离开/主窗隐藏时解除绑定，并替换 Vec 分配以释放行/标题/关联名的缓存。
+    pub fn release(&self, window: &MainWindow) {
+        window.set_today_mounted(false);
+        window.set_today_sections(ModelRc::default());
+        self.release_models();
+    }
+
+    fn release_models(&self) {
+        self.sections.set_vec(Vec::new());
+        for rows in &self.rows {
+            rows.set_vec(Vec::new());
+        }
+    }
+
     /// 应用已查询的只读快照与会话折叠状态；不修改业务数据。
     pub fn apply(&self, window: &MainWindow, view: &TodayView, collapsed: [Option<bool>; 8]) {
         let current_year = view.date.year();
@@ -48,8 +62,10 @@ impl TodayPresenter {
             day: view.date.day() as i32,
         });
         let mut sections = Vec::new();
+        let mut present = [false; 8];
         for section in &view.sections {
             let index = section.kind as usize;
+            present[index] = true;
             sync_model(
                 &self.rows[index],
                 section
@@ -75,6 +91,11 @@ impl TodayPresenter {
                 }
                 .into(),
             });
+        }
+        for (index, rows) in self.rows.iter().enumerate() {
+            if !present[index] {
+                rows.set_vec(Vec::new());
+            }
         }
         sync_model(&self.sections, sections);
         let weekday = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
@@ -232,6 +253,8 @@ pub fn task_error_message(error: TaskError) -> &'static str {
     }
 }
 
+#[cfg(test)]
+mod residency_tests;
 #[cfg(test)]
 mod tests {
     use super::*;

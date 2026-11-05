@@ -2,6 +2,7 @@
 
 mod handle;
 mod preview;
+mod retained;
 mod view;
 
 #[cfg(test)]
@@ -14,6 +15,7 @@ mod task_preferences_contract;
 mod window_contract;
 
 pub use handle::ShellHandle;
+pub use retained::RetainedFeedback;
 pub use view::{NavigationIssue, ShellUpdate, ShellView};
 
 use std::cell::{Cell, RefCell};
@@ -33,6 +35,7 @@ use crate::{
 const TICK: Duration = Duration::from_millis(100);
 
 type ActionHandler = Box<dyn FnMut(String) -> ShellUpdate>;
+type DialogObserver = Box<dyn FnMut(&str, DialogOutcome)>;
 
 struct Shell {
     window: slint::Weak<MainWindow>,
@@ -43,6 +46,7 @@ struct Shell {
     last_tick: Cell<Instant>,
     visible: Cell<bool>,
     dialogs: RefCell<DialogQueue>,
+    dialog_observer: RefCell<DialogObserver>,
     /// 每次显示对话框自增，用来让 Slint 侧重新聚焦默认按钮。
     dialog_token: Cell<i32>,
     banners: RefCell<BannerSet>,
@@ -160,6 +164,9 @@ impl Shell {
 
     fn show_toast(self: &Rc<Self>, request: ToastRequest) {
         self.toasts.borrow_mut().push(request);
+        if !self.visible.get() {
+            self.toasts.borrow_mut().retain_for_unload();
+        }
         self.sync_toasts();
         self.ensure_toast_timer();
     }
@@ -224,8 +231,16 @@ impl Shell {
 
     /// 结束当前对话框；确认时把动作交给统一入口，排队的对话框随后补位。
     fn resolve_dialog(self: &Rc<Self>, outcome: DialogOutcome) {
+        let original = self
+            .dialogs
+            .borrow()
+            .current()
+            .map(|request| request.confirm_command.clone());
         let resolution = self.dialogs.borrow_mut().resolve(outcome);
         self.sync_dialog();
+        if let Some(original) = original {
+            (self.dialog_observer.borrow_mut())(&original, outcome);
+        }
         if let Some(command) = resolution.and_then(|resolved| resolved.command) {
             self.dispatch(command);
         }

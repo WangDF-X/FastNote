@@ -38,10 +38,21 @@ impl Runtime {
         self.ball.window().on_winit_window_event({
             let weak = Rc::downgrade(self);
             move |_, event| {
+                if let Some(runtime) = weak.upgrade() {
+                    if runtime.ball_native_pending.get() {
+                        let weak = weak.clone();
+                        Timer::single_shot(Duration::ZERO, move || {
+                            if let Some(runtime) = weak.upgrade() {
+                                runtime.complete_entry_native();
+                            }
+                        });
+                    }
+                }
                 if matches!(event, WindowEvent::ThemeChanged(_)) {
                     let weak = weak.clone();
                     Timer::single_shot(Duration::ZERO, move || {
                         if let Some(runtime) = weak.upgrade() {
+                            runtime.check_ui_lease();
                             runtime.refresh_system_theme();
                         }
                     });
@@ -90,6 +101,7 @@ impl Runtime {
             let weak = Rc::downgrade(self);
             move || {
                 if let Some(runtime) = weak.upgrade() {
+                    runtime.check_ui_lease();
                     runtime.hide_menu();
                 }
             }
@@ -97,6 +109,16 @@ impl Runtime {
         self.menu.window().on_winit_window_event({
             let weak = Rc::downgrade(self);
             move |_, event| {
+                if let Some(runtime) = weak.upgrade() {
+                    if runtime.menu_native_pending.get() {
+                        let weak = weak.clone();
+                        Timer::single_shot(Duration::ZERO, move || {
+                            if let Some(runtime) = weak.upgrade() {
+                                runtime.complete_entry_native();
+                            }
+                        });
+                    }
+                }
                 if matches!(event, WindowEvent::ThemeChanged(_)) {
                     let weak = weak.clone();
                     Timer::single_shot(Duration::ZERO, move || {
@@ -199,7 +221,7 @@ impl Runtime {
         if self.closing.get() || self.finished.get() || !self.main_visible() {
             return;
         }
-        let weak = Rc::downgrade(self);
+        let weak = self.ui_target();
         self.geometry_timer.start(
             TimerMode::SingleShot,
             Duration::from_millis(500),

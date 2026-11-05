@@ -16,13 +16,14 @@ impl Runtime {
         self.task_day_timer
             .start(TimerMode::Repeated, Duration::from_secs(30), move || {
                 if let Some(runtime) = weak.upgrade() {
+                    runtime.sample_ui_resources();
                     runtime.refresh_task_clock();
                 }
             });
     }
 
     /// 当前页面真正可见后才补读；重复显示和原生恢复共用同一在途门控。
-    pub(in crate::desktop) fn start_page_tasks(&self) {
+    pub(in crate::desktop) fn start_page_tasks(self: &Rc<Self>) {
         if !self.ready.get()
             || self.finished.get()
             || self.closing.get()
@@ -47,6 +48,8 @@ impl Runtime {
             self.request_today();
         }
         self.sync_task_editor();
+        self.restore_selected_task();
+        self.defer_task_resume();
         let selected = self
             .tasks
             .borrow()
@@ -63,7 +66,7 @@ impl Runtime {
 
     /// 外壳会在动作返回后投影路由，不能在旧页面仍显示时提前读取新页面。
     pub(in crate::desktop) fn defer_page_tasks(self: &Rc<Self>) {
-        let weak = Rc::downgrade(self);
+        let weak = self.page_target();
         Timer::single_shot(Duration::ZERO, move || {
             if let Some(runtime) = weak.upgrade() {
                 runtime.start_page_tasks();
@@ -85,6 +88,11 @@ impl Runtime {
 
     /// 隐藏只失效、取消普通打开/刷新意图；必要保存/删除确认读仍由内核接收。
     pub(in crate::desktop) fn task_page_hidden(&self) {
+        self.pending_effects.borrow_mut().discard_page_effects();
+        self.capture_task_resume();
+        let mut epoch = self.ui_epoch.get();
+        epoch.invalidate_page();
+        self.ui_epoch.set(epoch);
         self.today_dirty.set(true);
         self.detail_dirty.set(true);
         {

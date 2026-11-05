@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use fastnote_core::{NaiveDateTime, TaskId, TaskStatus, TodaySectionKind, TodayView};
 
-use super::EditorSession;
+use super::{EditorSession, PageStamp, TaskResume};
 
 #[derive(Clone, Debug)]
 pub(crate) enum Transition {
@@ -65,6 +65,9 @@ pub(crate) struct TaskSession {
     pub editor: Option<EditorSession>,
     pub pending: HashMap<u64, PendingTask>,
     pub queries: HashMap<u64, DetailPurpose>,
+    /// 只有普通页面读携带代次；SaveAck/Delete 属于常驻内核，不随 UI 撤销。
+    pub read_stamps: HashMap<u64, PageStamp>,
+    pub resume: TaskResume,
     /// 当前今日读取的在途 ID；每次完成后清零，不作为会话生命周期代次。
     pub latest_today: u64,
     /// 读取期间又有失效；先结束当前读取，再按最新条件补读一次。
@@ -89,6 +92,14 @@ impl TaskSession {
     }
 
     pub(crate) fn cancel_open_requests(&mut self) {
+        let cancelled: Vec<_> = self
+            .queries
+            .iter()
+            .filter_map(|(id, purpose)| matches!(purpose, DetailPurpose::Open(_)).then_some(*id))
+            .collect();
+        for id in cancelled {
+            self.read_stamps.remove(&id);
+        }
         self.latest_open = 0;
         self.queries
             .retain(|_, purpose| !matches!(purpose, DetailPurpose::Open(_)));
@@ -99,6 +110,9 @@ impl TaskSession {
         self.cancel_open_requests();
         self.queries
             .retain(|_, purpose| !matches!(purpose, DetailPurpose::Refresh(_)));
+        self.read_stamps.clear();
+        self.latest_today = 0;
+        self.today_requery = false;
     }
 
     /// 合并读取期间的失效，不并发发起第二个今日查询。
@@ -148,7 +162,7 @@ impl TaskSession {
     }
 
     pub(crate) fn take_ready_transition(&mut self) -> Option<Transition> {
-        if self.unfinished() {
+        if self.transition_protected() {
             None
         } else {
             self.after_save.take()

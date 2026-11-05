@@ -5,10 +5,11 @@ use std::time::Instant;
 use slint::{ComponentHandle, ModelRc, Timer, VecModel};
 
 use crate::{
-    BannerRequest, BannerSet, DialogQueue, DialogRequest, MainWindow, ToastQueue, ToastRequest,
+    BannerRequest, BannerSet, DialogOutcome, DialogQueue, DialogRequest, MainWindow, ToastQueue,
+    ToastRequest,
 };
 
-use super::{connect, Shell, ShellUpdate, ShellView};
+use super::{connect, RetainedFeedback, Shell, ShellUpdate, ShellView};
 
 /// 可由 app 会话持有的外壳；组件、路由展示和反馈队列保留到句柄被丢弃。
 ///
@@ -38,6 +39,7 @@ impl ShellHandle {
             last_tick: Cell::new(Instant::now()),
             visible: Cell::new(false),
             dialogs: RefCell::new(DialogQueue::new()),
+            dialog_observer: RefCell::new(Box::new(|_, _| {})),
             dialog_token: Cell::new(0),
             banners: RefCell::new(BannerSet::new()),
         });
@@ -71,6 +73,33 @@ impl ShellHandle {
     pub fn pause_timers(&self) {
         self.shell.visible.set(false);
         self.shell.toast_timer.stop();
+    }
+
+    /// 模态决策完成时通知 app 清理匹配许可；观察者不能持有组件或内核强引用。
+    pub fn on_dialog_resolved(&self, observer: impl FnMut(&str, DialogOutcome) + 'static) {
+        *self.shell.dialog_observer.borrow_mut() = Box::new(observer);
+    }
+
+    /// 只在无未决对话框时移动纯反馈状态；不重置 Toast 剩余时长，不保留模型。
+    pub fn take_retained_feedback(&self) -> Option<RetainedFeedback> {
+        if self.shell.dialogs.borrow().is_open() {
+            return None;
+        }
+        self.pause_timers();
+        let mut toasts = std::mem::take(&mut *self.shell.toasts.borrow_mut());
+        toasts.retain_for_unload();
+        Some(RetainedFeedback {
+            toasts,
+            banners: std::mem::take(&mut *self.shell.banners.borrow_mut()),
+        })
+    }
+
+    /// 冷重建只恢复反馈状态，不分发确认或导航命令；计时由实际显示再恢复。
+    pub fn restore_retained_feedback(&self, feedback: RetainedFeedback) {
+        *self.shell.toasts.borrow_mut() = feedback.toasts;
+        *self.shell.banners.borrow_mut() = feedback.banners;
+        self.shell.sync_toasts();
+        self.shell.sync_banner();
     }
 
     /// 恢复窗口后重启计时，不把隐藏期间的时长扣掉。

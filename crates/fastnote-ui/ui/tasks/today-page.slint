@@ -25,6 +25,7 @@ export component TodayPage inherits Rectangle {
     in property <string> error-log-id;
     in property <string> create-error;
     in-out property <string> quick-title;
+    in-out property <length> scroll-y: 0px;
     in-out property <int> reveal-kind: -1;
     in property <int> reveal-version;
     callback created(string);
@@ -106,6 +107,7 @@ export component TodayPage inherits Rectangle {
             vertical-stretch: 1;
             content-width: self.visible-width;
             content-height: task-list.preferred-height;
+            content-y <=> root.scroll-y;
             task-list := VerticalLayout {
                 width: tasks-scroll.visible-width;
                 spacing: 12px;

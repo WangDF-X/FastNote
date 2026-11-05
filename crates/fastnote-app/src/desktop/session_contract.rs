@@ -17,6 +17,15 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("presentation/state.rs"),
     ),
     ("runtime.rs", include_str!("runtime.rs")),
+    ("resources.rs", include_str!("resources.rs")),
+    (
+        "resources/callbacks.rs",
+        include_str!("resources/callbacks.rs"),
+    ),
+    (
+        "resources/restoration.rs",
+        include_str!("resources/restoration.rs"),
+    ),
     ("runtime/session.rs", include_str!("runtime/session.rs")),
     ("task_preferences.rs", include_str!("task_preferences.rs")),
     ("tasks/autosave.rs", include_str!("tasks/autosave.rs")),
@@ -186,10 +195,11 @@ fn test_event_loop_and_callback_bindings_do_not_strongly_own_kernel_or_main_wind
         events.contains("ui.callbacks_connected.replace(true)"),
         "window/ui_events.rs"
     );
-    assert!(
-        events.contains("Rc::downgrade(self)"),
-        "window/ui_events.rs"
-    );
+    assert!(events.contains("self.ui_target()"), "window/ui_events.rs");
+    let callbacks = include_str!("resources/callbacks.rs");
+    assert!(callbacks.contains("Rc::downgrade(self)"));
+    assert!(callbacks.contains("Weak<Runtime>"));
+    assert!(callbacks.contains("ui_epoch.get().session() != self.session"));
     assert!(!events.contains("self.clone()"), "window/ui_events.rs");
     assert!(!events.contains("window.as_weak()"), "window/ui_events.rs");
 }
