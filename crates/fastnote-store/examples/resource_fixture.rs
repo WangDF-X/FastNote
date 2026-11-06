@@ -5,13 +5,17 @@ use std::io::{Error, ErrorKind, Write};
 use std::path::Path;
 use std::time::{Instant, SystemTime};
 
+use fastnote_core::derive::TodayCollector;
 use fastnote_core::{
     Clock, DateTime, DesktopSetting, NaiveDate, NaiveDateTime, Query, QueryResult,
-    SettingsRepository, Task, TaskClock, TaskId, Utc,
+    SettingsRepository, Task, TaskClock, TaskId, TaskRepository, Utc,
 };
 use fastnote_store::SqliteSettings;
 use rusqlite::{params, Connection};
 use serde_json::json;
+
+#[path = "resource_fixture/measurement.rs"]
+mod measurement;
 
 const MARKER: &str = "fastnote-resource-fixture.json";
 
@@ -84,7 +88,7 @@ fn create(root: &Path, date: NaiveDate, rows: usize) -> Result<(), Box<dyn std::
     Ok(())
 }
 
-fn benchmark(root: &Path, date: NaiveDate) -> Result<(), Box<dyn std::error::Error>> {
+fn fixture_database(root: &Path) -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
     // 只有本工具标识的假库才能计时，缺失/非法标识时不打开或修复任何数据库。
     let marker: serde_json::Value = serde_json::from_slice(&fs::read(root.join(MARKER))?)?;
     if marker.get("fake_only").and_then(|value| value.as_bool()) != Some(true) {
@@ -94,6 +98,11 @@ fn benchmark(root: &Path, date: NaiveDate) -> Result<(), Box<dyn std::error::Err
     if !database.is_file() {
         return Err(invalid("fixture database is missing").into());
     }
+    Ok(database)
+}
+
+fn benchmark(root: &Path, date: NaiveDate) -> Result<(), Box<dyn std::error::Error>> {
+    let database = fixture_database(root)?;
     let now: DateTime<Utc> = SystemTime::now().into();
     let store = SqliteSettings::open(&database, now)?;
     for limit in [200, 1000] {
@@ -128,8 +137,53 @@ fn benchmark(root: &Path, date: NaiveDate) -> Result<(), Box<dyn std::error::Err
                 total = view.open_count;
             }
         }
-        elapsed.sort_unstable();
-        println!("mode={} rows={total} limit={limit} loaded={loaded} samples=100 median_us={} p95_us={} max_us={}", if cfg!(debug_assertions) { "debug" } else { "release" }, elapsed[49], elapsed[94], elapsed[99]);
+        let (median, p95, max) =
+            measurement::summarize(&mut elapsed).ok_or_else(|| invalid("no benchmark samples"))?;
+        println!("mode={} rows={total} limit={limit} loaded={loaded} samples=100 median_us={median} p95_us={p95} max_us={max}", if cfg!(debug_assertions) { "debug" } else { "release" });
+    }
+    Ok(())
+}
+
+// 诊断而非验收：各阶段串行且物化完整候选，不是生产只读事务/流式路径。
+fn diagnose(root: &Path, date: NaiveDate) -> Result<(), Box<dyn std::error::Error>> {
+    let database = fixture_database(root)?;
+    let now: DateTime<Utc> = SystemTime::now().into();
+    let store = SqliteSettings::open(&database, now)?;
+    let preferences = store.today_preferences()?;
+    let clock = FixedClock { now, date };
+    for limit in [200, 1000] {
+        let mut stages = [Vec::new(), Vec::new(), Vec::new()];
+        let mut count = 0;
+        for iteration in 0..40 {
+            let mut tasks = Vec::new();
+            let start = Instant::now();
+            store.visit_today_tasks(date, &mut |task| tasks.push(task))?;
+            let read = start.elapsed().as_micros();
+            count = tasks.len();
+            let start = Instant::now();
+            let mut collector = TodayCollector::new(date, &clock, preferences, [limit; 8]);
+            for task in tasks {
+                collector.push(task);
+            }
+            let mut view = collector.finish();
+            let group = start.elapsed().as_micros();
+            let start = Instant::now();
+            store.complete_today_projection(&mut view)?;
+            let projection = start.elapsed().as_micros();
+            if iteration >= 10 {
+                for (samples, elapsed) in stages.iter_mut().zip([read, group, projection]) {
+                    samples.push(elapsed);
+                }
+            }
+        }
+        for (name, samples) in ["read_decode", "group_sort", "projection"]
+            .into_iter()
+            .zip(&mut stages)
+        {
+            let (median, p95, max) =
+                measurement::summarize(samples).ok_or_else(|| invalid("no diagnostic samples"))?;
+            println!("diagnostic={name} limit={limit} candidates={count} samples=30 median_us={median} p95_us={p95} max_us={max}");
+        }
     }
     Ok(())
 }
@@ -137,9 +191,10 @@ fn benchmark(root: &Path, date: NaiveDate) -> Result<(), Box<dyn std::error::Err
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     if args.len() < 3 {
-        return Err(
-            invalid("usage: resource_fixture create|benchmark NEW_ROOT YYYY-MM-DD [ROWS]").into(),
-        );
+        return Err(invalid(
+            "usage: resource_fixture create|benchmark|diagnose ROOT YYYY-MM-DD [ROWS]",
+        )
+        .into());
     }
     let mode = args[0].to_str().ok_or_else(|| invalid("invalid mode"))?;
     let root = Path::new(&args[1]);
@@ -157,8 +212,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .parse()?,
         ),
         "benchmark" if args.len() == 3 => benchmark(root, date),
-        _ => Err(
-            invalid("usage: resource_fixture create|benchmark NEW_ROOT YYYY-MM-DD [ROWS]").into(),
-        ),
+        "diagnose" if args.len() == 3 => diagnose(root, date),
+        _ => Err(invalid(
+            "usage: resource_fixture create|benchmark|diagnose ROOT YYYY-MM-DD [ROWS]",
+        )
+        .into()),
     }
 }
