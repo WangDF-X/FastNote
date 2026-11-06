@@ -171,7 +171,7 @@ fastnote-app → fastnote-ui → fastnote-core
 | 主窗活动态内存 | ≤ 130MB RSS | Release，今日任务 + 1000 条任务；球模式主窗与球互斥，托盘按既有规则 |
 | 空闲 CPU | < 0.5% | 无交互 5 分钟均值 |
 | 列表滚动 | 60fps | 1000 条任务列表快速滚动 |
-| DB 查询 p95 | < 10ms | 1 万任务、5 千小记、3 千日记 |
+| DB 查询 p95 | 按场景分别设定 | 今日、月历、计划详情见 [QA-03 §8](../10-quality/03-test-strategy.md)；其他查询须单独定义数据集和门槛 |
 | 任务创建到界面可见 | < 100ms | 本地命令往返 |
 | 安装包体积 | ≤ 25MB | Windows MSI / macOS DMG / AppImage |
 
