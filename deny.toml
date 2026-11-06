@@ -1,0 +1,17 @@
+[advisories]
+# 已知上游停止维护公告；不忽略未知漏洞、新公告或被撤回版本。
+ignore = [
+    { id = "RUSTSEC-2026-0441", reason = "pin-utils 为上游间接依赖，无兼容升级；跟踪上游替换" },
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser 为上游间接依赖，无兼容升级；跟踪上游替换" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names 随上游 zbus 5 使用；跟踪上游迁移" },
+    { id = "RUSTSEC-2026-0370", reason = "zvariant 随上游 zbus 5 使用；跟踪上游迁移" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive 随上游 zbus 5 使用；跟踪上游迁移" },
+]
+
+[licenses]
+# 审计允许值不替代对分发义务、资源及依赖实际许可证文本的人工核查。
+allow = [
+    "0BSD", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause",
+    "BSD-3-Clause", "BSL-1.0", "CC0-1.0", "GPL-3.0-only", "ISC",
+    "LGPL-2.1-or-later", "MIT", "MPL-2.0", "Unicode-3.0", "Unlicense", "Zlib",
+]

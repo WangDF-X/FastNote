@@ -134,6 +134,42 @@ fn test_bounded_heaps_match_reference_sort_for_every_group_and_sort_mode() {
 }
 
 #[test]
+fn test_candidate_order_does_not_change_bounded_results_or_counts() {
+    let clock = FixedClock(Cell::new(0));
+    for sort in [
+        TodaySort::Priority,
+        TodaySort::DueDate,
+        TodaySort::CreatedDescending,
+    ] {
+        let preferences = TodayPreferences {
+            sort,
+            ..Default::default()
+        };
+        let mut ascending = TodayCollector::new(clock.today(), &clock, preferences, [200; 8]);
+        let mut descending = TodayCollector::new(clock.today(), &clock, preferences, [200; 8]);
+        for number in 1..=4_800 {
+            ascending.push(item(number));
+            descending.push(item(4_801 - number));
+        }
+        let first = ascending.finish();
+        let second = descending.finish();
+        assert_eq!(first.open_count, second.open_count);
+        assert_eq!(first.overdue_count, second.overdue_count);
+        assert_eq!(first.completed_today_count, second.completed_today_count);
+        assert_eq!(first.tomorrow_count, second.tomorrow_count);
+        assert_eq!(first.next_overdue_at, second.next_overdue_at);
+        assert_eq!(first.sections.len(), second.sections.len());
+        for (a, b) in first.sections.iter().zip(&second.sections) {
+            assert_eq!((a.kind, a.total, a.has_more), (b.kind, b.total, b.has_more));
+            assert_eq!(
+                a.items.iter().map(|item| item.id).collect::<Vec<_>>(),
+                b.items.iter().map(|item| item.id).collect::<Vec<_>>()
+            );
+        }
+    }
+}
+
+#[test]
 fn test_hidden_groups_allocate_nothing_and_keep_complete_counts_and_future_deadline() {
     let clock = FixedClock(Cell::new(0));
     let mut collector = TodayCollector::new(

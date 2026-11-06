@@ -1,6 +1,6 @@
 use fastnote_core::{
-    Clock, DateTime, NaiveDate, NaiveDateTime, Query, QueryResult, Task, TaskClock, TaskId,
-    TaskRepository, TaskService, Utc,
+    Clock, DateTime, NaiveDate, NaiveDateTime, Priority, Query, QueryResult, Task, TaskClock,
+    TaskId, TaskRepository, TaskService, Utc,
 };
 use fastnote_store::SqliteSettings;
 
@@ -35,15 +35,21 @@ fn test_streamed_candidates_match_legacy_projection_with_real_sqlite() {
         let id: TaskId = format!("019a0fff-aaaa-7000-8000-{number:012x}")
             .parse()
             .unwrap();
-        store
-            .insert_task(&Task::new(id, "假任务".to_owned(), now()).unwrap())
-            .unwrap();
+        let mut task = Task::new(id, "假任务".to_owned(), now()).unwrap();
+        if number % 2 == 0 {
+            task.priority = Priority::High;
+        }
+        store.insert_task(&task).unwrap();
     }
     let mut streamed = Vec::new();
     store
         .visit_today_tasks(now().date_naive(), &mut |task| streamed.push(task))
         .unwrap();
-    assert_eq!(streamed, store.today_tasks(now().date_naive()).unwrap());
+    let mut legacy = store.today_tasks(now().date_naive()).unwrap();
+    // 仓储候选流不承诺顺序，最终排序由领域层完成。
+    streamed.sort_by_key(|task| task.id);
+    legacy.sort_by_key(|task| task.id);
+    assert_eq!(streamed, legacy);
     let service = TaskService::new(&mut store, FixedClock(now(), 0));
     let QueryResult::Today(view) = service
         .query(Query::Today {

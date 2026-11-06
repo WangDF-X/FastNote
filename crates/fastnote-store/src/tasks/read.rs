@@ -77,15 +77,19 @@ fn visit_candidates(
         "SELECT {} FROM tasks t LEFT JOIN plans p ON p.id=t.plan_id
         WHERE t.kind='task' AND (p.id IS NULL OR p.status='active')
         AND (t.status<>'done' OR (julianday(t.completed_at)>=julianday(?1)-1
-            AND julianday(t.completed_at)<julianday(?1)+2))
-        ORDER BY t.priority DESC, t.created_at DESC, t.id ASC",
+            AND julianday(t.completed_at)<julianday(?1)+2)) {}",
         if complete {
             columns(false)
         } else {
             CANDIDATE_COLUMNS.to_owned()
+        },
+        if complete {
+            "ORDER BY t.priority DESC, t.created_at DESC, t.id ASC"
+        } else {
+            ""
         }
     );
-    // 只是输入顺序优化，最终排序仍由 core 精确比较；不以文本时间代替领域时间。
+    // 流式路径由 core 对全部候选计数并确定排序前缀，避免数据库重复排序。
     let mut statement = connection.prepare(&sql)?;
     let result = statement.query_map([date.format("%Y-%m-%d").to_string()], |row| {
         let (task, context) = decode(row)?;
@@ -124,7 +128,7 @@ where
     T: FromStr,
     T::Err: Error + Send + Sync + 'static,
 {
-    let value: String = row.get(index)?;
+    let value = row.get_ref(index)?.as_str()?;
     value.parse().map_err(|error| {
         rusqlite::Error::FromSqlConversionFailure(index, Type::Text, Box::new(error))
     })
@@ -135,7 +139,8 @@ where
     T: FromStr,
     T::Err: Error + Send + Sync + 'static,
 {
-    row.get::<_, Option<String>>(index)?
+    row.get_ref(index)?
+        .as_str_or_null()?
         .map(|value| {
             value.parse().map_err(|error| {
                 rusqlite::Error::FromSqlConversionFailure(index, Type::Text, Box::new(error))
@@ -149,9 +154,10 @@ fn invalid(index: usize) -> rusqlite::Error {
 }
 
 fn optional_time(row: &Row<'_>, index: usize) -> rusqlite::Result<Option<NaiveTime>> {
-    row.get::<_, Option<String>>(index)?
+    row.get_ref(index)?
+        .as_str_or_null()?
         .map(|value| {
-            parse_task_time(&value)
+            parse_task_time(value)
                 .map_err(|_| invalid(index))?
                 .ok_or_else(|| invalid(index))
         })
@@ -160,14 +166,15 @@ fn optional_time(row: &Row<'_>, index: usize) -> rusqlite::Result<Option<NaiveTi
 
 fn decode(row: &Row<'_>) -> rusqlite::Result<(Task, TaskContext)> {
     let status = row
-        .get::<_, Option<String>>(6)?
-        .map(|value| TaskStatus::parse(&value).ok_or_else(|| invalid(6)))
+        .get_ref(6)?
+        .as_str_or_null()?
+        .map(|value| TaskStatus::parse(value).ok_or_else(|| invalid(6)))
         .transpose()?;
     let task = Task {
         id: parsed(row, 0)?,
         plan_id: optional(row, 1)?,
         parent_id: optional(row, 2)?,
-        kind: match row.get::<_, String>(3)?.as_str() {
+        kind: match row.get_ref(3)?.as_str()? {
             "task" => TaskKind::Task,
             "stage" => TaskKind::Stage,
             _ => return Err(invalid(3)),

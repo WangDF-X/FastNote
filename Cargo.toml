@@ -12,6 +12,7 @@ members = [
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.92"
+license = "GPL-3.0-only"
 
 [workspace.dependencies]
 fastnote-core = { path = "crates/fastnote-core" }
