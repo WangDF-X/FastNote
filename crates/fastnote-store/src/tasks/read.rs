@@ -93,7 +93,7 @@ fn visit_candidates(
     let mut statement = connection.prepare(&sql)?;
     let result = statement.query_map([date.format("%Y-%m-%d").to_string()], |row| {
         let (task, context) = decode(row)?;
-        Ok(TaskSummary::from_task(&task, context))
+        Ok(TaskSummary::from_owned_task(task, context))
     })?;
     for task in result {
         visitor(task?);

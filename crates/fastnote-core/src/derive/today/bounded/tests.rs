@@ -71,6 +71,21 @@ fn item(number: usize) -> TaskSummary {
 }
 
 #[test]
+fn test_owned_projection_matches_borrowed_projection() {
+    let id: TaskId = "019a0fff-aaaa-7000-8000-000000000001".parse().unwrap();
+    let at: DateTime<Utc> = "2026-11-04T12:00:00Z".parse().unwrap();
+    let mut task = Task::new(id, "测试标题".to_owned(), at).unwrap();
+    task.description = "正文不属于摘要".to_owned();
+    let context = TaskContext {
+        plan_name: Some("测试计划".to_owned()),
+        child_total: 3,
+        ..TaskContext::default()
+    };
+    let expected = TaskSummary::from_task(&task, context.clone());
+    assert_eq!(TaskSummary::from_owned_task(task, context), expected);
+}
+
+#[test]
 fn test_streaming_twenty_thousand_rows_keeps_only_bounded_prefixes_and_full_counts() {
     let clock = FixedClock(Cell::new(0));
     let mut collector =

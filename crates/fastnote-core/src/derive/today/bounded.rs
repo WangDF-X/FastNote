@@ -110,9 +110,10 @@ impl<'a, C: TaskClock> TodayCollector<'a, C> {
         let group = &mut self.groups[index];
         if group.len() < self.limits[index] {
             group.push(ranked);
-        } else if group.peek().is_some_and(|worst| ranked < *worst) {
-            group.pop();
-            group.push(ranked);
+        } else if let Some(mut worst) = group.peek_mut() {
+            if ranked < *worst {
+                *worst = ranked;
+            }
         }
     }
 
