@@ -69,10 +69,20 @@ pub struct TaskSummary {
 impl TaskSummary {
     /// 投影实体与关联信息；派生状态随后由统一规则填充。
     pub fn from_task(task: &Task, context: TaskContext) -> Self {
+        Self::with_title(task, context, task.title.clone())
+    }
+
+    /// 消费不再需要的实体，移动标题以避免列表查询中的额外字符串分配。
+    pub fn from_owned_task(mut task: Task, context: TaskContext) -> Self {
+        let title = std::mem::take(&mut task.title);
+        Self::with_title(&task, context, title)
+    }
+
+    fn with_title(task: &Task, context: TaskContext, title: String) -> Self {
         Self {
             id: task.id,
             kind: task.kind,
-            title: task.title.clone(),
+            title,
             status: task.status,
             priority: task.priority,
             start_date: task.start_date,

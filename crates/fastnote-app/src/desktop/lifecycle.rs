@@ -1,3 +1,5 @@
+mod recovery;
+
 use std::rc::Rc;
 
 use fastnote_core::{restore_main, DesktopSetting, DesktopSettings, EntryMode};
@@ -11,12 +13,15 @@ use super::runtime::{Completion, Runtime};
 
 impl Runtime {
     pub(super) fn loaded(self: &Rc<Self>, result: Result<DesktopSettings, StoreError>) {
+        if self.finished.get() {
+            return;
+        }
         self.set_busy(false);
         match result {
             Ok(settings) => {
                 self.task_preferences_error.borrow_mut().take();
                 self.ready.set(true);
-                self.shell.component().set_desktop_state(1);
+                self.set_desktop_state(1);
                 self.geometry.set(settings.geometry);
                 *self.ball_position.borrow_mut() = settings.ball_position.clone();
                 let mode = settings.entry_mode;
@@ -36,9 +41,13 @@ impl Runtime {
                     ),
                 }
                 let first = !self.initialized.replace(true);
+                self.start_kernel_tasks();
                 if !first || !self.hidden_start {
                     // 先确定主窗呈现，再配置入口；手动启动不能先闪现球。
                     self.show_main();
+                }
+                if self.finished.get() {
+                    return;
                 }
                 self.register_hotkey();
                 if self.change_entry(mode).is_err() {
@@ -61,7 +70,10 @@ impl Runtime {
                     }
                 }
                 if self.entry.get().is_none() {
-                    self.show_main();
+                    self.show_recovery_main("startup_entry_recovery");
+                    if self.finished.get() {
+                        return;
+                    }
                 }
                 if first {
                     tracing::info!(
@@ -69,24 +81,17 @@ impl Runtime {
                         elapsed_ms = self.started.elapsed().as_millis() as u64
                     );
                 }
-                self.start_tasks();
             }
             Err(error) => {
                 self.ready.set(false);
-                self.shell.component().set_desktop_state(2);
                 let message = if matches!(error, StoreError::NewerSchema { .. }) {
                     "数据由更高版本创建，请升级应用。"
                 } else {
                     storage_message(error.code())
                 };
-                self.shell
-                    .component()
-                    .set_storage_error_message(message.into());
-                self.shell
-                    .component()
-                    .set_storage_error_log_id(error.log_id().into());
+                self.set_storage_error(message, error.log_id());
                 // 不能隐藏启动错误；不创建/覆盖另一份库，不显示伪可用的设置。
-                self.show_main();
+                self.show_recovery_main("storage_error_recovery");
             }
         }
     }
@@ -118,7 +123,8 @@ impl Runtime {
                 }
             }
         };
-        self.shell.component().set_show_hotkey_status(status.into());
+        drop(settings);
+        self.set_hotkey_status(status);
     }
 
     pub(super) fn saved(self: &Rc<Self>, id: u64, result: Result<(), StoreError>) {
@@ -153,7 +159,10 @@ impl Runtime {
             if let Some(DesktopSetting::EntryMode(mode)) = pending.changes.first() {
                 if self.change_entry(*mode).is_err() {
                     if self.entry.get().is_none() {
-                        self.show_main();
+                        self.show_recovery_main("preference_entry_recovery");
+                        if self.finished.get() {
+                            return;
+                        }
                         self.notice(ToastKind::Error, "桌面入口不可用，关闭主窗口时将退出应用。");
                     }
                     self.notice(ToastKind::Error, "入口切换失败，正在恢复原配置。");
@@ -196,12 +205,16 @@ impl Runtime {
     }
 
     pub(super) fn cleanup(&self) {
+        super::wakeup::unregister(self);
+        self.pending_effects.borrow_mut().clear();
         self.theme_monitor.borrow_mut().take();
         self.geometry_timer.stop();
-        self.task_save_timer.stop();
         self.task_day_timer.stop();
-        self.task_feedback_timer.stop();
-        self.shell.pause_timers();
+        let _ = self.with_ui(|ui| {
+            ui.task_save_timer.stop();
+            ui.task_feedback_timer.stop();
+            ui.shell.pause_timers();
+        });
         self.hide_menu();
         if self.ball.hide().is_err() {
             tracing::warn!("floating ball hide failed during exit");
@@ -209,10 +222,13 @@ impl Runtime {
         self.tray.borrow_mut().take();
         self.hotkey.borrow_mut().take();
         self.entry.set(None);
-        self.shell.component().set_entry_available(false);
-        if self.shell.hide().is_err() {
-            tracing::warn!("main window hide failed during exit");
-        }
+        let _ = self.with_ui(|ui| {
+            ui.shell.component().set_entry_available(false);
+            if ui.shell.hide().is_err() {
+                tracing::warn!("main window hide failed during exit");
+            }
+        });
         self.presentation.set(Presentation::Hidden);
+        self.exit_ui_resources();
     }
 }

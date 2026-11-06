@@ -135,8 +135,8 @@ fn test_preference_save_failure_returns_before_applying_snapshot_and_success_req
     assert!(success.contains("request_unscheduled_reveal();"));
     let replies = include_str!("../tasks/replies.rs");
     assert!(replies.contains("if preferences.show_unscheduled {"));
-    assert!(replies.contains("self.shell.show_toast(request);"));
-    assert!(replies.contains("take_unscheduled_reveal();"));
+    assert!(replies.contains("self.emit_ui(UiEffect::Toast(request))"));
+    assert!(include_str!("../tasks/replies/today.rs").contains("take_unscheduled_reveal()"));
 }
 
 #[test]
@@ -152,7 +152,36 @@ fn test_modal_disabling_is_live_in_the_ui_and_does_not_stick_in_the_preference_s
     assert!(!projection.contains("self.can_task_interact()"));
     assert!(!projection.contains("get_dialog_visible()"));
     assert!(projection.contains("!self.busy.get()"));
-    assert!(source.contains("if !self.can_task_interact() {"));
+    assert!(source.contains(
+        "if !can_change_preferences(self.task_kernel_available(), self.dialog_blocked())"
+    ));
     let main = include_str!("../../../../fastnote-ui/ui/app-window.slint");
     assert!(main.contains("enabled: root.task-preferences-enabled && !root.dialog-visible;"));
+}
+
+#[test]
+fn test_preference_changes_use_kernel_and_modal_guards_without_requiring_ui() {
+    assert!(can_change_preferences(true, false));
+    assert!(!can_change_preferences(false, false));
+    assert!(!can_change_preferences(true, true));
+    let source = include_str!("../task_preferences.rs");
+    let handle = source
+        .split_once("fn handle_task_preferences_action(")
+        .unwrap()
+        .1;
+    assert!(!handle.contains("self.can_task_interact()"));
+}
+
+#[test]
+fn test_preference_focus_is_limited_to_current_preference_controls() {
+    assert!(preference_focus_scope("今日任务", ""));
+    assert!(preference_focus_scope("设置", "task-preferences"));
+    assert!(!preference_focus_scope("设置", "general"));
+    assert!(!preference_focus_scope("日历", ""));
+    let source = include_str!("../task_preferences.rs")
+        .split_once("fn restore_preference_focus(")
+        .unwrap()
+        .1;
+    assert!(source.contains("!self.main_content_visible()"));
+    assert!(source.contains("self.dialog_blocked()"));
 }

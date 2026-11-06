@@ -3,9 +3,12 @@ use std::cmp::Ordering;
 use chrono::{NaiveDate, NaiveDateTime};
 
 use crate::{
-    TaskClock, TaskKind, TaskStatus, TaskSummary, TodayPreferences, TodaySection,
-    TodaySectionKind as Kind, TodaySort, TodayView,
+    TaskClock, TaskKind, TaskStatus, TaskSummary, TodayPreferences, TodaySectionKind as Kind,
+    TodaySort, TodayView,
 };
+
+mod bounded;
+pub use bounded::TodayCollector;
 
 /// 无到期日、阶段、已完成或归档任务不会逾期。
 pub fn is_overdue(task: &TaskSummary, now: NaiveDateTime) -> bool {
@@ -96,61 +99,11 @@ pub fn build_today_view(
     preferences: TodayPreferences,
     limits: [u32; 8],
 ) -> TodayView {
-    // 同一快照只采样一次当前时刻，避免查询跨到期边界时同组标记相互矛盾。
-    let evaluated_at = today.and_time(clock.local_datetime(clock.now()).time());
-    let next_overdue_at = tasks
-        .iter()
-        .filter(|task| {
-            task.kind == TaskKind::Task
-                && !task.context.read_only
-                && task.status.is_some_and(|status| status != TaskStatus::Done)
-        })
-        .filter_map(|task| {
-            task.due_date
-                .zip(task.due_time)
-                .map(|(date, time)| date.and_time(time))
-        })
-        .filter(|deadline| *deadline >= evaluated_at)
-        .min();
-    let mut groups: [Vec<TaskSummary>; 8] = std::array::from_fn(|_| Vec::new());
-    for mut task in tasks {
-        derive_at(&mut task, evaluated_at, clock);
-        if let Some(kind) = section_at(&task, evaluated_at, clock) {
-            groups[kind as usize].push(task);
-        }
+    let mut collector = TodayCollector::new(today, clock, preferences, limits);
+    for task in tasks {
+        collector.push(task);
     }
-    let count = |index: usize| u32::try_from(groups[index].len()).unwrap_or(u32::MAX);
-    let mut view = TodayView {
-        date: today,
-        evaluated_at,
-        next_overdue_at,
-        sections: Vec::new(),
-        open_count: 0,
-        overdue_count: count(Kind::Overdue as usize),
-        completed_today_count: count(Kind::CompletedToday as usize),
-        tomorrow_count: count(Kind::Tomorrow as usize),
-    };
-    for (kind, mut items) in Kind::ALL.into_iter().zip(groups) {
-        if items.is_empty() || !preferences.enabled(kind) {
-            continue;
-        }
-        items.sort_by(|a, b| compare(a, b, kind, preferences.sort).then_with(|| a.id.cmp(&b.id)));
-        let total = u32::try_from(items.len()).unwrap_or(u32::MAX);
-        if kind != Kind::CompletedToday {
-            view.open_count = view.open_count.saturating_add(total);
-        }
-        let limit = limits[kind as usize].clamp(200, 1000);
-        items.truncate(limit as usize);
-        view.sections.push(TodaySection {
-            kind,
-            total,
-            items,
-            has_more: total > limit,
-            collapsed_default: kind == Kind::CompletedToday
-                || (kind == Kind::Tomorrow && preferences.tomorrow_collapsed),
-        });
-    }
-    view
+    collector.finish()
 }
 
 fn optional_value<T: Ord>(a: Option<T>, b: Option<T>) -> Ordering {

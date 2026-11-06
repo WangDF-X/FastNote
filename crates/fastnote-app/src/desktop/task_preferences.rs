@@ -73,6 +73,14 @@ fn sort_index(sort: TodaySort) -> i32 {
     }
 }
 
+fn can_change_preferences(available: bool, dialog: bool) -> bool {
+    available && !dialog
+}
+
+fn preference_focus_scope(page: &str, section: &str) -> bool {
+    page == "今日任务" || (page == "设置" && section == "task-preferences")
+}
+
 /// Q-SET-10：仅成功创建且未安排组被隐藏时提示；快捷恢复不包含任务正文。
 pub(super) fn hidden_task_created(preferences: TodayPreferences) -> Option<ToastRequest> {
     (!preferences.show_unscheduled).then(|| ToastRequest {
@@ -87,23 +95,25 @@ pub(super) fn hidden_task_created(preferences: TodayPreferences) -> Option<Toast
 
 impl Runtime {
     pub(super) fn sync_task_preferences(&self) {
-        let preferences = self.settings.borrow().today_preferences;
-        let error = self
-            .task_preferences_error
-            .borrow()
-            .clone()
-            .unwrap_or_default();
-        let window = self.shell.component();
-        // 对话框由 Slint 的实时绑定禁用；不把临时模态状态写进确认投影，避免关闭后仍禁用。
-        window.set_task_preferences_enabled(
-            self.ready.get() && !self.finished.get() && !self.closing.get() && !self.busy.get(),
-        );
-        window.set_task_preferences_error(error.into());
-        window.set_task_sort_index(sort_index(preferences.sort));
-        window.set_task_show_in_progress(preferences.show_in_progress);
-        window.set_task_show_waiting(preferences.show_waiting);
-        window.set_task_show_unscheduled(preferences.show_unscheduled);
-        window.set_task_show_completed(preferences.show_completed);
+        let _ = self.with_ui(|ui| {
+            let preferences = self.settings.borrow().today_preferences;
+            let error = self
+                .task_preferences_error
+                .borrow()
+                .clone()
+                .unwrap_or_default();
+            let window = ui.shell.component();
+            // 对话框由 Slint 的实时绑定禁用；不把临时模态状态写进确认投影，避免关闭后仍禁用。
+            window.set_task_preferences_enabled(
+                self.ready.get() && !self.finished.get() && !self.closing.get() && !self.busy.get(),
+            );
+            window.set_task_preferences_error(error.into());
+            window.set_task_sort_index(sort_index(preferences.sort));
+            window.set_task_show_in_progress(preferences.show_in_progress);
+            window.set_task_show_waiting(preferences.show_waiting);
+            window.set_task_show_unscheduled(preferences.show_unscheduled);
+            window.set_task_show_completed(preferences.show_completed);
+        });
     }
 
     pub(super) fn handle_task_preferences_action(self: &Rc<Self>, action: &str) -> bool {
@@ -114,7 +124,7 @@ impl Runtime {
             self.notice(ToastKind::Error, "任务偏好选项无效，请重新选择。");
             return true;
         };
-        if !self.can_task_interact() {
+        if !can_change_preferences(self.task_kernel_available(), self.dialog_blocked()) {
             self.notice(ToastKind::Info, "当前操作尚未完成，请稍后再修改任务偏好。");
             return true;
         }
@@ -171,12 +181,21 @@ impl Runtime {
     }
 
     fn restore_preference_focus(&self) {
-        if !self.closing.get()
-            && !self.finished.get()
-            && !self.shell.component().get_dialog_visible()
+        if !self.main_content_visible()
+            || self.closing.get()
+            || self.finished.get()
+            || self.dialog_blocked()
         {
-            self.shell.component().invoke_restore_task_focus();
+            return;
         }
+        let _ = self.with_ui(|ui| {
+            if preference_focus_scope(
+                ui.shell.component().get_current_page().as_str(),
+                ui.shell.component().get_settings_section().as_str(),
+            ) {
+                ui.shell.component().invoke_restore_task_focus();
+            }
+        });
     }
 }
 

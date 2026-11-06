@@ -3,10 +3,11 @@
 mod error;
 pub(crate) mod preferences;
 mod read;
+mod snapshot;
 mod write;
 
 use fastnote_core::{
-    NaiveDate, Task, TaskDetail, TaskId, TaskRepository, TaskSummary, TodayPreferences,
+    NaiveDate, Task, TaskDetail, TaskId, TaskRepository, TaskSummary, TodayPreferences, TodayView,
 };
 
 use crate::SqliteSettings;
@@ -18,6 +19,18 @@ impl TaskRepository for SqliteSettings {
 
     fn today_tasks(&self, date: NaiveDate) -> Result<Vec<TaskSummary>, TaskStoreError> {
         read::today(&self.connection, date)
+    }
+
+    fn visit_today_tasks(
+        &self,
+        date: NaiveDate,
+        visitor: &mut dyn FnMut(TaskSummary),
+    ) -> Result<(), TaskStoreError> {
+        read::visit_today(&self.connection, date, visitor)
+    }
+
+    fn complete_today_projection(&self, view: &mut TodayView) -> Result<(), TaskStoreError> {
+        read::complete_today(&self.connection, view)
     }
 
     fn task_detail(&self, id: TaskId) -> Result<Option<TaskDetail>, TaskStoreError> {

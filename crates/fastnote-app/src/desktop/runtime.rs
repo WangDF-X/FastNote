@@ -1,26 +1,33 @@
+pub(super) mod session;
+
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
-use std::rc::{Rc, Weak};
-use std::sync::Arc;
+use std::rc::Rc;
 
 use crossbeam_channel::{bounded, Receiver};
 use fastnote_core::{
     BallPosition, DesktopSetting, DesktopSettings, EntryMode, ResolvedGeometry, WindowGeometry,
 };
 use fastnote_platform::{
-    install_event_handlers, NativeEvent, WindowsHotkey, WindowsThemeMonitor, WindowsTray,
+    install_event_handlers, NativeEvent, NativeWindowHandle, WindowsHotkey, WindowsThemeMonitor,
+    WindowsTray,
 };
-use fastnote_ui::{
-    BallMenuWindow, FloatingBall, ShellHandle, ShellUpdate, ToastKind, ToastRequest, TodayPresenter,
+use fastnote_ui::{BallMenuWindow, FloatingBall, RetainedFeedback, ToastKind, ToastRequest};
+use slint::Timer;
+
+use crate::tasks::{TaskSession, UiEpoch};
+use crate::{
+    clock::{ClockTracker, SystemClock},
+    controller::AppController,
 };
-use slint::{ComponentHandle, Timer};
 
-use crate::tasks::TaskSession;
-use crate::{clock::SystemClock, controller::AppController};
-
+use super::effects::{DesktopFeedback, PendingEffects, UiEffect};
 use super::gesture::BallDrag;
+use super::lease::UiLease;
 use super::presentation::Presentation;
 use super::theme::ThemeState;
+use super::ui_session::{with_session, UiSession};
+use super::wakeup::{make_wakeup, register};
 use super::window_frame::WindowFrameState;
 use super::worker::{DbWorker, Reply};
 
@@ -38,7 +45,16 @@ pub(super) struct PendingWrite {
 }
 
 pub(super) struct Runtime {
-    pub shell: ShellHandle,
+    pub ui: RefCell<Option<UiSession>>,
+    pub ui_epoch: Cell<UiEpoch>,
+    pub ui_lease: RefCell<UiLease>,
+    pub hot_lease_timer: Timer,
+    pub retained_feedback: RefCell<Option<RetainedFeedback>>,
+    pub main_native: Cell<Option<NativeWindowHandle>>,
+    /// 实际 hide 成功即记录，入口显示/重模型清理的耗时不能额外延长 120 秒。
+    pub ui_hidden_at: Cell<Option<u64>>,
+    pub pending_effects: RefCell<PendingEffects>,
+    pub desktop_feedback: RefCell<DesktopFeedback>,
     pub ball: FloatingBall,
     pub menu: BallMenuWindow,
     pub controller: RefCell<AppController<SystemClock>>,
@@ -72,15 +88,20 @@ pub(super) struct Runtime {
     /// 原生外沿的最近配置；窗口重建时清空，不能只按 HWND 数值去重。
     pub main_frame: Cell<Option<WindowFrameState>>,
     pub menu_open: Cell<bool>,
+    pub ball_native_pending: Cell<bool>,
+    pub menu_native_pending: Cell<bool>,
     pub drag: RefCell<Option<BallDrag>>,
     pub next_id: Cell<u64>,
     pub pending: RefCell<HashMap<u64, PendingWrite>>,
     pub tasks: RefCell<TaskSession>,
-    pub today_presenter: TodayPresenter,
-    pub task_save_timer: Timer,
+    /// 无会话导航及后续任务事件只失效，进入今日页时再查询。
+    pub today_dirty: Cell<bool>,
+    /// 当前详情在无会话时只记录失效，保存确认仍由内核处理。
+    pub detail_dirty: Cell<bool>,
+    /// Q-SHELL-10：复用既有日期检测，随内核常驻而非随页面停止。
     pub task_day_timer: Timer,
-    pub task_feedback_timer: Timer,
-    pub task_saving_visible: Cell<bool>,
+    /// 无 UI 时仍保留单个 UTC/本地日期观察，检测跨日、时区和时钟回拨。
+    pub task_clock: RefCell<ClockTracker>,
     pub task_syncing: Cell<bool>,
 }
 
@@ -90,28 +111,7 @@ impl Runtime {
         started: std::time::Instant,
     ) -> Result<Rc<Self>, Box<dyn std::error::Error>> {
         let controller = AppController::new(SystemClock);
-        let initial = controller.shell_view();
-        let target = Rc::new(RefCell::new(Weak::<Self>::new()));
-        let shell = ShellHandle::new(initial.clone(), {
-            let target = target.clone();
-            move |action| match target.borrow().upgrade() {
-                Some(runtime) => runtime.handle_action(&action),
-                None => ShellUpdate {
-                    view: initial.clone(),
-                    route_changed: false,
-                    issue: None,
-                },
-            }
-        })?;
-        let weak_window = shell.component().as_weak();
-        let wake: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
-            if weak_window
-                .upgrade_in_event_loop(|window| window.invoke_desktop_wakeup())
-                .is_err()
-            {
-                tracing::debug!("UI loop unavailable during settings wakeup");
-            }
-        });
+        let wake = make_wakeup();
         let worker = DbWorker::spawn(None, wake.clone())?;
         let (native_tx, native_rx) = bounded(256);
         install_event_handlers(native_tx.clone(), wake.clone());
@@ -124,9 +124,16 @@ impl Runtime {
                 );
             })
             .ok();
-        let today_presenter = TodayPresenter::new(shell.component());
         let runtime = Rc::new(Self {
-            shell,
+            ui: RefCell::new(None),
+            ui_epoch: Cell::new(UiEpoch::default()),
+            ui_lease: RefCell::new(UiLease::default()),
+            hot_lease_timer: Timer::default(),
+            retained_feedback: RefCell::new(None),
+            main_native: Cell::new(None),
+            ui_hidden_at: Cell::new(None),
+            pending_effects: RefCell::new(PendingEffects::default()),
+            desktop_feedback: RefCell::new(DesktopFeedback::default()),
             ball: FloatingBall::new()?,
             menu: BallMenuWindow::new()?,
             controller: RefCell::new(controller),
@@ -158,24 +165,39 @@ impl Runtime {
             main_caption: Cell::new(0),
             main_frame: Cell::new(None),
             menu_open: Cell::new(false),
+            ball_native_pending: Cell::new(false),
+            menu_native_pending: Cell::new(false),
             drag: RefCell::new(None),
             next_id: Cell::new(1),
             pending: RefCell::new(HashMap::new()),
             tasks: RefCell::new(TaskSession::new()),
-            today_presenter,
-            task_save_timer: Timer::default(),
+            today_dirty: Cell::new(true),
+            detail_dirty: Cell::new(true),
             task_day_timer: Timer::default(),
-            task_feedback_timer: Timer::default(),
-            task_saving_visible: Cell::new(false),
+            task_clock: RefCell::new(ClockTracker::default()),
             task_syncing: Cell::new(false),
         });
-        *target.borrow_mut() = Rc::downgrade(&runtime);
-        runtime.connect();
+        register(&runtime);
+        runtime.connect_kernel();
         runtime.refresh_system_theme();
+        if !hidden {
+            runtime.ensure_ui()?;
+        }
+        tracing::info!(
+            phase = "kernel_initialized",
+            ui_present = runtime.with_ui(|_| ()).is_some(),
+            "application kernel assembled"
+        );
         Ok(runtime)
     }
 
+    /// 临时访问主窗会话，不向内核泄漏组件所有权；缺失时不自动建窗。
+    pub(super) fn with_ui<R>(&self, f: impl FnOnce(&UiSession) -> R) -> Option<R> {
+        with_session(&self.ui, f)
+    }
+
     pub(super) fn wakeup(self: &Rc<Self>) {
+        self.check_ui_lease();
         while let Some(reply) = self.worker.try_reply() {
             match reply {
                 Reply::Loaded(result) => self.loaded(result),
@@ -191,35 +213,40 @@ impl Runtime {
             self.native_action(event);
         }
         self.sync_minimized_timers();
+        self.check_ui_lease();
     }
 
     pub(super) fn set_busy(&self, value: bool) {
         self.busy.set(value);
-        self.shell.component().set_desktop_busy(value);
+        self.emit_ui(UiEffect::SetBusy(value));
         self.sync_task_preferences();
         self.sync_task_editor();
     }
 
     pub(super) fn sync_settings(&self) {
-        let settings = self.settings.borrow();
-        self.shell
-            .component()
-            .set_entry_mode(settings.entry_mode.as_str().into());
-        self.shell
-            .component()
-            .set_close_behavior(settings.close_behavior.as_str().into());
-        drop(settings);
+        let (entry_mode, close_behavior) = {
+            let settings = self.settings.borrow();
+            (settings.entry_mode, settings.close_behavior)
+        };
+        let _ = self.with_ui(|ui| {
+            ui.shell
+                .component()
+                .set_entry_mode(entry_mode.as_str().into());
+            ui.shell
+                .component()
+                .set_close_behavior(close_behavior.as_str().into());
+        });
         self.sync_theme();
         self.sync_task_preferences();
         self.sync_task_editor();
     }
 
     pub(super) fn notice(&self, kind: ToastKind, message: impl Into<String>) {
-        self.shell.show_toast(ToastRequest {
+        self.emit_ui(UiEffect::Toast(ToastRequest {
             kind,
             message: message.into(),
             action: None,
-        });
+        }));
     }
 
     pub(super) fn queue(

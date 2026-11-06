@@ -1,6 +1,9 @@
 # Cargo build artifacts for the whole workspace
 /target/
 
+# Local implementation notes and manual verification records
+/record/
+
 # Rust compiler backup files
 **/*.rs.bk
 

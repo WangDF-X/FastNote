@@ -22,70 +22,8 @@ pub(super) fn native_handle(window: &Window) -> Option<NativeWindowHandle> {
 }
 
 impl Runtime {
-    pub(super) fn connect(self: &Rc<Self>) {
-        self.shell.component().on_desktop_wakeup({
-            let weak = Rc::downgrade(self);
-            move || {
-                if let Some(runtime) = weak.upgrade() {
-                    runtime.wakeup();
-                }
-            }
-        });
-        let weak_window = self.shell.component().as_weak();
-        self.shell.component().window().on_close_requested(move || {
-            // 等异步保存完成再 hide/quit，不能在 winit 借用回调里直接销毁原生窗口。
-            let _ = weak_window
-                .upgrade_in_event_loop(|window| window.invoke_route_action("desktop:close".into()));
-            slint::CloseRequestResponse::KeepWindowShown
-        });
-        self.shell.component().window().on_winit_window_event({
-            let weak = Rc::downgrade(self);
-            move |_, event| {
-                if let Some(runtime) = weak.upgrade() {
-                    if let WindowEvent::Focused(active) = event {
-                        runtime.shell.component().set_window_active(*active);
-                        if !active {
-                            let weak = Rc::downgrade(&runtime);
-                            Timer::single_shot(Duration::ZERO, move || {
-                                if let Some(runtime) = weak.upgrade() {
-                                    runtime.flush_task_editor();
-                                }
-                            });
-                        }
-                    }
-                    if matches!(
-                        event,
-                        WindowEvent::ThemeChanged(_) | WindowEvent::Focused(true)
-                    ) {
-                        let weak = Rc::downgrade(&runtime);
-                        Timer::single_shot(Duration::ZERO, move || {
-                            if let Some(runtime) = weak.upgrade() {
-                                runtime.refresh_system_theme();
-                            }
-                        });
-                    }
-                    if matches!(
-                        event,
-                        WindowEvent::Moved(_)
-                            | WindowEvent::Resized(_)
-                            | WindowEvent::ScaleFactorChanged { .. }
-                    ) {
-                        runtime.schedule_geometry();
-                        let weak = Rc::downgrade(&runtime);
-                        Timer::single_shot(Duration::ZERO, move || {
-                            if let Some(runtime) = weak.upgrade() {
-                                runtime.sync_minimized_timers();
-                                // 窗口创建/重建后的首个 Resized，补齐任务栏大图标。
-                                runtime.apply_main_icon();
-                                runtime.apply_main_caption();
-                                runtime.sync_window_state();
-                            }
-                        });
-                    }
-                }
-                EventResult::Propagate
-            }
-        });
+    /// 入口回调属于内核，主窗缺失时仍保持球/托盘菜单可用。
+    pub(super) fn connect_kernel(self: &Rc<Self>) {
         self.ball.on_pointer_phase({
             let weak = Rc::downgrade(self);
             move |phase| {
@@ -100,10 +38,21 @@ impl Runtime {
         self.ball.window().on_winit_window_event({
             let weak = Rc::downgrade(self);
             move |_, event| {
+                if let Some(runtime) = weak.upgrade() {
+                    if runtime.ball_native_pending.get() {
+                        let weak = weak.clone();
+                        Timer::single_shot(Duration::ZERO, move || {
+                            if let Some(runtime) = weak.upgrade() {
+                                runtime.complete_entry_native();
+                            }
+                        });
+                    }
+                }
                 if matches!(event, WindowEvent::ThemeChanged(_)) {
                     let weak = weak.clone();
                     Timer::single_shot(Duration::ZERO, move || {
                         if let Some(runtime) = weak.upgrade() {
+                            runtime.check_ui_lease();
                             runtime.refresh_system_theme();
                         }
                     });
@@ -152,6 +101,7 @@ impl Runtime {
             let weak = Rc::downgrade(self);
             move || {
                 if let Some(runtime) = weak.upgrade() {
+                    runtime.check_ui_lease();
                     runtime.hide_menu();
                 }
             }
@@ -159,6 +109,16 @@ impl Runtime {
         self.menu.window().on_winit_window_event({
             let weak = Rc::downgrade(self);
             move |_, event| {
+                if let Some(runtime) = weak.upgrade() {
+                    if runtime.menu_native_pending.get() {
+                        let weak = weak.clone();
+                        Timer::single_shot(Duration::ZERO, move || {
+                            if let Some(runtime) = weak.upgrade() {
+                                runtime.complete_entry_native();
+                            }
+                        });
+                    }
+                }
                 if matches!(event, WindowEvent::ThemeChanged(_)) {
                     let weak = weak.clone();
                     Timer::single_shot(Duration::ZERO, move || {
@@ -181,16 +141,48 @@ impl Runtime {
                 EventResult::Propagate
             }
         });
-        self.connect_tasks();
+    }
+
+    /// 可见内容不包括托盘模式原生最小化；读取窗口状态不保留 winit 引用。
+    pub(super) fn main_content_visible(&self) -> bool {
+        self.main_visible()
+            && self
+                .with_ui(|ui| {
+                    let window = ui.shell.component().window();
+                    window.is_visible()
+                        && window
+                            .with_winit_window(|window| {
+                                !window.is_minimized().unwrap_or(false)
+                                    && window.is_visible() != Some(false)
+                            })
+                            .unwrap_or(false)
+                })
+                .unwrap_or(false)
+    }
+
+    /// 最小化主窗仍可从任务栏恢复；错误兜底判断可达性，不据此允许页面查询。
+    pub(super) fn main_surface_reachable(&self) -> bool {
+        self.main_visible()
+            && self
+                .with_ui(|ui| {
+                    let window = ui.shell.component().window();
+                    window.is_visible()
+                        && window
+                            .with_winit_window(|window| window.is_visible() != Some(false))
+                            .unwrap_or(false)
+                })
+                .unwrap_or(false)
     }
 
     pub(super) fn sync_window_state(&self) {
-        self.shell.component().window().with_winit_window(|window| {
-            self.shell
-                .component()
-                .set_window_maximized(window.is_maximized());
-            self.shell.component().set_window_active(window.has_focus());
-            self.apply_main_frame(window);
+        let _ = self.with_ui(|ui| {
+            ui.shell.component().window().with_winit_window(|window| {
+                ui.shell
+                    .component()
+                    .set_window_maximized(window.is_maximized());
+                ui.shell.component().set_window_active(window.has_focus());
+                self.apply_main_frame(window);
+            });
         });
     }
 
@@ -204,8 +196,11 @@ impl Runtime {
             if self.defer_task_transition(crate::tasks::Transition::Minimize) {
                 return;
             }
-            self.shell.component().window().set_minimized(true);
-            self.shell.pause_timers();
+            let _ = self.with_ui(|ui| {
+                ui.shell.component().window().set_minimized(true);
+                ui.shell.pause_timers();
+            });
+            self.task_page_hidden();
         }
     }
 
@@ -213,18 +208,20 @@ impl Runtime {
         if !self.main_visible() || self.finished.get() || self.closing.get() {
             return;
         }
-        let window = self.shell.component().window();
-        if let Some(maximized) = window.with_winit_window(|window| window.is_maximized()) {
-            window.set_maximized(!maximized);
-            self.shell.component().set_window_maximized(!maximized);
-        }
+        let _ = self.with_ui(|ui| {
+            let window = ui.shell.component().window();
+            if let Some(maximized) = window.with_winit_window(|window| window.is_maximized()) {
+                window.set_maximized(!maximized);
+                ui.shell.component().set_window_maximized(!maximized);
+            }
+        });
     }
 
     fn schedule_geometry(self: &Rc<Self>) {
         if self.closing.get() || self.finished.get() || !self.main_visible() {
             return;
         }
-        let weak = Rc::downgrade(self);
+        let weak = self.ui_target();
         self.geometry_timer.start(
             TimerMode::SingleShot,
             Duration::from_millis(500),
@@ -241,25 +238,25 @@ impl Runtime {
             return Ok(());
         }
         let result = self
-            .shell
-            .component()
-            .window()
-            .with_winit_window(|window| {
-                native_handle(window).ok_or(()).and_then(|handle| {
-                    let result = if window.is_decorated() {
-                        capture_geometry(handle)
-                    } else {
-                        capture_frameless_geometry(handle)
-                    };
-                    result.map_err(|error| {
-                        tracing::warn!(
-                            phase = "main_geometry",
-                            error_kind = error.diagnostic_kind(),
-                            native_code = error.native_code()
-                        );
+            .with_ui(|ui| {
+                ui.shell.component().window().with_winit_window(|window| {
+                    native_handle(window).ok_or(()).and_then(|handle| {
+                        let result = if window.is_decorated() {
+                            capture_geometry(handle)
+                        } else {
+                            capture_frameless_geometry(handle)
+                        };
+                        result.map_err(|error| {
+                            tracing::warn!(
+                                phase = "main_geometry",
+                                error_kind = error.diagnostic_kind(),
+                                native_code = error.native_code()
+                            );
+                        })
                     })
                 })
             })
+            .flatten()
             .ok_or(())??;
         if !result.is_valid() {
             return Err(());
@@ -268,3 +265,4 @@ impl Runtime {
         Ok(())
     }
 }
+mod ui_events;

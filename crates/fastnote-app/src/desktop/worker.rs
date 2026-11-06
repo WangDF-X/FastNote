@@ -249,7 +249,18 @@ fn work(
                 Reply::Executed { id, result }
             }
             Command::Query { id, query } => {
+                let query_scope = match &query {
+                    Query::Today { .. } => "today",
+                    Query::TaskDetail(_) => "task_detail",
+                };
+                let started = Instant::now();
                 let result = crate::tasks::query(store.as_mut(), path.as_deref(), query);
+                tracing::info!(
+                    phase = "db_query_completed",
+                    request_id = id,
+                    query_scope,
+                    elapsed_us = started.elapsed().as_micros() as u64
+                );
                 Reply::Queried { id, result }
             }
             Command::Reload => {

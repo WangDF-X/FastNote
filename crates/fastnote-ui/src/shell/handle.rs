@@ -5,19 +5,24 @@ use std::time::Instant;
 use slint::{ComponentHandle, ModelRc, Timer, VecModel};
 
 use crate::{
-    BannerRequest, BannerSet, DialogQueue, DialogRequest, MainWindow, ToastQueue, ToastRequest,
+    BannerRequest, BannerSet, DialogOutcome, DialogQueue, DialogRequest, MainWindow, ToastQueue,
+    ToastRequest,
 };
 
-use super::{connect, Shell, ShellUpdate, ShellView};
+use super::{connect, RetainedFeedback, Shell, ShellUpdate, ShellView};
 
-/// 可由 app 生命周期持有的外壳；隐藏不销毁组件、路由展示和反馈队列。
+/// 可由 app 会话持有的外壳；组件、路由展示和反馈队列保留到句柄被丢弃。
+///
+/// `hide` 不是卸载：隐藏后仍强持有 MainWindow 和反馈模型。只有调用方移除并 drop
+/// 所属会话，才释放本句柄对这些资源的持有；进程内存是否回落仍需实际量测。
 pub struct ShellHandle {
     window: MainWindow,
     shell: Rc<Shell>,
 }
 
 impl ShellHandle {
-    /// 装配窗口但不启动阻塞事件循环，显示/隐藏/退出由 app 决定。
+    /// 创建 MainWindow 并装配回调，但不启动阻塞事件循环。
+    /// 按需加载的调用方只能在确实需要主窗时调用；本方法不负责预热或热缓存计时。
     pub fn new(
         initial: ShellView,
         handle_action: impl FnMut(String) -> ShellUpdate + 'static,
@@ -34,6 +39,7 @@ impl ShellHandle {
             last_tick: Cell::new(Instant::now()),
             visible: Cell::new(false),
             dialogs: RefCell::new(DialogQueue::new()),
+            dialog_observer: RefCell::new(Box::new(|_, _| {})),
             dialog_token: Cell::new(0),
             banners: RefCell::new(BannerSet::new()),
         });
@@ -42,7 +48,8 @@ impl ShellHandle {
         Ok(Self { window, shell })
     }
 
-    /// 临时访问组件与 Slint Window；不要保留底层 winit Arc，否则 hide 无法释放窗口。
+    /// 临时借用组件与 Slint Window；不要在会话外保存组件克隆或底层 winit Arc。
+    /// 额外的强引用会延长组件/原生窗口寿命，使会话 drop 无法完成预期释放。
     pub fn component(&self) -> &MainWindow {
         &self.window
     }
@@ -54,7 +61,8 @@ impl ShellHandle {
         Ok(())
     }
 
-    /// 隐藏主窗口，保留视图与反馈状态；失败时不暂停仍可见窗口。
+    /// 隐藏主窗口，保留组件、视图与反馈模型；失败时不暂停仍可见窗口。
+    /// 后端可能释放原生窗口，但这不等于业务模型/完整 UI 资源已经卸载。
     pub fn hide(&self) -> Result<(), slint::PlatformError> {
         self.window.hide()?;
         self.pause_timers();
@@ -65,6 +73,33 @@ impl ShellHandle {
     pub fn pause_timers(&self) {
         self.shell.visible.set(false);
         self.shell.toast_timer.stop();
+    }
+
+    /// 模态决策完成时通知 app 清理匹配许可；观察者不能持有组件或内核强引用。
+    pub fn on_dialog_resolved(&self, observer: impl FnMut(&str, DialogOutcome) + 'static) {
+        *self.shell.dialog_observer.borrow_mut() = Box::new(observer);
+    }
+
+    /// 只在无未决对话框时移动纯反馈状态；不重置 Toast 剩余时长，不保留模型。
+    pub fn take_retained_feedback(&self) -> Option<RetainedFeedback> {
+        if self.shell.dialogs.borrow().is_open() {
+            return None;
+        }
+        self.pause_timers();
+        let mut toasts = std::mem::take(&mut *self.shell.toasts.borrow_mut());
+        toasts.retain_for_unload();
+        Some(RetainedFeedback {
+            toasts,
+            banners: std::mem::take(&mut *self.shell.banners.borrow_mut()),
+        })
+    }
+
+    /// 冷重建只恢复反馈状态，不分发确认或导航命令；计时由实际显示再恢复。
+    pub fn restore_retained_feedback(&self, feedback: RetainedFeedback) {
+        *self.shell.toasts.borrow_mut() = feedback.toasts;
+        *self.shell.banners.borrow_mut() = feedback.banners;
+        self.shell.sync_toasts();
+        self.shell.sync_banner();
     }
 
     /// 恢复窗口后重启计时，不把隐藏期间的时长扣掉。

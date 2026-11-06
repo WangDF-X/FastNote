@@ -1,16 +1,25 @@
+mod failures;
+mod state;
+mod today;
+
 use std::rc::Rc;
 
 use fastnote_core::{
-    AppEvent, CommandResult, QueryResult, TaskError, TaskScope, TaskStatus, TodaySectionKind,
+    AppEvent, CommandResult, QueryResult, TaskError, TaskStatus, TodaySectionKind,
 };
 use fastnote_store::TaskStoreError;
 use fastnote_ui::{DialogKind, DialogRequest, ToastKind};
 
+use crate::desktop::effects::{FocusTarget, UiEffect};
 use crate::desktop::runtime::Runtime;
 use crate::desktop::task_preferences::hidden_task_created;
 use crate::tasks::{DetailPurpose, EditorSession, PendingTask};
 
 use super::view::error_message;
+use state::{
+    acknowledge_save, invalidations, mark_save_committed, mark_save_failed, may_apply_detail,
+    should_refresh, stage_confirmation,
+};
 
 impl Runtime {
     pub(in crate::desktop) fn task_executed(
@@ -30,16 +39,21 @@ impl Runtime {
             Err(error) => {
                 let message = error_message(&error);
                 match pending {
-                    PendingTask::Save { .. } => {
-                        if let Some(editor) = self.tasks.borrow_mut().editor.as_mut() {
-                            editor.failed(message.clone());
+                    PendingTask::Save { id } => {
+                        let changed =
+                            mark_save_failed(&mut self.tasks.borrow_mut(), id, message.clone());
+                        if changed {
+                            self.detail_dirty.set(true);
+                            let _ = self.with_ui(|ui| ui.task_feedback_timer.stop());
                         }
-                        self.task_feedback_timer.stop();
                     }
-                    PendingTask::Created { .. } => self
-                        .shell
-                        .component()
-                        .set_task_create_error(message.clone().into()),
+                    PendingTask::Created { .. } => {
+                        let _ = self.with_ui(|ui| {
+                            ui.shell
+                                .component()
+                                .set_task_create_error(message.clone().into());
+                        });
+                    }
                     _ => {}
                 }
                 self.notice(ToastKind::Error, &message);
@@ -50,49 +64,54 @@ impl Runtime {
             }
         };
         if result.needs_confirmation {
+            // 确认未写入；先撤销延迟转场，再登记待确认状态，不能在投影回调中启动转场。
+            self.tasks.borrow_mut().after_save = None;
             if let PendingTask::Status { id, status } = pending {
-                self.tasks.borrow_mut().status_confirmation = Some((id, status));
-                self.shell.show_dialog(DialogRequest::new("仍要修改任务状态？",
-                    "这项任务仍有未完成的子任务或前置任务。系统只提示，不会锁定操作；确认后继续修改状态。",
-                    "继续修改", DialogKind::Normal).with_command(format!("task:status-confirm:{id}")));
+                let accepted = stage_confirmation(
+                    || {
+                        self.tasks
+                            .borrow_mut()
+                            .status_confirmation
+                            .replace((id, status))
+                    },
+                    || {
+                        self.emit_ui(UiEffect::Dialog(DialogRequest::new("仍要修改任务状态？",
+                        "这项任务仍有未完成的子任务或前置任务。系统只提示，不会锁定操作；确认后继续修改状态。",
+                        "继续修改", DialogKind::Normal).with_command(format!("task:status-confirm:{id}"))))
+                    },
+                    |previous| self.tasks.borrow_mut().status_confirmation = previous,
+                );
+                if !accepted {
+                    self.notice(ToastKind::Error, "待确认操作过多，请先处理当前确认后重试。");
+                }
             }
             self.sync_task_editor();
-            // 确认框打开时不执行延迟的退出/路由，避免吞掉用户决策。
-            self.tasks.borrow_mut().after_save = None;
             return;
         }
+        self.mark_task_invalidations(&result.events);
         let focus_quick = matches!(&pending, PendingTask::Created { .. });
         match pending {
             PendingTask::Save { id } => {
-                let selected = {
-                    let mut tasks = self.tasks.borrow_mut();
-                    if let Some(editor) = tasks
-                        .editor
-                        .as_mut()
-                        .filter(|editor| editor.detail.task.id == id)
-                    {
-                        editor.committed = true;
-                        true
-                    } else {
-                        false
-                    }
-                };
+                let selected = mark_save_committed(&mut self.tasks.borrow_mut(), id);
+                // R3：保留既有保存基线确认读取；它不是无窗页面预取，不能因无 UI 丢确认。
                 if selected && !self.request_task_detail(DetailPurpose::SaveAck(id)) {
                     let transition = self.tasks.borrow_mut().after_save.take();
                     self.failed_task_transition(transition);
                 }
             }
             PendingTask::Created { title } => {
-                if self.shell.component().get_task_quick_title() == title {
-                    self.shell.component().set_task_quick_title("".into());
-                }
                 let preferences = self.settings.borrow().today_preferences;
                 if preferences.show_unscheduled {
                     self.tasks.borrow_mut().collapsed[TodaySectionKind::Unscheduled as usize] =
                         Some(false);
                 }
+                let _ = self.with_ui(|ui| {
+                    if ui.shell.component().get_task_quick_title() == title {
+                        ui.shell.component().set_task_quick_title("".into());
+                    }
+                });
                 if let Some(request) = hidden_task_created(preferences) {
-                    self.shell.show_toast(request);
+                    self.emit_ui(UiEffect::Toast(request));
                 }
             }
             PendingTask::Status { status, .. } => {
@@ -123,23 +142,30 @@ impl Runtime {
         self.consume_task_events(&result.events);
         self.sync_task_editor();
         if focus_quick {
-            self.shell.component().invoke_focus_task_create();
+            self.emit_ui(UiEffect::Focus(FocusTarget::TaskCreate));
         }
         self.continue_task_transition();
     }
 
-    fn consume_task_events(&self, events: &[AppEvent]) {
-        if events.iter().any(|event| {
-            matches!(
-                event,
-                AppEvent::TasksChanged {
-                    scope: TaskScope::Today,
-                    ..
-                }
-            )
-        }) {
-            self.request_today();
+    fn mark_task_invalidations(&self, events: &[AppEvent]) {
+        let selected = self
+            .tasks
+            .borrow()
+            .editor
+            .as_ref()
+            .map(|editor| editor.detail.task.id);
+        let changed = invalidations(events, selected);
+        if changed.today {
+            self.today_dirty.set(true);
+            self.tasks.borrow_mut().invalidate_today_read();
         }
+        if changed.detail {
+            self.detail_dirty.set(true);
+        }
+    }
+
+    fn consume_task_events(&self, events: &[AppEvent]) {
+        let page_visible = self.today_page_visible();
         let selected = self
             .tasks
             .borrow()
@@ -147,10 +173,14 @@ impl Runtime {
             .as_ref()
             .filter(|editor| editor.in_flight.is_none())
             .map(|editor| editor.detail.task.id);
-        if let Some(id) = selected.filter(|id| events.iter().any(|event|
-            matches!(event, AppEvent::TasksChanged { scope: TaskScope::All, .. })
-                || matches!(event, AppEvent::TasksChanged { scope: TaskScope::Detail(changed), .. } if changed == id))) {
-            self.request_task_detail(DetailPurpose::Refresh(id));
+        let changed = invalidations(events, selected);
+        if should_refresh(changed.today, page_visible) {
+            self.request_today();
+        }
+        if should_refresh(changed.detail, page_visible) {
+            if let Some(id) = selected {
+                self.request_task_detail(DetailPurpose::Refresh(id));
+            }
         }
         // Calendar/Plan/Reminder/Note 事件保留在统一命令结果中；其业务页面尚未接入，不能伪称已刷新。
     }
@@ -160,50 +190,38 @@ impl Runtime {
         id: u64,
         result: Result<QueryResult, TaskStoreError>,
     ) {
-        if self.finished.get() {
+        if self.finished.get() || id == 0 {
             return;
         }
         let purpose = self.tasks.borrow_mut().queries.remove(&id);
         let Some(purpose) = purpose else {
-            if self.tasks.borrow().latest_today != id {
-                return;
-            }
-            match result {
-                Ok(QueryResult::Today(view)) => {
-                    self.tasks.borrow_mut().today = Some(view);
-                    self.shell.component().set_today_state(1);
-                    self.shell.component().set_today_error("".into());
-                    self.shell.component().set_today_error_log_id("".into());
-                    self.apply_today();
-                    if self.shell.component().get_current_page() == "今日任务" {
-                        let reveal = self.tasks.borrow_mut().take_unscheduled_reveal();
-                        if reveal {
-                            self.shell
-                                .component()
-                                .invoke_reveal_task_section(TodaySectionKind::Unscheduled as i32);
-                        }
-                    }
-                }
-                Err(error) => {
-                    self.shell.component().set_today_state(2);
-                    self.shell
-                        .component()
-                        .set_today_error(error_message(&error).into());
-                    self.shell.component().set_today_error_log_id(
-                        error
-                            .storage_error()
-                            .map_or("", |error| error.log_id())
-                            .into(),
-                    );
-                }
-                _ => {}
-            }
+            self.today_queried(id, result);
             return;
         };
+        let stamp = self.tasks.borrow_mut().read_stamps.remove(&id);
         if matches!(purpose, DetailPurpose::Open(_)) && self.tasks.borrow().latest_open != id {
             return;
         }
         if matches!(purpose, DetailPurpose::Delete(_)) && self.tasks.borrow().latest_delete != id {
+            return;
+        }
+        if matches!(purpose, DetailPurpose::Open(_)) {
+            self.tasks.borrow_mut().latest_open = 0;
+        }
+        if matches!(purpose, DetailPurpose::Open(_) | DetailPurpose::Refresh(_))
+            && !stamp.is_some_and(|stamp| self.ui_epoch.get().accepts(stamp))
+        {
+            self.detail_dirty.set(true);
+            tracing::info!(
+                phase = "page_reply_discarded",
+                request_id = id,
+                query_scope = "task_detail"
+            );
+            return;
+        }
+        let page_visible = self.today_page_visible();
+        if !may_apply_detail(purpose, page_visible) {
+            self.detail_dirty.set(true);
             return;
         }
         let detail = match result {
@@ -223,38 +241,39 @@ impl Runtime {
                     return;
                 }
                 self.tasks.borrow_mut().editor = Some(EditorSession::new(detail));
+                self.detail_dirty.set(false);
                 self.task_syncing.set(true);
-                self.shell.component().set_task_detail_loading(false);
-                self.shell.component().set_task_detail_visible(true);
+                let _ = self.with_ui(|ui| {
+                    ui.shell.component().set_task_detail_loading(false);
+                    ui.shell.component().set_task_detail_visible(true);
+                });
                 self.task_syncing.set(false);
                 self.sync_task_editor();
                 self.defer_task_focus();
             }
             DetailPurpose::Refresh(id) => {
-                if let Some(editor) = self
-                    .tasks
-                    .borrow_mut()
+                let mut tasks = self.tasks.borrow_mut();
+                let Some(editor) = tasks
                     .editor
                     .as_mut()
                     .filter(|editor| editor.detail.task.id == id)
-                {
-                    editor.refresh(detail);
-                }
+                else {
+                    return;
+                };
+                editor.refresh(detail);
+                drop(tasks);
+                self.detail_dirty.set(false);
                 self.sync_task_editor();
                 self.continue_task_transition();
             }
             DetailPurpose::SaveAck(id) => {
-                if let Some(editor) = self
-                    .tasks
-                    .borrow_mut()
-                    .editor
-                    .as_mut()
-                    .filter(|editor| editor.detail.task.id == id)
-                {
-                    editor.acknowledge(detail);
+                if acknowledge_save(&mut self.tasks.borrow_mut(), id, detail) {
+                    self.detail_dirty.set(false);
                 }
-                self.task_feedback_timer.stop();
-                self.task_saving_visible.set(false);
+                let _ = self.with_ui(|ui| {
+                    ui.task_feedback_timer.stop();
+                    ui.task_saving_visible.set(false);
+                });
                 self.sync_task_editor();
                 self.continue_task_transition();
                 let dirty = self
@@ -264,11 +283,14 @@ impl Runtime {
                     .as_ref()
                     .is_some_and(|editor| editor.dirty() && editor.in_flight.is_none());
                 if dirty && self.tasks.borrow().after_save.is_none() {
-                    self.schedule_task_save();
+                    if self.today_page_visible() {
+                        self.schedule_task_save();
+                    } else {
+                        self.flush_task_editor();
+                    }
                 }
             }
             DetailPurpose::Delete(id) => {
-                self.tasks.borrow_mut().delete_confirmation = Some(id);
                 let count = detail.context.descendant_count.saturating_add(1);
                 let (title, body) = if count == 1 {
                     (
@@ -281,60 +303,24 @@ impl Runtime {
                         format!("将永久删除此任务及其 {} 个子任务，无法撤销。", count - 1),
                     )
                 };
-                self.shell.show_dialog(
-                    DialogRequest::new(title, body, "永久删除", DialogKind::Destructive)
-                        .with_command(format!("task:delete-confirm:{id}")),
+                let accepted = stage_confirmation(
+                    || self.tasks.borrow_mut().delete_confirmation.replace(id),
+                    || {
+                        self.emit_ui(UiEffect::Dialog(
+                            DialogRequest::new(title, body, "永久删除", DialogKind::Destructive)
+                                .with_command(format!("task:delete-confirm:{id}")),
+                        ))
+                    },
+                    |previous| self.tasks.borrow_mut().delete_confirmation = previous,
                 );
+                if !accepted {
+                    self.notice(ToastKind::Error, "待确认操作过多，请先处理当前确认后重试。");
+                }
                 self.sync_task_editor();
             }
         }
     }
-
-    fn task_detail_failed(self: &Rc<Self>, purpose: DetailPurpose, error: TaskStoreError) {
-        let message = error_message(&error);
-        match purpose {
-            DetailPurpose::SaveAck(id) => {
-                if let Some(editor) = self
-                    .tasks
-                    .borrow_mut()
-                    .editor
-                    .as_mut()
-                    .filter(|editor| editor.detail.task.id == id)
-                {
-                    editor.error = Some(message.clone());
-                }
-                let transition = self.tasks.borrow_mut().after_save.take();
-                self.failed_task_transition(transition);
-            }
-            DetailPurpose::Open(_) => {
-                self.task_syncing.set(true);
-                self.shell.component().set_task_detail_loading(false);
-                self.shell
-                    .component()
-                    .set_task_detail_visible(self.tasks.borrow().editor.is_some());
-                self.task_syncing.set(false);
-            }
-            DetailPurpose::Refresh(id) => {
-                let clean_deleted =
-                    error.domain_error() == Some(TaskError::NotFound)
-                        && self.tasks.borrow().editor.as_ref().is_some_and(|editor| {
-                            editor.detail.task.id == id && !editor.unfinished()
-                        });
-                if clean_deleted {
-                    self.close_task_editor();
-                } else if let Some(editor) = self
-                    .tasks
-                    .borrow_mut()
-                    .editor
-                    .as_mut()
-                    .filter(|editor| editor.detail.task.id == id)
-                {
-                    editor.error = Some(message.clone());
-                }
-            }
-            DetailPurpose::Delete(_) => {}
-        }
-        self.notice(ToastKind::Error, &message);
-        self.sync_task_editor();
-    }
 }
+
+#[cfg(test)]
+mod contract;

@@ -1,50 +1,35 @@
+mod loading;
+mod timing;
+
 use std::rc::Rc;
 use std::time::Duration;
 
-use fastnote_core::{
-    Clock, Command, Query, Task, TaskClock, TaskError, TaskId, TaskPatch, TaskStatus,
-};
+use fastnote_core::{Command, Query, Task, TaskClock, TaskError, TaskId, TaskPatch, TaskStatus};
 use fastnote_ui::{task_error_message, ToastKind};
-use slint::{Timer, TimerMode};
+use slint::Timer;
 use uuid::Uuid;
 
 use crate::clock::SystemClock;
+use crate::desktop::effects::{FocusTarget, UiEffect};
 use crate::desktop::runtime::Runtime;
-use crate::tasks::{DetailPurpose, PendingTask, Transition};
+use crate::tasks::{DetailPurpose, PageScope, PendingTask, Transition};
+
+use super::policy::{detail_query_pending, kernel_available, may_query, save_read_failed};
+use super::view::state::while_syncing;
 
 impl Runtime {
-    pub(in crate::desktop) fn start_tasks(self: &Rc<Self>) {
-        self.request_today();
-        let weak = Rc::downgrade(self);
-        self.task_day_timer
-            .start(TimerMode::Repeated, Duration::from_secs(30), move || {
-                if let Some(runtime) = weak.upgrade() {
-                    let changed = runtime
-                        .tasks
-                        .borrow()
-                        .needs_clock_refresh(SystemClock.local_datetime(SystemClock.now()));
-                    if changed {
-                        runtime.request_today();
-                        let selected = runtime
-                            .tasks
-                            .borrow()
-                            .editor
-                            .as_ref()
-                            .map(|editor| editor.detail.task.id);
-                        if let Some(id) = selected {
-                            runtime.request_task_detail(DetailPurpose::Refresh(id));
-                        }
-                    }
-                }
-            });
+    pub(in crate::desktop) fn can_task_interact(&self) -> bool {
+        self.task_kernel_available() && self.today_page_visible() && !self.dialog_blocked()
     }
 
-    pub(in crate::desktop) fn can_task_interact(&self) -> bool {
-        self.ready.get()
-            && !self.finished.get()
-            && !self.closing.get()
-            && !self.busy.get()
-            && !self.shell.component().get_dialog_visible()
+    /// 已确认的业务不要求主窗存在；页面输入另经 can_task_interact 检查。
+    pub(in crate::desktop) fn task_kernel_available(&self) -> bool {
+        kernel_available(
+            self.ready.get(),
+            self.finished.get(),
+            self.closing.get(),
+            self.busy.get(),
+        )
     }
 
     pub(in crate::desktop) fn queue_task_command(
@@ -76,39 +61,91 @@ impl Runtime {
     }
 
     pub(in crate::desktop) fn request_today(&self) {
-        if !self.ready.get() || self.finished.get() {
+        if self.finished.get() {
             return;
         }
+        self.today_dirty.set(true);
+        let pending = {
+            let mut tasks = self.tasks.borrow_mut();
+            if tasks.latest_today != 0 {
+                tasks.invalidate_today_read();
+                true
+            } else {
+                false
+            }
+        };
+        if !self.ready.get()
+            || self.closing.get()
+            || !may_query(None, self.today_page_visible())
+            || pending
+        {
+            return;
+        }
+        let Some(stamp) = self.ui_epoch.get().stamp(PageScope::Today) else {
+            return;
+        };
+        let date = self.observe_task_clock().sample.local.date();
         let id = self.next_id.get();
         self.next_id.set(id.saturating_add(1));
         let limits = self.tasks.borrow().limits;
         if self
             .worker
-            .query(
-                id,
-                Query::Today {
-                    date: SystemClock.today(),
-                    limits,
-                },
-            )
+            .query(id, Query::Today { date, limits })
             .is_err()
         {
-            self.shell.component().set_today_state(2);
-            self.shell
-                .component()
-                .set_today_error("查询队列不可用，请稍后重试。".into());
-            self.shell.component().set_today_error_log_id("".into());
+            let _ = self.with_ui(|ui| {
+                ui.shell.component().set_today_state(2);
+                ui.shell
+                    .component()
+                    .set_today_error("查询队列不可用，请稍后重试。".into());
+                ui.shell.component().set_today_error_log_id("".into());
+            });
             return;
         }
-        self.tasks.borrow_mut().latest_today = id;
+        {
+            let mut tasks = self.tasks.borrow_mut();
+            tasks.latest_today = id;
+            tasks.today_requery = false;
+            tasks.read_stamps.insert(id, stamp);
+        }
+        tracing::info!(
+            phase = "page_query_queued",
+            request_id = id,
+            query_scope = "today",
+            session_generation = stamp.session_generation,
+            page_generation = stamp.page_generation
+        );
         if self.tasks.borrow().today.is_none() {
-            self.shell.component().set_today_state(0);
+            let _ = self.with_ui(|ui| ui.shell.component().set_today_state(0));
         }
     }
 
     pub(in crate::desktop) fn request_task_detail(&self, purpose: DetailPurpose) -> bool {
-        if !self.ready.get() || self.finished.get() {
+        if self.finished.get() {
             return false;
+        }
+        self.detail_dirty.set(true);
+        if !self.ready.get() || !may_query(Some(purpose), self.today_page_visible()) {
+            return false;
+        }
+        if self.closing.get()
+            && !matches!(
+                purpose,
+                DetailPurpose::SaveAck(_) | DetailPurpose::Delete(_)
+            )
+        {
+            return false;
+        }
+        if let DetailPurpose::Refresh(id) = purpose {
+            if !self
+                .tasks
+                .borrow()
+                .editor
+                .as_ref()
+                .is_some_and(|editor| editor.detail.task.id == id && editor.in_flight.is_none())
+            {
+                return false;
+            }
         }
         let task_id = match purpose {
             DetailPurpose::Open(id)
@@ -116,25 +153,23 @@ impl Runtime {
             | DetailPurpose::SaveAck(id)
             | DetailPurpose::Delete(id) => id,
         };
-        if matches!(
-            purpose,
-            DetailPurpose::SaveAck(_) | DetailPurpose::Refresh(_)
-        ) && self.tasks.borrow().queries.values().any(|pending| {
-            matches!((purpose, pending),
-                (DetailPurpose::SaveAck(a), DetailPurpose::SaveAck(b))
-                    | (DetailPurpose::Refresh(a), DetailPurpose::Refresh(b)) if a == *b)
-        }) {
+        let stamp = match purpose {
+            DetailPurpose::Open(_) | DetailPurpose::Refresh(_) => {
+                let Some(stamp) = self.ui_epoch.get().stamp(PageScope::Today) else {
+                    return false;
+                };
+                Some(stamp)
+            }
+            DetailPurpose::SaveAck(_) | DetailPurpose::Delete(_) => None,
+        };
+        if detail_query_pending(&self.tasks.borrow(), purpose) {
             return true;
         }
         let id = self.next_id.get();
         self.next_id.set(id.saturating_add(1));
         if self.worker.query(id, Query::TaskDetail(task_id)).is_err() {
             let message = "任务查询队列不可用，请稍后重试。";
-            if matches!(purpose, DetailPurpose::SaveAck(_)) {
-                if let Some(editor) = self.tasks.borrow_mut().editor.as_mut() {
-                    editor.error = Some(message.to_owned());
-                }
-            }
+            save_read_failed(&mut self.tasks.borrow_mut(), purpose, message);
             self.notice(ToastKind::Error, message);
             self.sync_task_editor();
             return false;
@@ -142,24 +177,47 @@ impl Runtime {
         {
             let mut tasks = self.tasks.borrow_mut();
             tasks.queries.insert(id, purpose);
+            if let Some(stamp) = stamp {
+                tasks.read_stamps.insert(id, stamp);
+            }
             match purpose {
-                DetailPurpose::Open(_) => tasks.latest_open = id,
+                DetailPurpose::Open(task_id) => {
+                    tasks.latest_open = id;
+                    if tasks.resume.selected != Some(task_id) {
+                        tasks.resume.focus_pending = false;
+                    }
+                    tasks.resume.selected = Some(task_id);
+                }
                 DetailPurpose::Delete(_) => tasks.latest_delete = id,
                 _ => {}
             }
         }
+        tracing::info!(
+            phase = "detail_query_queued",
+            request_id = id,
+            query_scope = match purpose {
+                DetailPurpose::Open(_) => "task_open",
+                DetailPurpose::Refresh(_) => "task_refresh",
+                DetailPurpose::SaveAck(_) => "task_save_ack",
+                DetailPurpose::Delete(_) => "task_delete_confirmation",
+            },
+            session_generation = stamp.map_or(0, |stamp| stamp.session_generation),
+            page_generation = stamp.map_or(0, |stamp| stamp.page_generation)
+        );
         if matches!(purpose, DetailPurpose::Open(_)) {
-            self.task_syncing.set(true);
-            self.shell.component().set_task_detail_visible(true);
-            self.shell.component().set_task_detail_loading(true);
-            self.task_syncing.set(false);
+            let _ = self.with_ui(|ui| {
+                while_syncing(&self.task_syncing, || {
+                    ui.shell.component().set_task_detail_visible(true);
+                    ui.shell.component().set_task_detail_loading(true);
+                });
+            });
         }
         self.sync_task_editor();
         true
     }
 
     pub(in crate::desktop) fn create_task(self: &Rc<Self>, title: String) {
-        if !self.can_task_interact() {
+        if !self.can_task_interact() || !self.can_focus_tasks() {
             return;
         }
         if self.tasks.borrow().unfinished() {
@@ -178,12 +236,14 @@ impl Runtime {
             }
         };
         if let Err(error) = Task::new(id, title.clone(), SystemClock.now()) {
-            self.shell
-                .component()
-                .set_task_create_error(task_error_message(error).into());
+            let _ = self.with_ui(|ui| {
+                ui.shell
+                    .component()
+                    .set_task_create_error(task_error_message(error).into());
+            });
             return;
         }
-        self.shell.component().set_task_create_error("".into());
+        let _ = self.with_ui(|ui| ui.shell.component().set_task_create_error("".into()));
         self.queue_task_command(
             Command::CreateTask {
                 id,
@@ -275,10 +335,27 @@ impl Runtime {
     }
 
     pub(in crate::desktop) fn defer_task_focus(self: &Rc<Self>) {
-        let weak = Rc::downgrade(self);
+        let selected = self
+            .tasks
+            .borrow()
+            .editor
+            .as_ref()
+            .map(|editor| editor.detail.task.id);
+        let Some(id) = selected else {
+            return;
+        };
+        if self.with_ui(|_| ()).is_none() {
+            self.emit_ui(UiEffect::Focus(FocusTarget::TaskEditor(id)));
+            return;
+        }
+        let weak = self.page_target();
         Timer::single_shot(Duration::ZERO, move || {
             if let Some(runtime) = weak.upgrade() {
-                runtime.shell.component().invoke_focus_task_editor();
+                if runtime.tasks.borrow().resume.focus_pending {
+                    runtime.defer_task_resume();
+                    return;
+                }
+                runtime.emit_ui(UiEffect::Focus(FocusTarget::TaskEditor(id)));
             }
         });
     }

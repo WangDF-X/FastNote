@@ -105,6 +105,9 @@ export component MainWindow inherits Window {
     callback desktop-wakeup();
 
     in property <[TodaySectionData]> today-sections;
+    /// P4：隐藏时真正卸载页面实例，外壳可以暂时保留。
+    in property <bool> today-mounted: false;
+    in-out property <length> today-scroll-y: 0px;
     /// 0 首次加载 / 1 已加载 / 2 查询失败。
     in property <int> today-state: 0;
     in property <string> today-date;
@@ -142,7 +145,7 @@ export component MainWindow inherits Window {
     in property <[string]> task-minutes;
     in property <[string]> task-years;
     in property <Date> task-picker-today;
-    private property <bool> task-picker-open: false;
+    out property <bool> task-picker-open: false;
     callback task-create(string);
     callback task-open(string);
     callback task-open-dates(string);
@@ -508,7 +511,7 @@ export component MainWindow inherits Window {
                             description: "此设置分组尚未接入。";
                         }
                     }
-                    if root.current_page == "今日任务": today-page := TodayPage {
+                    if root.current_page == "今日任务" && root.today-mounted: today-page := TodayPage {
                         sections: root.today-sections;
                         state: root.today-state;
                         busy: root.task-busy;
@@ -521,6 +524,7 @@ export component MainWindow inherits Window {
                         error-log-id: root.today-error-log-id;
                         create-error: root.task-create-error;
                         quick-title <=> root.task-quick-title;
+                        scroll-y <=> root.today-scroll-y;
                         reveal-kind <=> root.today-reveal-kind;
                         reveal-version: root.today-reveal-version;
                         created(value) => { root.task-create(value); }

@@ -18,7 +18,7 @@ pub use feedback::toast::{
     PushOutcome, ToastAction, ToastItem, ToastKind, ToastQueue, ToastRequest, DEDUP_WINDOW_MS,
     MAX_VISIBLE_TOASTS,
 };
-pub use shell::{run, NavigationIssue, ShellHandle, ShellUpdate, ShellView};
+pub use shell::{run, NavigationIssue, RetainedFeedback, ShellHandle, ShellUpdate, ShellView};
 pub use theme::apply_theme;
 pub use today::{
     task_context_label, task_datetime_seed, task_error_message, task_status_index,

@@ -6,10 +6,12 @@ use fastnote_platform::{
     WindowsTray,
 };
 use fastnote_ui::ToastKind;
+use slint::winit_030::winit::{platform::windows::WindowExtWindows, window::WindowLevel};
 use slint::winit_030::WinitWindowAccessor;
 use slint::ComponentHandle;
 
 use super::gesture::BallDrag;
+use super::presentation::activation::native_configuration;
 use super::presentation::{entry_view, Presentation};
 use super::runtime::{Completion, Runtime};
 use super::window::native_handle;
@@ -53,7 +55,7 @@ impl Runtime {
         };
         if result.is_ok() {
             self.entry.set(Some(mode));
-            self.shell.component().set_entry_available(true);
+            self.sync_entry_availability();
             if mode == EntryMode::Ball {
                 self.tray.borrow_mut().take();
             }
@@ -78,7 +80,7 @@ impl Runtime {
         if !restored {
             self.entry.set(None);
         }
-        self.shell.component().set_entry_available(restored);
+        self.sync_entry_availability();
         Err(())
     }
 
@@ -98,23 +100,75 @@ impl Runtime {
                 x.round() as i32,
                 y.round() as i32,
             ));
-        self.ball.show().map_err(|_| ())?;
-        let configured = self
-            .ball
-            .window()
-            .with_winit_window(|window| {
-                native_handle(window)
-                    .ok_or(())
-                    .and_then(|handle| configure_ball_window(handle).map_err(|_| ()))
-            })
-            .unwrap_or(Err(()));
-        configured?;
+        self.ball_native_pending.set(true);
+        self.ball.show().map_err(|error| {
+            self.ball_native_pending.set(false);
+            tracing::warn!(phase = "ball_show", error_kind = ?error);
+        })?;
+        // show 可能只是将已销毁的原生窗口登记到下一轮创建队列，None 不是配置失败。
+        let ready = native_configuration(self.configure_ball_native())?;
+        self.ball_native_pending.set(!ready);
         drop(saved);
         *self.ball_position.borrow_mut() = Some(position);
         Ok(())
     }
 
+    fn configure_ball_native(&self) -> Option<Result<(), ()>> {
+        self.ball.window().with_winit_window(|window| {
+            window.set_skip_taskbar(true);
+            window.set_resizable(false);
+            window.set_window_level(WindowLevel::AlwaysOnTop);
+            native_handle(window).ok_or(()).and_then(|handle| {
+                configure_ball_window(handle).map_err(|error| {
+                    tracing::warn!(
+                        phase = "ball_native_configure",
+                        native_code = error.native_code(),
+                        error_kind = error.diagnostic_kind()
+                    );
+                })
+            })
+        })
+    }
+
+    pub(super) fn complete_entry_native(self: &Rc<Self>) {
+        if self.finished.get() {
+            return;
+        }
+        if self.ball_native_pending.get() && self.presentation.get() == Presentation::Ball {
+            if let Some(result) = self.configure_ball_native() {
+                self.ball_native_pending.set(false);
+                if result.is_err() {
+                    self.show_recovery_main("ball_native_recovery");
+                    self.notice(
+                        ToastKind::Error,
+                        "无法恢复悬浮球，已保留主窗口，请重试切换入口。",
+                    );
+                } else {
+                    tracing::info!(phase = "ball_native_ready");
+                }
+            }
+        }
+        if self.menu_native_pending.get() && self.menu_open.get() {
+            if let Some(result) = self.configure_menu_native() {
+                self.menu_native_pending.set(false);
+                if result.is_err() {
+                    self.hide_menu();
+                    self.notice(
+                        ToastKind::Error,
+                        "无法创建入口菜单，请点击悬浮球进入主窗口。",
+                    );
+                } else {
+                    self.menu.invoke_focus_menu();
+                    self.menu
+                        .window()
+                        .with_winit_window(|window| window.focus_window());
+                }
+            }
+        }
+    }
+
     pub(super) fn ball_pointer(self: &Rc<Self>, phase: i32) {
+        self.check_ui_lease();
         if self.presentation.get() != Presentation::Ball
             || self.finished.get()
             || self.closing.get()
@@ -212,7 +266,8 @@ impl Runtime {
         Ok(())
     }
 
-    pub(super) fn show_menu(&self) {
+    pub(super) fn show_menu(self: &Rc<Self>) {
+        self.check_ui_lease();
         if self.presentation.get() != Presentation::Ball || self.finished.get() {
             return;
         }
@@ -248,38 +303,32 @@ impl Runtime {
                 y.round() as i32,
             ));
         self.menu_open.set(true);
+        self.menu_native_pending.set(true);
         if self.menu.show().is_err() {
             self.menu_open.set(false);
+            self.menu_native_pending.set(false);
             self.notice(
                 ToastKind::Error,
                 "入口菜单无法打开，请点击悬浮球进入主窗口。",
             );
             return;
         }
-        self.menu.invoke_focus_menu();
-        let configured = self
-            .menu
-            .window()
-            .with_winit_window(|window| {
-                native_handle(window)
-                    .ok_or(())
-                    .and_then(|handle| configure_menu_window(handle).map_err(|_| ()))
-            })
-            .unwrap_or(Err(()));
-        if configured.is_err() {
-            self.hide_menu();
-            self.notice(
-                ToastKind::Error,
-                "无法创建入口菜单，请点击悬浮球进入主窗口。",
-            );
-            return;
-        }
-        self.menu
-            .window()
-            .with_winit_window(|window| window.focus_window());
+        self.complete_entry_native();
+    }
+
+    fn configure_menu_native(&self) -> Option<Result<(), ()>> {
+        self.menu.window().with_winit_window(|window| {
+            window.set_skip_taskbar(true);
+            window.set_resizable(false);
+            window.set_window_level(WindowLevel::AlwaysOnTop);
+            native_handle(window)
+                .ok_or(())
+                .and_then(|handle| configure_menu_window(handle).map_err(|_| ()))
+        })
     }
 
     pub(super) fn hide_menu(&self) {
+        self.menu_native_pending.set(false);
         if self.menu_open.replace(false) && self.menu.hide().is_err() {
             tracing::warn!("ball menu hide failed");
         }

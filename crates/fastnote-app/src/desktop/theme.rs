@@ -1,4 +1,5 @@
 use fastnote_core::{DesktopSetting, ThemeMode};
+use slint::language::ColorScheme;
 use slint::winit_030::{winit::window::Theme, WinitWindowAccessor};
 use slint::ComponentHandle;
 
@@ -12,6 +13,14 @@ pub(super) struct ThemeState {
     system_available: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ThemeSnapshot {
+    mode: ThemeMode,
+    system_dark: bool,
+    system_available: bool,
+    dark: bool,
+}
+
 impl Default for ThemeState {
     fn default() -> Self {
         Self {
@@ -23,6 +32,15 @@ impl Default for ThemeState {
 }
 
 impl ThemeState {
+    fn snapshot(&self, committed: ThemeMode) -> ThemeSnapshot {
+        ThemeSnapshot {
+            mode: self.selected(committed),
+            system_dark: self.system_dark,
+            system_available: self.system_available,
+            dark: self.dark(committed),
+        }
+    }
+
     fn selected(&self, committed: ThemeMode) -> ThemeMode {
         self.preview.unwrap_or(committed)
     }
@@ -81,48 +99,77 @@ impl Runtime {
 
     pub(super) fn sync_theme(&self) {
         let committed = self.settings.borrow().theme;
-        let state = self.theme.borrow();
-        let dark = state.dark(committed);
-        let main = self.shell.component();
-        main.set_theme_mode(state.selected(committed).as_str().into());
-        main.set_system_dark(state.system_dark);
-        main.set_system_theme_available(state.system_available);
-        fastnote_ui::apply_theme(main, &self.ball, &self.menu, dark);
-        drop(state);
-        // 原生回退标题栏以及无边框阴影也尽量匹配；不保留底层 winit Arc。
-        main.window().with_winit_window(|window| {
-            window.set_theme(Some(if dark { Theme::Dark } else { Theme::Light }));
-            self.apply_main_frame(window);
+        let snapshot = self.theme.borrow().snapshot(committed);
+        let projected = self.with_ui(|ui| {
+            let main = ui.shell.component();
+            main.set_theme_mode(snapshot.mode.as_str().into());
+            main.set_system_dark(snapshot.system_dark);
+            main.set_system_theme_available(snapshot.system_available);
+            fastnote_ui::apply_theme(main, &self.ball, &self.menu, snapshot.dark);
+            // 原生回退标题栏以及无边框阴影也尽量匹配；不保留底层 winit Arc。
+            main.window().with_winit_window(|window| {
+                window.set_theme(Some(if snapshot.dark {
+                    Theme::Dark
+                } else {
+                    Theme::Light
+                }));
+                self.apply_main_frame(window);
+            });
         });
+        if projected.is_none() {
+            // 入口是独立组件；不能为了同步主题构造主窗，也不新增 UI crate 的公开 API。
+            let scheme = if snapshot.dark {
+                ColorScheme::Dark
+            } else {
+                ColorScheme::Light
+            };
+            self.ball
+                .global::<fastnote_ui::ShellPalette>()
+                .set_dark(snapshot.dark);
+            self.menu
+                .global::<fastnote_ui::ShellPalette>()
+                .set_dark(snapshot.dark);
+            self.ball
+                .global::<fastnote_ui::Palette>()
+                .set_color_scheme(scheme);
+            self.menu
+                .global::<fastnote_ui::Palette>()
+                .set_color_scheme(scheme);
+        }
     }
 
     pub(super) fn apply_main_caption(&self) {
-        let main = self.shell.component();
-        if !main.get_custom_titlebar() {
-            return;
-        }
-        let result = main.window().with_winit_window(|window| {
-            let handle = native_handle(window).ok_or(())?;
-            if self.main_caption.get() == handle.0 {
-                return Ok(());
+        let _ = self.with_ui(|ui| {
+            let main = ui.shell.component();
+            if !main.get_custom_titlebar() {
+                return;
             }
-            fastnote_platform::configure_custom_caption(handle).map_err(|error| {
-                tracing::warn!(phase = "custom_caption", native_code = error.native_code());
-            })?;
-            self.main_caption.set(handle.0);
-            Ok(())
+            let result = main.window().with_winit_window(|window| {
+                let handle = native_handle(window).ok_or(())?;
+                if self.main_caption.get() == handle.0 {
+                    return Ok(());
+                }
+                fastnote_platform::configure_custom_caption(handle).map_err(|error| {
+                    tracing::warn!(phase = "custom_caption", native_code = error.native_code());
+                })?;
+                self.main_caption.set(handle.0);
+                Ok(())
+            });
+            if matches!(result, Some(Err(()))) {
+                // 不让不可拖动的窗口交给用户；启用原生框架并移除自绘标题栏。
+                main.set_custom_titlebar(false);
+                self.sync_theme();
+                self.notice(
+                    fastnote_ui::ToastKind::Warning,
+                    "自绘标题栏暂不可用，已使用系统标题栏。",
+                );
+            }
         });
-        if matches!(result, Some(Err(()))) {
-            // 不让不可拖动的窗口交给用户；启用原生框架并移除自绘标题栏。
-            main.set_custom_titlebar(false);
-            self.sync_theme();
-            self.notice(
-                fastnote_ui::ToastKind::Warning,
-                "自绘标题栏暂不可用，已使用系统标题栏。",
-            );
-        }
     }
 }
+
+#[cfg(test)]
+mod session_tests;
 
 #[cfg(test)]
 mod tests {

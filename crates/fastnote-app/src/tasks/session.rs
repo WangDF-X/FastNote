@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use fastnote_core::{NaiveDateTime, TaskId, TaskStatus, TodaySectionKind, TodayView};
 
-use super::EditorSession;
+use super::{EditorSession, PageStamp, TaskResume};
 
 #[derive(Clone, Debug)]
 pub(crate) enum Transition {
@@ -65,7 +65,13 @@ pub(crate) struct TaskSession {
     pub editor: Option<EditorSession>,
     pub pending: HashMap<u64, PendingTask>,
     pub queries: HashMap<u64, DetailPurpose>,
+    /// 只有普通页面读携带代次；SaveAck/Delete 属于常驻内核，不随 UI 撤销。
+    pub read_stamps: HashMap<u64, PageStamp>,
+    pub resume: TaskResume,
+    /// 当前今日读取的在途 ID；每次完成后清零，不作为会话生命周期代次。
     pub latest_today: u64,
+    /// 读取期间又有失效；先结束当前读取，再按最新条件补读一次。
+    pub today_requery: bool,
     pub latest_open: u64,
     pub latest_delete: u64,
     pub after_save: Option<Transition>,
@@ -86,9 +92,41 @@ impl TaskSession {
     }
 
     pub(crate) fn cancel_open_requests(&mut self) {
+        let cancelled: Vec<_> = self
+            .queries
+            .iter()
+            .filter_map(|(id, purpose)| matches!(purpose, DetailPurpose::Open(_)).then_some(*id))
+            .collect();
+        for id in cancelled {
+            self.read_stamps.remove(&id);
+        }
         self.latest_open = 0;
         self.queries
             .retain(|_, purpose| !matches!(purpose, DetailPurpose::Open(_)));
+    }
+
+    /// 页面变为不可见后撤销普通读意图，保存基线/删除确认不随页面取消。
+    pub(crate) fn cancel_page_reads(&mut self) {
+        self.cancel_open_requests();
+        self.queries
+            .retain(|_, purpose| !matches!(purpose, DetailPurpose::Refresh(_)));
+        self.read_stamps.clear();
+        self.latest_today = 0;
+        self.today_requery = false;
+    }
+
+    /// 合并读取期间的失效，不并发发起第二个今日查询。
+    pub(crate) fn invalidate_today_read(&mut self) {
+        self.today_requery |= self.latest_today != 0;
+    }
+
+    /// 接受当前回包后释放在途状态；旧 ID 不能结束新查询。
+    pub(crate) fn finish_today_read(&mut self, id: u64) -> Option<bool> {
+        if id == 0 || self.latest_today != id {
+            return None;
+        }
+        self.latest_today = 0;
+        Some(std::mem::take(&mut self.today_requery))
     }
 
     pub(crate) fn current_editor_focus(&self, transition: &Transition) -> Option<&'static str> {
@@ -118,15 +156,13 @@ impl TaskSession {
     }
 
     pub(crate) fn needs_clock_refresh(&self, now: NaiveDateTime) -> bool {
-        self.today.as_ref().is_none_or(|view| {
-            view.date != now.date()
-                || now < view.evaluated_at
-                || view.next_overdue_at.is_some_and(|deadline| now > deadline)
-        })
+        self.today
+            .as_ref()
+            .is_none_or(|view| today_clock_stale(view, now))
     }
 
     pub(crate) fn take_ready_transition(&mut self) -> Option<Transition> {
-        if self.unfinished() {
+        if self.transition_protected() {
             None
         } else {
             self.after_save.take()
@@ -195,6 +231,13 @@ impl TaskSession {
         };
         ids.get(next).copied()
     }
+}
+
+/// 今日读模型只比较本地自然日及已确认的到期边界，不重新解释任务排期。
+pub(crate) fn today_clock_stale(view: &TodayView, now: NaiveDateTime) -> bool {
+    view.date != now.date()
+        || now < view.evaluated_at
+        || view.next_overdue_at.is_some_and(|deadline| now > deadline)
 }
 
 #[cfg(test)]

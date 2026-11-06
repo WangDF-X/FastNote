@@ -1,3 +1,5 @@
+pub(in crate::desktop) mod activation;
+mod native;
 mod state;
 
 use std::rc::Rc;
@@ -8,6 +10,7 @@ use fastnote_ui::ToastKind;
 use slint::winit_030::WinitWindowAccessor;
 use slint::{ComponentHandle, Timer};
 
+use super::effects::{FocusTarget, UiEffect};
 use super::runtime::{Completion, Runtime};
 use super::window::native_handle;
 use state::{switch, Surfaces};
@@ -17,10 +20,13 @@ use state::{minimize_action, MinimizeAction};
 
 impl Runtime {
     pub(super) fn main_visible(&self) -> bool {
-        self.presentation.get() == Presentation::Main
+        self.presentation.get() == Presentation::Main && self.with_ui(|_| ()).is_some()
     }
 
     pub(super) fn switch_presentation(&self, target: Presentation) -> Result<(), SwitchError> {
+        if target == Presentation::Main && self.with_ui(|_| ()).is_none() {
+            return Err(SwitchError::ShowTarget);
+        }
         let capture_failed = self.presentation.get() == Presentation::Ball
             && target != Presentation::Ball
             && self.capture_ball_position().is_err();
@@ -62,20 +68,35 @@ impl Runtime {
         if self.finished.get() || self.closing.get() {
             return;
         }
+        if self.try_show_main().is_err() {
+            self.failed_ui_show();
+            self.notice(ToastKind::Error, "无法显示主窗口，请通过入口或快捷键重试。");
+            // 启动期尚未配置入口由 loaded 的明确兜底处理；既有入口恢复失败不能失联。
+            if self.entry.get().is_some() {
+                self.exit_if_unreachable("main_show_failure");
+            }
+        }
+    }
+
+    /// 强制错误恢复需要知道显示结果；普通入口保留可重试的失败反馈。
+    pub(super) fn try_show_main(self: &Rc<Self>) -> Result<(), SwitchError> {
+        if self.finished.get() || self.closing.get() {
+            return Err(SwitchError::ShowTarget);
+        }
+        self.ensure_ui()?;
         self.hide_menu();
         let result = if self.main_visible() {
             self.show_main_window().map_err(|_| SwitchError::ShowTarget)
         } else {
             self.switch_presentation(Presentation::Main)
         };
-        if result.is_err() {
-            self.notice(ToastKind::Error, "无法显示主窗口，请通过入口或快捷键重试。");
-            return;
-        }
-        let window = self.shell.component().window();
-        window.set_minimized(false);
-        window.with_winit_window(|window| window.focus_window());
-        self.shell.resume_timers();
+        result?;
+        self.ui_shown();
+        let active = self.main_content_visible();
+        let _ = self.with_ui(|ui| ui.content_active.set(active));
+        self.emit_ui(UiEffect::Focus(FocusTarget::Main));
+        self.defer_main_activation();
+        self.start_page_tasks();
         self.persist_ball_position();
         if self.ready.get() && !self.settings.borrow().first_run_done {
             self.queue(
@@ -84,6 +105,7 @@ impl Runtime {
                 false,
             );
         }
+        Ok(())
     }
 
     fn persist_ball_position(&self) {
@@ -104,11 +126,18 @@ impl Runtime {
         if !self.main_visible() || self.finished.get() {
             return;
         }
+        if self.main_activation_pending() {
+            self.advance_main_activation();
+            return;
+        }
         let minimized = self
-            .shell
-            .component()
-            .window()
-            .with_winit_window(|window| window.is_minimized().unwrap_or(false));
+            .with_ui(|ui| {
+                ui.shell
+                    .component()
+                    .window()
+                    .with_winit_window(|window| window.is_minimized().unwrap_or(false))
+            })
+            .flatten();
         match minimize_action(
             self.presentation.get(),
             self.entry.get(),
@@ -117,65 +146,78 @@ impl Runtime {
             self.busy.get() || self.closing.get(),
         ) {
             MinimizeAction::Ignore => {}
-            MinimizeAction::Pause => self.shell.pause_timers(),
-            MinimizeAction::Resume => self.shell.resume_timers(),
+            MinimizeAction::Pause => {
+                self.task_page_hidden();
+                let _ = self.with_ui(|ui| ui.shell.pause_timers());
+            }
+            MinimizeAction::Resume => {
+                if !self.main_content_visible() {
+                    return;
+                }
+                let _ = self.with_ui(|ui| ui.shell.resume_timers());
+                if self.with_ui(|ui| !ui.content_active.replace(true)) == Some(true) {
+                    self.start_page_tasks();
+                }
+            }
             MinimizeAction::RestoreMain => {
                 self.show_main();
                 self.notice(ToastKind::Error, "设置尚未加载，暂时无法收起到悬浮球。");
             }
             MinimizeAction::Collapse => {
-                self.shell.pause_timers();
+                self.task_page_hidden();
+                let _ = self.with_ui(|ui| ui.shell.pause_timers());
                 self.request_minimize();
             }
         }
     }
 
     fn show_main_window(&self) -> Result<(), ()> {
+        self.flush_ui_effects();
         self.refresh_system_theme();
-        let window = self.shell.component().window();
-        let recreating = !window.has_winit_window();
-        let geometry = self
-            .geometry
-            .get()
-            .or_else(|| self.restore.get().map(|restore| restore.geometry));
-        if recreating {
-            window.set_minimized(false);
-            window.set_maximized(false);
-            // 原生窗口会重建，HWND 可能复用；清空大图标、标题栏和外沿去重标记。
-            self.main_icon.set(0);
-            self.main_caption.set(0);
-            self.main_frame.set(None);
-            if let Some(geometry) = geometry {
-                window.set_size(slint::LogicalSize::new(
-                    geometry.w as f32,
-                    geometry.h as f32,
-                ));
-                // 隐藏会释放原生窗口；恢复时重新枚举屏幕，不沿用旧物理坐标。
-                if let Ok(monitors) = fastnote_platform::monitors() {
-                    if let Some(restore) = fastnote_core::restore_main(Some(geometry), &monitors) {
-                        window.set_position(slint::PhysicalPosition::new(
-                            restore.physical_x.round() as i32,
-                            restore.physical_y.round() as i32,
-                        ));
-                        self.geometry.set(Some(restore.geometry));
+        self.with_ui(|ui| {
+            let window = ui.shell.component().window();
+            let recreating = !window.has_winit_window();
+            let mut activation = ui.main_activation.get();
+            activation.request(recreating);
+            ui.main_activation.set(activation);
+            let geometry = self
+                .geometry
+                .get()
+                .or_else(|| self.restore.get().map(|restore| restore.geometry));
+            if recreating {
+                window.set_minimized(false);
+                window.set_maximized(false);
+                // 原生窗口会重建，HWND 可能复用；清空大图标、标题栏和外沿去重标记。
+                self.main_icon.set(0);
+                self.main_caption.set(0);
+                self.main_frame.set(None);
+                if let Some(geometry) = geometry {
+                    window.set_size(slint::LogicalSize::new(
+                        geometry.w as f32,
+                        geometry.h as f32,
+                    ));
+                    // 隐藏会释放原生窗口；恢复时重新枚举屏幕，不沿用旧物理坐标。
+                    if let Ok(monitors) = fastnote_platform::monitors() {
+                        if let Some(restore) =
+                            fastnote_core::restore_main(Some(geometry), &monitors)
+                        {
+                            window.set_position(slint::PhysicalPosition::new(
+                                restore.physical_x.round() as i32,
+                                restore.physical_y.round() as i32,
+                            ));
+                            self.geometry.set(Some(restore.geometry));
+                        }
                     }
                 }
             }
-        }
-        self.shell.show().map_err(|_| ())?;
-        self.apply_main_caption();
-        self.sync_theme();
-        window.set_minimized(false);
-        if recreating {
-            if let Some(geometry) = self.geometry.get().or(geometry) {
-                window.set_size(slint::LogicalSize::new(
-                    geometry.w as f32,
-                    geometry.h as f32,
-                ));
-                window.set_maximized(geometry.maximized);
-            }
-        }
-        Ok(())
+            ui.shell.show().map_err(|_| ())?;
+            window.with_winit_window(|window| self.main_native.set(native_handle(window)));
+            self.apply_main_caption();
+            self.sync_theme();
+            // show 可能只登记待创建窗口；恢复尺寸/最大化/前台激活交给 native.rs 的就绪阶段。
+            Ok(())
+        })
+        .unwrap_or(Err(()))
     }
 
     /// 补齐任务栏和 Alt+Tab 使用的大图标（ICON_BIG）。
@@ -184,25 +226,27 @@ impl Runtime {
     /// 属性，创建时不会再设置任务栏图标。这里在窗口真正创建后（首次 `Resized`）
     /// 按 HWND 去重设置一次，隐藏后重建会再次触发。
     pub(super) fn apply_main_icon(&self) {
-        self.shell
-            .component()
-            .window()
-            .with_winit_window(|winit_window| {
-                let Some(handle) = native_handle(winit_window) else {
-                    return;
-                };
-                if self.main_icon.get() == handle.0 {
-                    return;
-                }
-                match fastnote_platform::set_window_big_icon(handle) {
-                    Ok(()) => self.main_icon.set(handle.0),
-                    Err(error) => tracing::warn!(
-                        phase = "window_icon",
-                        code = error.native_code(),
-                        "failed to set the window big icon"
-                    ),
-                }
-            });
+        let _ = self.with_ui(|ui| {
+            ui.shell
+                .component()
+                .window()
+                .with_winit_window(|winit_window| {
+                    let Some(handle) = native_handle(winit_window) else {
+                        return;
+                    };
+                    if self.main_icon.get() == handle.0 {
+                        return;
+                    }
+                    match fastnote_platform::set_window_big_icon(handle) {
+                        Ok(()) => self.main_icon.set(handle.0),
+                        Err(error) => tracing::warn!(
+                            phase = "window_icon",
+                            code = error.native_code(),
+                            "failed to set the window big icon"
+                        ),
+                    }
+                });
+        });
     }
 }
 
@@ -210,8 +254,21 @@ impl Surfaces for Runtime {
     fn hide(&self, view: Presentation) -> Result<(), ()> {
         match view {
             Presentation::Hidden => Ok(()),
-            Presentation::Main => self.shell.hide().map_err(|_| ()),
-            Presentation::Ball => self.ball.hide().map_err(|_| ()),
+            Presentation::Main => {
+                self.capture_task_resume();
+                self.with_ui(|ui| ui.shell.hide().map_err(|_| ()))
+                    .unwrap_or(Ok(()))?;
+                let _ = self.with_ui(|ui| ui.main_activation.set(activation::MainActivation::Idle));
+                self.ui_hidden_at
+                    .set(Some(fastnote_platform::uptime_milliseconds()));
+                self.task_page_hidden();
+                Ok(())
+            }
+            Presentation::Ball => {
+                self.ball.hide().map_err(|_| ())?;
+                self.ball_native_pending.set(false);
+                Ok(())
+            }
         }
     }
 
