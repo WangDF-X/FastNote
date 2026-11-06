@@ -125,7 +125,7 @@
 | [TODAY-02](../03-today-tasks/02-task-actions.md) | Q-TODAY-06..08：批量操作、单键改状态、完成后自动滚动 |
 | [TODAY-03](../03-today-tasks/03-task-detail.md) | Q-TODAY-09..12：复制任务、富文本描述、面板宽度、阶段是否复用面板 |
 | [CAL-01](../04-calendar/01-overview-and-views.md) | Q-CAL-01..04：触控板切月、月格已完成条目、农历节假日、周起始跟随系统 |
-| [CAL-02](../04-calendar/02-date-operations-and-conflicts.md) | Q-CAL-05..08：Alt 拖拽改开始、批量拖拽、邻月悬停翻月、年月选择面板 |
+| [CAL-02](../04-calendar/02-date-operations-and-conflicts.md) | Q-CAL-05..09：Alt 拖拽改开始、批量拖拽、邻月悬停翻月、共享日期选择器、日面板宽度及布局；均已确认。 |
 | [NOTE-01](../05-notes/01-overview-and-list.md) | Q-NOTE-01..02：手动排序/置顶、清空正文的恢复提示 |
 | [NOTE-02](../05-notes/02-quick-capture-and-convert.md) | Q-NOTE-03..05：Wayland 回退标题栏、捕获窗口记忆位置、标题自动回填 |
 | [DIARY-01](../06-journal/01-overview-and-editor.md) | Q-DIARY-01、03：未来日期范围、长文分段渲染 |

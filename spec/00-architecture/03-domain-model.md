@@ -273,7 +273,7 @@ erDiagram
 | 场景 | 默认值 |
 | --- | --- |
 | 今日页快速添加 | `status=todo`，无日期、无优先级、无计划 |
-| 日历某日新建 | `due_date=选中日期`，其余默认 |
+| 日历某日新建 | `start_date=选中日期`，到期日期为空，其余默认 |
 | 计划板新建 | `plan_id=当前计划`；在阶段下创建则 `parent_id=阶段` |
 | 小记转任务 | 标题取小记首行，描述取全文，无日期/优先级 |
 | 快捷键新建 | 同今日快速添加，并聚焦输入框 |
@@ -385,7 +385,7 @@ is_overdue(task, today) =
 - `active_count`：当天**到期或开始**的未完成任务数。
 - `overdue_count`：`due_date < today` 且未完成、到期日落在该格的任务数（用于历史格红点）。
 - `completed_count`：当天完成的任务数（用于格子弱提示，可选展示）。
-- 每格最多展示 2 条任务摘要，其余显示 `+N`。
+- 每格最多展示 3 条未完成任务摘要，其余显示 `+N`；已完成数按实际完成的本地日期统计。
 - 归档计划任务排除。
 
 **日面板（DayAgenda）**
@@ -684,7 +684,7 @@ pub struct DayCell {
     pub active_count: u32,
     pub overdue_count: u32,
     pub completed_count: u32,
-    pub preview: Vec<TaskSummary>,  // 最多 2 条
+    pub preview: Vec<TaskSummary>,  // 最多 3 条未完成任务
 }
 
 /// 月/周仅是布局；点击日期共用 DayAgenda，不增加独立日视图路由。
