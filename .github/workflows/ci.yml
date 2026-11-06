@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # 与本地已验证工具链一致；1.92 是声明的最低版本，不代表已在 CI 验证。
       - name: Install Rust toolchain
