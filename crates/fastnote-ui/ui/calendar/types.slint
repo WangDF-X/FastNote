@@ -1,0 +1,21 @@
+import { TaskRowData } from "../tasks/types.slint";
+
+/// 日期格只携带三个轻量任务摘要，不读取正文或判定业务状态。
+export struct CalendarCellView {
+    date: string,
+    label: string,
+    items: [TaskRowData],
+    remaining: string,
+    completed: string,
+    in-month: bool,
+    today: bool,
+    selected: bool,
+}
+
+/// 日面板保留领域层已经确定的分组、顺序和数量。
+export struct CalendarSectionData {
+    kind: int,
+    label: string,
+    total: int,
+    items: [TaskRowData],
+}

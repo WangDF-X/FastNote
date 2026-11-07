@@ -1,48 +1,24 @@
+import { ScrollView } from "std-widgets.slint";
 import { ShellPalette } from "../palette.slint";
 import { ActionButton } from "../components/action-button.slint";
+import { TaskStyle } from "../tasks/task-style.slint";
 import { CalendarCell } from "cell.slint";
-
-export struct CalendarCellView {
-    date: string,
-    label: string,
-    titles: [string],
-    remaining: string,
-    completed: string,
-    in-month: bool,
-    today: bool,
-    selected: bool,
-}
-
-component DayPanel inherits Rectangle {
-    in property <string> selected-label;
-    in property <string> panel-text;
-    callback close();
-    width: 320px;
-    background: ShellPalette.surface;
-    border-width: 1px;
-    border-color: ShellPalette.border;
-    border-radius: 8px;
-    VerticalLayout {
-        padding: 16px;
-        spacing: 12px;
-        HorizontalLayout {
-            Text { text: root.selected-label; color: ShellPalette.text-primary; font-size: 16px; font-weight: 600; horizontal-stretch: 1; vertical-alignment: center; }
-            ActionButton { label: "关闭"; width: 56px; activated => { root.close(); } }
-        }
-        Text { text: root.panel-text; color: ShellPalette.text-secondary; wrap: word-wrap; vertical-stretch: 1; }
-    }
-}
+import { CalendarStyle } from "style.slint";
+import { CalendarDayPanel } from "day-panel.slint";
+import { CalendarCellView, CalendarSectionData } from "types.slint";
 
 /// 日历工作区，日期与任务状态由应用层提供。
 export component CalendarPage inherits Rectangle {
     in property <string> heading;
     in property <string> selected-label;
+    in property <string> selected-context;
     in property <[string]> weekdays;
     in property <[CalendarCellView]> days;
     in property <bool> week-mode;
     in property <bool> panel-open;
     in property <bool> compact;
-    in property <string> panel-text;
+    in property <string> panel-message;
+    in property <[CalendarSectionData]> panel-sections;
     in property <string> error-message;
     callback action(string);
     callback select-date(string);
@@ -52,56 +28,124 @@ export component CalendarPage inherits Rectangle {
         padding: 20px;
         spacing: 12px;
         HorizontalLayout {
+            height: 44px;
             spacing: 8px;
-            Text { text: root.heading; color: ShellPalette.text-primary; font-size: 20px; font-weight: 600; vertical-alignment: center; horizontal-stretch: 1; }
-            ActionButton { label: "‹"; width: 40px; activated => { root.action("previous"); } }
+            cross-axis-alignment: center;
+            Text {
+                horizontal-stretch: 1;
+                min-width: 0px;
+                text: root.heading;
+                color: ShellPalette.text-primary;
+                font-family: TaskStyle.font-family;
+                font-size: 20px;
+                font-weight: 600;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            previous-button := ActionButton {
+                label: root.week-mode ? "上周" : "上月";
+                icon: @image-url("../../../../ui/icons/arrow-left.svg");
+                with-icon: true;
+                icon-rotation: 0deg;
+                activated => { root.action("previous"); }
+            }
             ActionButton { label: "今天"; width: 64px; activated => { root.action("today"); } }
-            ActionButton { label: "›"; width: 40px; activated => { root.action("next"); } }
+            next-button := ActionButton {
+                label: root.week-mode ? "下周" : "下月";
+                icon: @image-url("../../../../ui/icons/arrow-left.svg");
+                with-icon: true;
+                icon-rotation: 180deg;
+                activated => { root.action("next"); }
+            }
             ActionButton { label: root.week-mode ? "月视图" : "周视图"; width: 80px; activated => { root.action("mode"); } }
         }
-        Text { text: root.error-message; color: ShellPalette.danger; visible: root.error-message != ""; }
+        HorizontalLayout {
+            height: 20px;
+            spacing: 12px;
+            cross-axis-alignment: center;
+            for label[index] in ["待处理", "进行中", "等待中", "已完成", "逾期"]: HorizontalLayout {
+                spacing: 5px; horizontal-stretch: 0; cross-axis-alignment: center;
+                Rectangle {
+                    width: 10px; height: 10px; border-radius: 3px;
+                    background: TaskStyle.row-background(index == 4 ? 0 : index, index == 4, false, false);
+                    border-width: 1px;
+                    border-color: CalendarStyle.status-color(index, index == 4);
+                }
+                Text { text: label; color: ShellPalette.text-secondary; font-family: TaskStyle.font-family; font-size: TaskStyle.caption; }
+            }
+            Rectangle { horizontal-stretch: 1; background: transparent; }
+        }
+        if root.error-message != "": Rectangle {
+            height: 40px;
+            background: ShellPalette.danger-subtle;
+            border-radius: TaskStyle.row-radius;
+            Text { x: 10px; width: parent.width - 20px; text: root.error-message; color: ShellPalette.text-primary; font-family: TaskStyle.font-family; font-size: TaskStyle.body; vertical-alignment: center; }
+        }
         HorizontalLayout {
             spacing: 12px;
+            vertical-stretch: 1;
             Rectangle {
                 horizontal-stretch: 1;
+                min-width: 0px;
                 VerticalLayout {
-                    spacing: 4px;
-                    HorizontalLayout {
-                        height: 24px;
-                        for day in root.weekdays: Text { text: day; color: ShellPalette.text-secondary; horizontal-alignment: center; font-size: 12px; horizontal-stretch: 1; }
-                    }
+                    spacing: CalendarStyle.grid-gap;
                     Rectangle {
+                        height: 28px;
+                        for day[index] in root.weekdays: Text {
+                            x: index * grid-scroll.visible-width / 7;
+                            width: grid-scroll.visible-width / 7;
+                            text: day;
+                            color: ShellPalette.text-secondary;
+                            font-family: TaskStyle.font-family;
+                            horizontal-alignment: center;
+                            font-size: TaskStyle.body;
+                            font-weight: 500;
+                            vertical-alignment: center;
+                        }
+                    }
+                    grid-scroll := ScrollView {
                         vertical-stretch: 1;
-                        for day[index] in root.days: CalendarCell {
-                            x: mod(index, 7) * (parent.width / 7);
-                            y: floor(index / 7) * (parent.height / (root.week-mode ? 1 : 6));
-                            width: parent.width / 7 - 3px;
-                            height: parent.height / (root.week-mode ? 1 : 6) - 3px;
-                            day-label: day.label;
-                            titles: day.titles;
-                            remaining-label: day.remaining;
-                            completed-label: day.completed;
-                            in-month: day.in-month;
-                            today: day.today;
-                            selected: day.selected;
-                            selected-day => { root.select-date(day.date); }
+                        min-height: 0px;
+                        content-width: self.visible-width;
+                        content-height: max(self.visible-height, (root.week-mode ? 1 : 6) * (CalendarStyle.cell-min-height + CalendarStyle.grid-gap) - CalendarStyle.grid-gap);
+                        Rectangle {
+                            width: grid-scroll.visible-width;
+                            height: grid-scroll.content-height;
+                            for day[index] in root.days: CalendarCell {
+                                x: mod(index, 7) * (parent.width / 7);
+                                y: floor(index / 7) * ((parent.height + CalendarStyle.grid-gap) / (root.week-mode ? 1 : 6));
+                                width: parent.width / 7 - CalendarStyle.grid-gap;
+                                height: (parent.height + CalendarStyle.grid-gap) / (root.week-mode ? 1 : 6) - CalendarStyle.grid-gap;
+                                day-label: day.label;
+                                items: day.items;
+                                remaining-label: day.remaining;
+                                completed-label: day.completed;
+                                in-month: day.in-month;
+                                today: day.today;
+                                selected: day.selected;
+                                selected-day => { root.select-date(day.date); }
+                            }
                         }
                     }
                 }
             }
-            if root.panel-open && !root.compact: DayPanel {
+            if root.panel-open && !root.compact: CalendarDayPanel {
                 selected-label: root.selected-label;
-                panel-text: root.panel-text;
+                selected-context: root.selected-context;
+                message: root.panel-message;
+                sections: root.panel-sections;
                 close => { root.action("close"); }
             }
         }
     }
-    if root.panel-open && root.compact: DayPanel {
+    if root.panel-open && root.compact: CalendarDayPanel {
         x: parent.width - self.width - 20px;
-        y: 64px;
-        height: parent.height - 84px;
+        y: 84px;
+        height: parent.height - 104px;
         selected-label: root.selected-label;
-        panel-text: root.panel-text;
+        selected-context: root.selected-context;
+        message: root.panel-message;
+        sections: root.panel-sections;
         close => { root.action("close"); }
     }
 }

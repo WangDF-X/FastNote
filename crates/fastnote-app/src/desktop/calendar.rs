@@ -8,11 +8,15 @@ use fastnote_core::derive::calendar::{
 };
 use fastnote_core::{Clock, Query, QueryResult};
 use fastnote_store::TaskStoreError;
-use fastnote_ui::{cell_preview, CalendarCellView};
+use fastnote_ui::{cell_preview, day_sections, CalendarCellView};
 use slint::{ModelRc, SharedString, VecModel};
 
 use crate::clock::SystemClock;
 use crate::desktop::runtime::Runtime;
+
+use self::presentation::{panel_message, weekday_label};
+
+mod presentation;
 
 #[derive(Default)]
 pub(super) struct CalendarSession {
@@ -21,9 +25,16 @@ pub(super) struct CalendarSession {
     panel: bool,
     latest: u64,
     data: Vec<(NaiveDate, DayAgenda)>,
+    read_error: bool,
 }
 
 impl CalendarSession {
+    fn release_data(&mut self) {
+        self.latest = 0;
+        self.data.clear();
+        self.read_error = false;
+    }
+
     fn take_reply(&mut self, id: u64) -> bool {
         if id == 0 || self.latest != id {
             return false;
@@ -68,12 +79,15 @@ impl Runtime {
 
     pub(super) fn release_calendar(&self) {
         let mut state = self.calendar.borrow_mut();
-        state.latest = 0;
-        state.data.clear();
+        state.release_data();
         drop(state);
         let _ = self.with_ui(|ui| {
             ui.shell.component().set_calendar_days(ModelRc::default());
-            ui.shell.component().set_calendar_panel_text("".into());
+            ui.shell
+                .component()
+                .set_calendar_panel_sections(ModelRc::default());
+            ui.shell.component().set_calendar_panel_message("".into());
+            ui.shell.component().set_calendar_error("".into());
         });
     }
 
@@ -93,6 +107,8 @@ impl Runtime {
         if pending {
             return;
         }
+        self.calendar.borrow_mut().read_error = false;
+        let _ = self.with_ui(|ui| ui.shell.component().set_calendar_error("".into()));
         let start = self.settings.borrow().week_start;
         let days = if week {
             calendar_week_days(selected, start)
@@ -118,6 +134,8 @@ impl Runtime {
         {
             self.calendar.borrow_mut().latest = id;
         } else {
+            self.calendar.borrow_mut().read_error = true;
+            self.paint_calendar(&days);
             let _ = self.with_ui(|ui| {
                 ui.shell
                     .component()
@@ -195,11 +213,29 @@ impl Runtime {
         match result {
             Ok(QueryResult::Calendar(data)) => {
                 let days = data.iter().map(|(date, _)| *date).collect::<Vec<_>>();
-                self.calendar.borrow_mut().data = data.clone();
+                let mut state = self.calendar.borrow_mut();
+                state.data = data.clone();
+                state.read_error = false;
+                drop(state);
                 let _ = self.with_ui(|ui| ui.shell.component().set_calendar_error("".into()));
                 self.paint_calendar(&days);
             }
             _ => {
+                let mut state = self.calendar.borrow_mut();
+                state.data.clear();
+                state.read_error = true;
+                let days = state.selected.and_then(|date| {
+                    let start = self.settings.borrow().week_start;
+                    if state.week {
+                        calendar_week_days(date, start)
+                    } else {
+                        calendar_month_days(date, start)
+                    }
+                });
+                drop(state);
+                if let Some(days) = days {
+                    self.paint_calendar(&days);
+                }
                 let _ = self.with_ui(|ui| {
                     ui.shell
                         .component()
@@ -223,18 +259,12 @@ impl Runtime {
                     .data
                     .iter()
                     .find(|(day, _)| day == date)
-                    .map(|(_, agenda)| cell_preview(agenda))
+                    .map(|(_, agenda)| cell_preview(agenda, today.year()))
                     .unwrap_or_default();
                 CalendarCellView {
                     date: date.to_string().into(),
                     label: date.day().to_string().into(),
-                    titles: ModelRc::new(VecModel::from(
-                        preview
-                            .titles
-                            .into_iter()
-                            .map(SharedString::from)
-                            .collect::<Vec<_>>(),
-                    )),
+                    items: ModelRc::new(VecModel::from(preview.items)),
                     remaining: if preview.remaining == 0 {
                         "".into()
                     } else {
@@ -247,12 +277,19 @@ impl Runtime {
                 }
             })
             .collect();
-        let panel = state
+        let agenda = state
             .data
             .iter()
             .find(|(date, _)| *date == selected)
-            .map(|(_, agenda)| agenda_text(agenda))
-            .unwrap_or_else(|| "正在读取日程…".to_owned());
+            .map(|(_, agenda)| agenda);
+        let sections = if state.panel {
+            agenda
+                .map(|agenda| day_sections(agenda, today.year()))
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        let panel = panel_message(agenda, state.read_error);
         let weekdays = match self.settings.borrow().week_start {
             WeekStart::Monday => ["周一", "周二", "周三", "周四", "周五", "周六", "周日"],
             WeekStart::Sunday => ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
@@ -265,7 +302,11 @@ impl Runtime {
             window.set_calendar_selected_label(
                 format!("{} 月 {} 日", selected.month(), selected.day()).into(),
             );
-            window.set_calendar_panel_text(panel.into());
+            window.set_calendar_selected_context(
+                format!("{} 年 · {}", selected.year(), weekday_label(selected)).into(),
+            );
+            window.set_calendar_panel_message(panel.into());
+            window.set_calendar_panel_sections(ModelRc::new(VecModel::from(sections)));
             window.set_calendar_week_mode(state.week);
             window.set_calendar_panel_open(state.panel);
             window.set_calendar_days(ModelRc::new(VecModel::from(views)));
@@ -276,27 +317,6 @@ impl Runtime {
                     .collect::<Vec<_>>(),
             )));
         });
-    }
-}
-
-fn agenda_text(agenda: &DayAgenda) -> String {
-    let mut lines = Vec::new();
-    for (label, tasks) in [
-        ("到期", &agenda.due),
-        ("开始", &agenda.start),
-        ("进行中", &agenda.ongoing),
-        ("已完成", &agenda.completed),
-    ] {
-        if !tasks.is_empty() {
-            lines.push(format!("{label}  {}", tasks.len()));
-            lines.extend(tasks.iter().map(|task| format!("  · {}", task.title)));
-            lines.push(String::new());
-        }
-    }
-    if lines.is_empty() {
-        "这一天没有安排的任务".to_owned()
-    } else {
-        lines.join("\n")
     }
 }
 
@@ -319,7 +339,21 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_agenda_has_clear_empty_state() {
-        assert_eq!(agenda_text(&DayAgenda::default()), "这一天没有安排的任务");
+    fn test_release_discards_data_and_replies_but_preserves_light_navigation() {
+        let date: NaiveDate = "2026-11-07".parse().unwrap();
+        let mut state = CalendarSession {
+            selected: Some(date),
+            week: true,
+            panel: true,
+            latest: 12,
+            data: vec![(date, DayAgenda::default())],
+            read_error: true,
+        };
+        state.release_data();
+        assert_eq!(state.selected, Some(date));
+        assert!(state.week && state.panel);
+        assert!(state.data.is_empty());
+        assert!(!state.read_error);
+        assert!(!state.take_reply(12));
     }
 }

@@ -1,9 +1,13 @@
 import { ShellPalette } from "../palette.slint";
+import { TaskRowData } from "../tasks/types.slint";
+import { TaskStyle } from "../tasks/task-style.slint";
+import { CalendarStyle } from "style.slint";
+import { CalendarTaskStrip } from "task-strip.slint";
 
 /// CAL-01 日期格：任务分类和文本由 Rust 提供，非本月日期不可选择。
 export component CalendarCell inherits Rectangle {
     in property <string> day-label;
-    in property <[string]> titles;
+    in property <[TaskRowData]> items;
     in property <string> remaining-label;
     in property <string> completed-label;
     in property <bool> in-month: true;
@@ -11,48 +15,89 @@ export component CalendarCell inherits Rectangle {
     in property <bool> selected: false;
     callback selected-day();
 
-    background: root.selected ? ShellPalette.subtle : touch.has-hover && root.in-month ? ShellPalette.hover : ShellPalette.surface;
+    min-width: 0px;
+    min-height: CalendarStyle.cell-min-height;
+    background: !root.in-month ? ShellPalette.canvas : root.selected ? ShellPalette.subtle : touch.has-hover ? ShellPalette.hover : ShellPalette.surface;
     border-width: 1px;
     border-color: root.selected ? ShellPalette.accent : ShellPalette.border;
-    border-radius: 6px;
+    border-radius: TaskStyle.row-radius;
+    animate background { duration: 120ms; }
     accessible-role: button;
-    accessible-label: root.day-label;
+    accessible-label: root.day-label + " 日" + (root.completed-label == "" ? "" : "，已完成 " + root.completed-label + " 项");
     accessible-action-default => { if (root.in-month) { root.selected-day(); } }
 
     VerticalLayout {
-        padding: 6px;
-        spacing: 2px;
+        padding: CalendarStyle.cell-padding;
+        spacing: CalendarStyle.cell-spacing;
         HorizontalLayout {
+            height: CalendarStyle.day-header-height;
             spacing: 4px;
+            cross-axis-alignment: center;
             Rectangle {
-                width: 24px;
-                height: 24px;
-                border-radius: 12px;
+                width: CalendarStyle.day-header-height;
+                height: CalendarStyle.day-header-height;
+                border-radius: CalendarStyle.day-header-height / 2;
                 background: root.today && root.in-month ? ShellPalette.accent : transparent;
                 Text {
                     text: root.day-label;
-                    font-size: 12px;
-                    font-weight: root.today ? 600 : 400;
+                    font-family: TaskStyle.font-family;
+                    font-size: TaskStyle.body;
+                    font-weight: root.in-month ? 600 : 400;
                     color: !root.in-month ? ShellPalette.text-secondary : root.today ? ShellPalette.on-accent : ShellPalette.text-primary;
                     horizontal-alignment: center;
                     vertical-alignment: center;
                 }
             }
             Rectangle { horizontal-stretch: 1; background: transparent; }
-            Text { text: root.completed-label; color: ShellPalette.text-secondary; font-size: 11px; vertical-alignment: center; }
+            if root.completed-label != "" && root.in-month: Rectangle {
+                width: max(30px, count.preferred-width + 22px);
+                height: 20px;
+                border-radius: TaskStyle.control-radius;
+                background: ShellPalette.task-done;
+                HorizontalLayout {
+                    padding-left: 4px; padding-right: 4px; spacing: 2px;
+                    cross-axis-alignment: center;
+                    Image {
+                        width: 12px;
+                        height: 12px;
+                        source: @image-url("../../../../ui/icons/check.svg");
+                        colorize: ShellPalette.success;
+                        accessible-role: none;
+                    }
+                    count := Text {
+                        text: root.completed-label;
+                        color: ShellPalette.text-secondary;
+                        font-family: TaskStyle.font-family;
+                        font-size: TaskStyle.caption;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                }
+            }
         }
-        for title in root.titles: Text {
-            text: title;
-            color: ShellPalette.text-primary;
-            font-size: 11px;
-            overflow: elide;
-            height: 16px;
+        if root.in-month: VerticalLayout {
+            spacing: CalendarStyle.cell-spacing;
+            for task in root.items: CalendarTaskStrip {
+                data: task;
+                compact: true;
+                hovered: touch.has-hover;
+                pressed: touch.pressed;
+            }
         }
-        Text { text: root.remaining-label; color: ShellPalette.text-secondary; font-size: 11px; height: root.remaining-label == "" ? 0px : 16px; }
+        if root.remaining-label != "" && root.in-month: Text {
+            text: root.remaining-label + " 项";
+            color: ShellPalette.text-secondary;
+            font-family: TaskStyle.font-family;
+            font-size: TaskStyle.caption;
+            font-weight: 600;
+            height: CalendarStyle.more-height;
+            vertical-alignment: center;
+        }
         Rectangle { vertical-stretch: 1; background: transparent; }
     }
     touch := TouchArea {
         enabled: root.in-month;
+        mouse-cursor: pointer;
         clicked => { root.selected-day(); }
     }
 }

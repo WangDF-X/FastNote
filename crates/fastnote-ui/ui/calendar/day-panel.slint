@@ -1,0 +1,120 @@
+import { ScrollView } from "std-widgets.slint";
+import { ActionButton } from "../components/action-button.slint";
+import { ShellPalette } from "../palette.slint";
+import { TaskStyle } from "../tasks/task-style.slint";
+import { CalendarSectionData } from "types.slint";
+import { CalendarTaskStrip } from "task-strip.slint";
+
+/// CAL-02 日程面板：分组决定顺序，单条任务的真实状态决定卡片颜色。
+export component CalendarDayPanel inherits Rectangle {
+    in property <string> selected-label;
+    in property <string> selected-context;
+    in property <string> message;
+    in property <[CalendarSectionData]> sections;
+    callback close();
+
+    width: 320px;
+    background: ShellPalette.surface;
+    border-width: 1px;
+    border-color: ShellPalette.border;
+    border-radius: TaskStyle.card-radius;
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 12px;
+        HorizontalLayout {
+            height: 48px;
+            spacing: 8px;
+            alignment: stretch;
+            cross-axis-alignment: center;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 4px;
+                Text {
+                    text: root.selected-label;
+                    color: ShellPalette.text-primary;
+                    font-family: TaskStyle.font-family;
+                    font-size: 20px;
+                    font-weight: 600;
+                    overflow: elide;
+                }
+                Text {
+                    text: root.selected-context;
+                    color: ShellPalette.text-secondary;
+                    font-family: TaskStyle.font-family;
+                    font-size: TaskStyle.caption;
+                    overflow: elide;
+                }
+            }
+            ActionButton { label: "关闭"; width: 56px; ghost: true; activated => { root.close(); } }
+        }
+        Rectangle { height: 1px; background: ShellPalette.border; }
+        scroll := ScrollView {
+            vertical-stretch: 1;
+            min-height: 0px;
+            content-width: self.visible-width;
+            content-height: list.preferred-height;
+            list := VerticalLayout {
+                width: scroll.visible-width;
+                spacing: 16px;
+                if root.sections.length == 0: Rectangle {
+                    height: 168px;
+                    background: ShellPalette.canvas;
+                    border-radius: TaskStyle.row-radius;
+                    VerticalLayout {
+                        padding: 16px; spacing: 12px; alignment: center;
+                        Image {
+                            width: 32px; height: 32px;
+                            source: @image-url("../../../../ui/icons/calendar.svg");
+                            colorize: ShellPalette.text-secondary;
+                            accessible-role: none;
+                        }
+                        Text {
+                            text: root.message;
+                            color: ShellPalette.text-primary;
+                            font-family: TaskStyle.font-family;
+                            font-size: TaskStyle.body;
+                            font-weight: 500;
+                            wrap: word-wrap;
+                            horizontal-alignment: center;
+                        }
+                    }
+                }
+                for section in root.sections: VerticalLayout {
+                    spacing: 8px;
+                    HorizontalLayout {
+                        height: 24px;
+                        spacing: 6px;
+                        cross-axis-alignment: center;
+                        Text {
+                            text: section.label;
+                            color: ShellPalette.text-primary;
+                            font-family: TaskStyle.font-family;
+                            font-size: TaskStyle.heading;
+                            font-weight: 600;
+                        }
+                        Rectangle {
+                            width: 28px; height: 22px;
+                            border-radius: TaskStyle.control-radius;
+                            background: ShellPalette.canvas;
+                            Text {
+                                text: section.total;
+                                color: ShellPalette.text-secondary;
+                                font-family: TaskStyle.font-family;
+                                font-size: TaskStyle.caption;
+                                font-weight: 600;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                        Rectangle { horizontal-stretch: 1; background: transparent; }
+                    }
+                    for task in section.items: CalendarTaskStrip {
+                        data: task;
+                        compact: false;
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,23 +1,28 @@
 //! 日历格子的纯显示投影，不承担任务分类和时间计算。
 
 use fastnote_core::derive::calendar::DayAgenda;
+use slint::{ModelRc, VecModel};
+
+use crate::today::row_data;
+use crate::{CalendarSectionData, TaskRowData};
 
 /// 日期格最多显示的未完成任务数量。
 const MAX_PREVIEWS: usize = 3;
 
 /// 日期格中的任务预览和弱完成计数。
-#[derive(Debug, Default, Eq, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
 pub struct CellPreview {
-    /// 最多三条未完成任务标题。
-    pub titles: Vec<String>,
+    /// 最多三条未完成任务摘要，保留真实状态和领域派生标记。
+    pub items: Vec<TaskRowData>,
     /// 未显示的未完成任务数量。
     pub remaining: usize,
-    /// 已完成数量，超过九项显示为 9+。
+    /// 已完成数量文本，不含图标；超过九项显示为 9+。
     pub completed_label: String,
 }
 
 /// 按领域层已确定的分组顺序投影，完成项不显示标题。
-pub fn cell_preview(agenda: &DayAgenda) -> CellPreview {
+/// 本地当前年份由调用者注入，与今日列表共享日期缩写规则。
+pub fn cell_preview(agenda: &DayAgenda, current_year: i32) -> CellPreview {
     let open = agenda
         .due
         .iter()
@@ -26,56 +31,46 @@ pub fn cell_preview(agenda: &DayAgenda) -> CellPreview {
     let count = agenda.due.len() + agenda.start.len() + agenda.ongoing.len();
     let completed_label = match agenda.completed.len() {
         0 => String::new(),
-        1..=9 => format!("✓{}", agenda.completed.len()),
-        _ => "✓9+".to_owned(),
+        1..=9 => agenda.completed.len().to_string(),
+        _ => "9+".to_owned(),
     };
     CellPreview {
-        titles: open
+        items: open
             .take(MAX_PREVIEWS)
-            .map(|item| item.title.clone())
+            .map(|item| row_data(item, current_year))
             .collect(),
         remaining: count.saturating_sub(MAX_PREVIEWS),
         completed_label,
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use fastnote_core::{DateTime, Task, TaskContext, TaskId, Utc};
-
-    use super::*;
-
-    fn item(index: usize) -> fastnote_core::TaskSummary {
-        let id: TaskId = format!("019a0fff-aaaa-7000-8000-{index:012x}")
-            .parse()
-            .unwrap();
-        let now: DateTime<Utc> = "2026-11-07T12:00:00Z".parse().unwrap();
-        let task = Task::new(id, format!("任务 {index}"), now).unwrap();
-        fastnote_core::TaskSummary::from_task(&task, TaskContext::default())
-    }
-
-    #[test]
-    fn test_preview_limits_open_tasks_and_caps_completed_count() {
-        let agenda = DayAgenda {
-            due: vec![item(1), item(2)],
-            start: vec![item(3)],
-            ongoing: vec![item(4), item(5)],
-            completed: (6..16).map(item).collect(),
-            overload: false,
-        };
-        let preview = cell_preview(&agenda);
-        assert_eq!(preview.titles, ["任务 1", "任务 2", "任务 3"]);
-        assert_eq!(preview.remaining, 2);
-        assert_eq!(preview.completed_label, "✓9+");
-    }
-
-    #[test]
-    fn test_empty_and_single_completion_labels() {
-        assert_eq!(cell_preview(&DayAgenda::default()), CellPreview::default());
-        let agenda = DayAgenda {
-            completed: vec![item(1)],
-            ..DayAgenda::default()
-        };
-        assert_eq!(cell_preview(&agenda).completed_label, "✓1");
-    }
+/// 将日面板投影为有序分组和独立任务摘要；空分组不生成控件。
+/// 只消费已查询的日程，不改变归组、排序、任务状态或存储。
+pub fn day_sections(agenda: &DayAgenda, current_year: i32) -> Vec<CalendarSectionData> {
+    [
+        ("到期", &agenda.due),
+        ("开始", &agenda.start),
+        ("进行中", &agenda.ongoing),
+        ("已完成", &agenda.completed),
+    ]
+    .into_iter()
+    .enumerate()
+    .filter(|(_, (_, tasks))| !tasks.is_empty())
+    .map(|(kind, (label, tasks))| CalendarSectionData {
+        kind: kind as i32,
+        label: label.into(),
+        total: i32::try_from(tasks.len()).unwrap_or(i32::MAX),
+        items: ModelRc::new(VecModel::from(
+            tasks
+                .iter()
+                .map(|task| row_data(task, current_year))
+                .collect::<Vec<_>>(),
+        )),
+    })
+    .collect()
 }
+
+#[cfg(test)]
+mod style_contract;
+#[cfg(test)]
+mod tests;

@@ -95,7 +95,13 @@ impl<'a, R: TaskRepository, C: TaskClock> TaskService<'a, R, C> {
                 if !(0..62).contains(&days) {
                     return Err(TaskError::Conflict.into());
                 }
-                let tasks = self.repository.calendar_tasks(start, end)?;
+                let mut tasks = self.repository.calendar_tasks(start, end)?;
+                // D-CAL-UI-01：日历与今日/详情使用同一标记，基准为真实本地今天，
+                // 不让过去或未来的浏览日期重新定义任务的逾期状态。
+                let today = self.clock.today();
+                for task in &mut tasks {
+                    derive_task_summary(task, today, &self.clock);
+                }
                 let mut result = Vec::with_capacity(days as usize + 1);
                 for offset in 0..=days {
                     let Some(date) = start.checked_add_signed(chrono::Duration::days(offset))

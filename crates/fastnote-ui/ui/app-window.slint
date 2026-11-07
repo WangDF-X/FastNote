@@ -18,10 +18,11 @@ import { ThemeSwitch } from "components/theme-switch.slint";
 import { TodayPage } from "tasks/today-page.slint";
 import { TaskDrawer } from "tasks/task-drawer.slint";
 import { TaskRowData, TodaySectionData, CalendarDayData } from "tasks/types.slint";
-import { CalendarPage, CalendarCellView } from "calendar/page.slint";
+import { CalendarPage } from "calendar/page.slint";
+import { CalendarCellView, CalendarSectionData } from "calendar/types.slint";
 import { Palette, Date } from "std-widgets.slint";
 
-export { BannerData, BannerTone, DialogData, DialogTone, ToastData, ToastTone, FloatingBall, BallMenuWindow, ShellPalette, ShellFocus, Palette, Date, TaskRowData, TodaySectionData, CalendarDayData, CalendarCellView }
+export { BannerData, BannerTone, DialogData, DialogTone, ToastData, ToastTone, FloatingBall, BallMenuWindow, ShellPalette, ShellFocus, Palette, Date, TaskRowData, TodaySectionData, CalendarDayData, CalendarCellView, CalendarSectionData }
 
 struct PagePresentation {
     label: string,
@@ -54,7 +55,9 @@ export component MainWindow inherits Window {
     in property <string> current_page: "今日任务";
     in property <string> calendar-heading;
     in property <string> calendar-selected-label;
-    in property <string> calendar-panel-text;
+    in property <string> calendar-selected-context;
+    in property <string> calendar-panel-message;
+    in property <[CalendarSectionData]> calendar-panel-sections;
     in property <string> calendar-error;
     in property <[string]> calendar-weekdays;
     in property <[CalendarCellView]> calendar-days;
@@ -548,7 +551,9 @@ export component MainWindow inherits Window {
                     if root.current_page == "日历": CalendarPage {
                         heading: root.calendar-heading;
                         selected-label: root.calendar-selected-label;
-                        panel-text: root.calendar-panel-text;
+                        selected-context: root.calendar-selected-context;
+                        panel-message: root.calendar-panel-message;
+                        panel-sections: root.calendar-panel-sections;
                         error-message: root.calendar-error;
                         weekdays: root.calendar-weekdays;
                         days: root.calendar-days;
