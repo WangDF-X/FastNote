@@ -96,7 +96,8 @@ impl UiSession {
         window.set_plan_detail(view.is_plan_detail);
         window.set_general_settings(view.is_general_settings);
         window.set_settings_section(view.settings_section.clone().into());
-        window.invoke_focus_route_header();
+        shell.set_local_date(view.local_today);
+        window.invoke_focus_route_content();
     }
 }
 

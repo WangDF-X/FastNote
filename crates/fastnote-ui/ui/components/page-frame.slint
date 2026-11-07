@@ -4,6 +4,7 @@ import { PageBanner, BannerData, BannerTone } from "page-banner.slint";
 import { PageSkeleton } from "page-skeleton.slint";
 import { EmptyState } from "empty-state.slint";
 import { ErrorState } from "error-state.slint";
+import { ActionButton } from "action-button.slint";
 
 /// SHELL-01 §3.4 / §6：内容区容器与页面状态。
 ///
@@ -22,6 +23,11 @@ export component PageFrame inherits Rectangle {
     /// SHELL-02 §5：Rust 侧选出的最高级横幅；它优先于只读状态自带的横幅。
     in property <bool> banner-visible: false;
     in property <BannerData> banner;
+    /// D-SHELL-02：只有带返回来源的路由在内容卡片内显示紧凑返回操作。
+    in property <bool> can-go-back: false;
+    in property <bool> back-enabled: true;
+    in property <string> back-focus-key;
+    callback back();
     callback retry();
     callback empty-action-activated();
     callback banner-action();
@@ -60,7 +66,7 @@ export component PageFrame inherits Rectangle {
             Rectangle {
                 x: (parent.width - self.width) / 2;
                 y: 24px;
-                width: min(1200px, parent.width - 48px);
+                width: parent.width - 48px;
                 height: parent.height - 48px;
                 border-radius: 10px;
                 border-width: 1px;
@@ -68,41 +74,57 @@ export component PageFrame inherits Rectangle {
                 background: ShellPalette.surface;
 
                 VerticalLayout {
-                    visible: root.shows-content;
-                    @children
-                }
+                    spacing: 0px;
+                    padding: 0px;
 
-                if root.state == PageState.loading: PageSkeleton {
-                    x: 0px;
-                    y: 0px;
-                    width: parent.width;
-                    height: parent.height;
-                }
-
-                if root.state == PageState.empty: EmptyState {
-                    x: 0px;
-                    y: 0px;
-                    width: parent.width;
-                    height: parent.height;
-                    icon: root.empty-icon;
-                    title: root.empty-title;
-                    description: root.empty-description;
-                    action-label: root.empty-action;
-                    action => {
-                        root.empty-action-activated();
+                    if root.can-go-back: HorizontalLayout {
+                        height: 48px;
+                        padding: 8px;
+                        spacing: 0px;
+                        ActionButton {
+                            label: "返回";
+                            icon: @image-url("../../../../ui/icons/arrow-left.svg");
+                            with-icon: true;
+                            ghost: true;
+                            enabled: root.back-enabled;
+                            focus-key: root.back-focus-key;
+                            activated => { root.back(); }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
                     }
-                }
 
-                if root.state == PageState.error: ErrorState {
-                    x: 0px;
-                    y: 0px;
-                    width: parent.width;
-                    height: parent.height;
-                    title: root.error-title;
-                    message: root.error-message;
-                    log-id: root.error-log-id;
-                    retry => {
-                        root.retry();
+                    Rectangle {
+                        vertical-stretch: 1;
+                        min-height: 0px;
+
+                        VerticalLayout {
+                            visible: root.shows-content;
+                            @children
+                        }
+
+                        if root.state == PageState.loading: PageSkeleton {
+                            width: parent.width;
+                            height: parent.height;
+                        }
+
+                        if root.state == PageState.empty: EmptyState {
+                            width: parent.width;
+                            height: parent.height;
+                            icon: root.empty-icon;
+                            title: root.empty-title;
+                            description: root.empty-description;
+                            action-label: root.empty-action;
+                            action => { root.empty-action-activated(); }
+                        }
+
+                        if root.state == PageState.error: ErrorState {
+                            width: parent.width;
+                            height: parent.height;
+                            title: root.error-title;
+                            message: root.error-message;
+                            log-id: root.error-log-id;
+                            retry => { root.retry(); }
+                        }
                     }
                 }
             }

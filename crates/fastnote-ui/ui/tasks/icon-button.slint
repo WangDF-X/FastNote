@@ -11,12 +11,13 @@ export component TaskIconButton inherits Rectangle {
     in property <bool> checkbox: false;
     in property <bool> checked: false;
     in property <bool> glyph-with-icon: false;
+    in property <bool> dismiss: false;
     in property <color> foreground: ShellPalette.text-secondary;
     callback activated();
     width: root.glyph-with-icon ? 48px : 32px;
     height: TaskStyle.control-height;
     border-radius: TaskStyle.control-radius;
-    background: mouse.pressed ? ShellPalette.subtle : mouse.has-hover ? ShellPalette.hover : transparent;
+    background: root.enabled && root.dismiss && (mouse.has-hover || mouse.pressed) ? ShellPalette.danger-subtle : mouse.pressed ? ShellPalette.subtle : mouse.has-hover ? ShellPalette.hover : transparent;
     animate background { duration: 120ms; }
     opacity: root.enabled ? 1 : 0.45;
     forward-focus: keyboard;
@@ -44,7 +45,7 @@ export component TaskIconButton inherits Rectangle {
     if !root.checkbox && (root.glyph == "" || root.glyph-with-icon): Image {
         x: 8px; y: 8px; width: 16px; height: 16px;
         source: root.icon;
-        colorize: root.foreground;
+        colorize: root.enabled && root.dismiss && (mouse.has-hover || mouse.pressed) ? ShellPalette.danger : root.foreground;
     }
     if root.glyph != "": Text {
         x: root.glyph-with-icon ? 26px : 0px;

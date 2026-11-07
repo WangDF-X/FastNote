@@ -1,5 +1,6 @@
 //! 主窗口装配：把 Slint 回调接到应用动作入口和反馈组件的视图模型上。
 
+mod date;
 mod handle;
 mod retained;
 mod view;
@@ -8,6 +9,8 @@ mod view;
 mod focus_contract;
 #[cfg(test)]
 mod handle_contract;
+#[cfg(test)]
+mod layout_contract;
 #[cfg(test)]
 mod task_preferences_contract;
 #[cfg(test)]
@@ -144,7 +147,7 @@ impl Shell {
         if let Some(window) = self.window.upgrade() {
             update.view.apply(&window);
             if update.route_changed {
-                window.invoke_focus_route_header();
+                window.invoke_focus_route_content();
             }
         }
         if let Some(issue) = update.issue {

@@ -1,0 +1,50 @@
+import { ShellPalette } from "../palette.slint";
+
+/// D-SHELL-02：所有模块共用本地今日日期，不读取日历选中日期或业务模型。
+export component SidebarDate inherits Rectangle {
+    in property <string> date-label;
+    in property <string> weekday-label;
+
+    height: 64px;
+    background: transparent;
+    accessible-role: text;
+    accessible-label: "今天，" + root.date-label + "，" + root.weekday-label;
+
+    Image {
+        x: 12px;
+        y: 14px;
+        width: 36px;
+        height: 36px;
+        source: ShellPalette.brand-icon;
+        accessible-role: none;
+    }
+
+    Text {
+        x: 58px;
+        y: 10px;
+        width: parent.width - self.x - 12px;
+        height: 22px;
+        text: root.date-label;
+        font-family: "Microsoft YaHei UI";
+        font-size: 16px;
+        font-weight: 600;
+        color: ShellPalette.text-primary;
+        vertical-alignment: center;
+        wrap: no-wrap;
+        accessible-role: none;
+    }
+
+    Text {
+        x: 58px;
+        y: 34px;
+        width: parent.width - self.x - 12px;
+        height: 18px;
+        text: root.weekday-label;
+        font-family: "Microsoft YaHei UI";
+        font-size: 12px;
+        color: ShellPalette.text-secondary;
+        vertical-alignment: center;
+        wrap: no-wrap;
+        accessible-role: none;
+    }
+}

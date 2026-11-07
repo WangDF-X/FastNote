@@ -1,14 +1,18 @@
 //! 应用层传给外壳的展示数据；不在 UI 中另存一份可变路由。
 
+use fastnote_core::NaiveDate;
+
 use crate::MainWindow;
 
-/// 页面标题与路由参数的展示快照，由应用控制器统一生成。
+/// 外壳日期与路由参数的展示快照，由应用控制器统一生成。
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ShellView {
     /// 侧边栏模块名；计划详情仍高亮「计划板」。
     pub page_label: &'static str,
-    /// 页面标题；业务模块接入前，计划详情使用占位标题。
+    /// 页面名称，用于内容区无障碍说明、错误和业务占位文案，不绘制模块标题条。
     pub title: &'static str,
+    /// 本地真实今日日期；与日历选中日期、日记编辑日期等路由参数相互独立。
+    pub local_today: NaiveDate,
     /// 日期、选中 ID 或设置分组等上下文，不包含正文。
     pub context: String,
     /// 仅供开发预览展示的规范化路由动作。
@@ -33,6 +37,7 @@ impl ShellView {
         window.set_plan_detail(self.is_plan_detail);
         window.set_general_settings(self.is_general_settings);
         window.set_settings_section(self.settings_section.clone().into());
+        super::date::apply_date(window, self.local_today);
     }
 }
 

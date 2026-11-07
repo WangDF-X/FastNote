@@ -59,6 +59,9 @@ impl Runtime {
                 "main session constructed on demand"
             );
         }
+        // D-SHELL-02：显式冷/热恢复先同步真实今日，加载/错误态也不沿用隐藏前日期。
+        let date = self.observe_task_clock().sample.local.date();
+        let _ = self.with_ui(|ui| ui.shell.set_local_date(date));
         self.ensure_current_page_resources();
         Ok(())
     }

@@ -3,7 +3,7 @@ import { ShellFocus } from "shell-focus.slint";
 import { ShellControl } from "components/shell-control.slint";
 import { PagePlaceholder } from "components/page-placeholder.slint";
 import { PageFrame } from "components/page-frame.slint";
-import { PageHeader } from "components/page-header.slint";
+import { SidebarDate } from "components/sidebar-date.slint";
 import { PageState } from "components/page-state.slint";
 import { ToastHost, ToastData, ToastTone } from "components/toast-host.slint";
 import { DialogHost, DialogData, DialogTone } from "components/dialog-host.slint";
@@ -66,6 +66,8 @@ export component MainWindow inherits Window {
     callback calendar-action(string);
     callback calendar-select-date(string);
     in property <string> page-title: "今日任务";
+    in property <string> sidebar-date;
+    in property <string> sidebar-weekday;
     in property <string> route-context;
     in property <string> route-debug;
     in property <bool> can-go-back: false;
@@ -200,11 +202,11 @@ export component MainWindow inherits Window {
         }
     }
 
-    /// SHELL-02 §8.1：切换路由后聚焦页头，但不抢走模态对话框的焦点。
-    public function focus-route-header() {
+    /// SHELL-02 §8.1 / D-SHELL-02：路由焦点落在内容区，不抢走模态焦点。
+    public function focus-route-content() {
         if (!root.dialog-visible) {
             ShellFocus.anchor = "";
-            page-header.focus();
+            workspace.focus();
         }
     }
 
@@ -356,27 +358,9 @@ export component MainWindow inherits Window {
                     spacing: 0px;
                     padding: 0px;
 
-                    Rectangle {
-                        height: 64px;
-                        background: transparent;
-                        Image {
-                            x: 20px;
-                            y: 20px;
-                            width: 24px;
-                            height: 24px;
-                            source: ShellPalette.brand-icon-small;
-                            accessible-role: none;
-                        }
-                        Text {
-                            x: 52px;
-                            y: 20px;
-                            height: 24px;
-                            text: "FastNote";
-                            font-size: 16px;
-                            font-weight: 600;
-                            color: ShellPalette.text-primary;
-                            vertical-alignment: center;
-                        }
+                    SidebarDate {
+                        date-label: root.sidebar-date;
+                        weekday-label: root.sidebar-weekday;
                     }
 
                     VerticalLayout {
@@ -448,22 +432,19 @@ export component MainWindow inherits Window {
                 }
             }
 
-            VerticalLayout {
+            workspace := FocusScope {
                 horizontal-stretch: 1;
-                spacing: 0px;
-                padding: 0px;
-
-                page-header := PageHeader {
-                    title: root.page-title;
-                    context: root.desktop-busy ? (root.desktop-state == 0 ? "正在读取配置…" : "正在保存设置…") : root.current_page == "今日任务" ? root.today-date : root.route-context;
-                    placeholder: root.current_page != "今日任务" && root.current_page != "日历" && !(root.current_page == "设置" && (root.general-settings || root.settings-section == "task-preferences"));
-                    can-go-back: root.can-go-back;
-                    back-focus-key: root.plan-detail ? "plan-back" : "settings-back";
-                    back => { root.route_action("back"); }
-                }
+                focus-on-tab-navigation: false;
+                accessible-role: text;
+                accessible-label: root.page-title + "内容区";
 
                 PageFrame {
-                    vertical-stretch: 1;
+                    width: parent.width;
+                    height: parent.height;
+                    can-go-back: root.can-go-back;
+                    back-enabled: !root.dialog-visible;
+                    back-focus-key: root.plan-detail ? "plan-back" : "settings-back";
+                    back => { root.route_action("back"); }
                     state: root.effective-state;
                     empty-icon: root.pages[root.active-index].icon;
                     empty-title: root.plan-detail ? "这个计划还没有阶段" : root.pages[root.active-index].empty-title;
@@ -546,7 +527,7 @@ export component MainWindow inherits Window {
                         section-toggled(kind) => { root.today-section(kind); }
                         more(kind) => { root.today-more(kind); }
                         retry => { root.today-retry(); }
-                        escaped => { root.focus-route-header(); }
+                        escaped => { root.focus-route-content(); }
                     }
                     if root.current_page == "日历": CalendarPage {
                         heading: root.calendar-heading;
@@ -566,7 +547,7 @@ export component MainWindow inherits Window {
                     if root.current_page != "设置" && root.current_page != "今日任务" && root.current_page != "日历": PagePlaceholder {
                         icon: root.current_page == "设置" ? root.settings-icon : root.pages[root.active-index].icon;
                         title: root.page-title + "工作区";
-                        description: root.current_page == "设置" ? "外观、快捷键和数据管理将在这里统一设置。\n点击右上角返回，可回到进入设置前的页面。" : root.pages[root.active-index].description;
+                        description: root.current_page == "设置" ? "外观、快捷键和数据管理将在这里统一设置。\n点击内容区返回，可回到进入设置前的页面。" : root.pages[root.active-index].description;
                     }
                 }
 
@@ -585,7 +566,7 @@ export component MainWindow inherits Window {
 
         if root.task-detail-visible: task-drawer := TaskDrawer {
             x: parent.width - 400px;
-            y: root.caption-height + 64px;
+            y: root.caption-height;
             width: 400px;
             height: parent.height - self.y;
             loading: root.task-detail-loading;

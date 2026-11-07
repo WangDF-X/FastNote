@@ -23,7 +23,7 @@ impl<C: Clock> AppController<C> {
     }
 
     pub(crate) fn shell_view(&self) -> ShellView {
-        self.route.shell_view()
+        self.route.shell_view(self.clock.today())
     }
 
     pub(crate) fn handle_action(&mut self, action: &str) -> ShellUpdate {
@@ -182,6 +182,7 @@ mod tests {
         ] {
             assert_eq!(controller.handle_action(action).issue, None);
             assert_eq!(controller.route, expected);
+            assert_eq!(controller.shell_view().local_today, date("2026-10-23"));
         }
     }
 
@@ -374,6 +375,7 @@ mod tests {
                 date: date("2026-10-25")
             }
         );
+        assert_eq!(controller.shell_view().local_today, date("2026-10-25"));
     }
 
     #[test]

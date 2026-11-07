@@ -8,6 +8,19 @@ const STYLE: &str = include_str!("../../ui/calendar/style.slint");
 const BUTTON: &str = include_str!("../../ui/components/action-button.slint");
 
 #[test]
+fn test_calendar_uses_the_shared_rounded_page_surface() {
+    let page = PAGE
+        .split_once("export component CalendarPage inherits Rectangle {")
+        .unwrap()
+        .1;
+    let root = page.split_once("VerticalLayout {").unwrap().0;
+    assert!(root.contains("background: transparent;"));
+    let frame = include_str!("../../ui/components/page-frame.slint");
+    assert!(frame.contains("border-radius: 10px;"));
+    assert!(frame.contains("background: ShellPalette.surface;"));
+}
+
+#[test]
 fn test_calendar_navigation_keeps_intrinsic_button_width_and_matching_arrows() {
     for (name, label, rotation, action) in [
         ("previous-button", "\"上周\" : \"上月\"", "0deg", "previous"),

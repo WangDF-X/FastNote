@@ -181,6 +181,7 @@ impl Runtime {
         });
         register(&runtime);
         runtime.connect_kernel();
+        runtime.start_kernel_tasks();
         runtime.refresh_system_theme();
         if !hidden {
             runtime.ensure_ui()?;
