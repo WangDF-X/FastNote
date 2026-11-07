@@ -33,6 +33,10 @@ impl Runtime {
         }
         self.observe_task_clock();
         self.ensure_current_page_resources();
+        if self.calendar_page_visible() {
+            self.load_calendar();
+            return;
+        }
         if !self.today_page_visible() {
             return;
         }
@@ -88,6 +92,7 @@ impl Runtime {
 
     /// 隐藏只失效、取消普通打开/刷新意图；必要保存/删除确认读仍由内核接收。
     pub(in crate::desktop) fn task_page_hidden(&self) {
+        self.release_calendar();
         self.pending_effects.borrow_mut().discard_page_effects();
         self.capture_task_resume();
         let mut epoch = self.ui_epoch.get();

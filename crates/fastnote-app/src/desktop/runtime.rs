@@ -94,6 +94,7 @@ pub(super) struct Runtime {
     pub next_id: Cell<u64>,
     pub pending: RefCell<HashMap<u64, PendingWrite>>,
     pub tasks: RefCell<TaskSession>,
+    pub calendar: RefCell<super::calendar::CalendarSession>,
     /// 无会话导航及后续任务事件只失效，进入今日页时再查询。
     pub today_dirty: Cell<bool>,
     /// 当前详情在无会话时只记录失效，保存确认仍由内核处理。
@@ -171,6 +172,7 @@ impl Runtime {
             next_id: Cell::new(1),
             pending: RefCell::new(HashMap::new()),
             tasks: RefCell::new(TaskSession::new()),
+            calendar: RefCell::new(super::calendar::CalendarSession::default()),
             today_dirty: Cell::new(true),
             detail_dirty: Cell::new(true),
             task_day_timer: Timer::default(),

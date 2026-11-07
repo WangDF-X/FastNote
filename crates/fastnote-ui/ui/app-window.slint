@@ -19,9 +19,10 @@ import { ThemeSwitch } from "components/theme-switch.slint";
 import { TodayPage } from "tasks/today-page.slint";
 import { TaskDrawer } from "tasks/task-drawer.slint";
 import { TaskRowData, TodaySectionData, CalendarDayData } from "tasks/types.slint";
+import { CalendarPage, CalendarCellView } from "calendar/page.slint";
 import { Palette, Date } from "std-widgets.slint";
 
-export { BannerData, BannerTone, DialogData, DialogTone, ToastData, ToastTone, FloatingBall, BallMenuWindow, ShellPalette, ShellFocus, Palette, Date, TaskRowData, TodaySectionData, CalendarDayData }
+export { BannerData, BannerTone, DialogData, DialogTone, ToastData, ToastTone, FloatingBall, BallMenuWindow, ShellPalette, ShellFocus, Palette, Date, TaskRowData, TodaySectionData, CalendarDayData, CalendarCellView }
 
 struct PagePresentation {
     label: string,
@@ -52,6 +53,16 @@ export component MainWindow inherits Window {
     private property <length> caption-height: root.custom-titlebar ? 40px : 0px;
 
     in property <string> current_page: "今日任务";
+    in property <string> calendar-heading;
+    in property <string> calendar-selected-label;
+    in property <string> calendar-panel-text;
+    in property <string> calendar-error;
+    in property <[string]> calendar-weekdays;
+    in property <[CalendarCellView]> calendar-days;
+    in property <bool> calendar-week-mode;
+    in property <bool> calendar-panel-open;
+    callback calendar-action(string);
+    callback calendar-select-date(string);
     in property <string> page-title: "今日任务";
     in property <string> route-context;
     in property <string> route-debug;
@@ -448,7 +459,7 @@ export component MainWindow inherits Window {
                 page-header := PageHeader {
                     title: root.page-title;
                     context: root.desktop-busy ? (root.desktop-state == 0 ? "正在读取配置…" : "正在保存设置…") : root.current_page == "今日任务" ? root.today-date : root.route-context;
-                    placeholder: root.current_page != "今日任务" && !(root.current_page == "设置" && (root.general-settings || root.settings-section == "task-preferences"));
+                    placeholder: root.current_page != "今日任务" && root.current_page != "日历" && !(root.current_page == "设置" && (root.general-settings || root.settings-section == "task-preferences"));
                     can-go-back: root.can-go-back;
                     back-focus-key: root.plan-detail ? "plan-back" : "settings-back";
                     back => { root.route_action("back"); }
@@ -542,7 +553,20 @@ export component MainWindow inherits Window {
                         retry => { root.today-retry(); }
                         escaped => { root.focus-route-header(); }
                     }
-                    if root.current_page != "设置" && root.current_page != "今日任务": PagePlaceholder {
+                    if root.current_page == "日历": CalendarPage {
+                        heading: root.calendar-heading;
+                        selected-label: root.calendar-selected-label;
+                        panel-text: root.calendar-panel-text;
+                        error-message: root.calendar-error;
+                        weekdays: root.calendar-weekdays;
+                        days: root.calendar-days;
+                        week-mode: root.calendar-week-mode;
+                        panel-open: root.calendar-panel-open;
+                        compact: root.width < 1280px;
+                        action(value) => { root.calendar-action(value); }
+                        select-date(value) => { root.calendar-select-date(value); }
+                    }
+                    if root.current_page != "设置" && root.current_page != "今日任务" && root.current_page != "日历": PagePlaceholder {
                         icon: root.current_page == "设置" ? root.settings-icon : root.pages[root.active-index].icon;
                         title: root.page-title + "工作区";
                         description: root.current_page == "设置" ? "外观、快捷键和数据管理将在这里统一设置。\n点击右上角返回，可回到进入设置前的页面。" : root.pages[root.active-index].description;

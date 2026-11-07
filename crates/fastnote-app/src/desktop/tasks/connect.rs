@@ -5,6 +5,7 @@ use crate::tasks::Transition;
 
 impl Runtime {
     pub(in crate::desktop) fn connect_tasks(self: &Rc<Self>) {
+        self.connect_calendar();
         let _ = self.with_ui(|ui| {
             let window = ui.shell.component();
             window.on_task_create({

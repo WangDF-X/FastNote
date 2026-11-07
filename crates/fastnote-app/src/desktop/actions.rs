@@ -76,6 +76,7 @@ impl Runtime {
                 }
                 let update = self.controller.borrow_mut().handle_action(action);
                 if update.route_changed {
+                    self.release_calendar();
                     self.capture_task_resume();
                     self.today_dirty.set(true);
                     self.tasks.borrow_mut().invalidate_today_read();
@@ -87,7 +88,9 @@ impl Runtime {
                     if self.main_content_visible() {
                         self.ensure_current_page_resources();
                     }
-                    if should_refresh_today(&update, self.main_content_visible()) {
+                    if should_refresh_today(&update, self.main_content_visible())
+                        || (update.view.page_label == "日历" && self.main_content_visible())
+                    {
                         self.defer_page_tasks();
                     }
                 }

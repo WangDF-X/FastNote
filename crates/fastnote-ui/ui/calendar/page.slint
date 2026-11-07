@@ -1,0 +1,107 @@
+import { ShellPalette } from "../palette.slint";
+import { ActionButton } from "../components/action-button.slint";
+import { CalendarCell } from "cell.slint";
+
+export struct CalendarCellView {
+    date: string,
+    label: string,
+    titles: [string],
+    remaining: string,
+    completed: string,
+    in-month: bool,
+    today: bool,
+    selected: bool,
+}
+
+component DayPanel inherits Rectangle {
+    in property <string> selected-label;
+    in property <string> panel-text;
+    callback close();
+    width: 320px;
+    background: ShellPalette.surface;
+    border-width: 1px;
+    border-color: ShellPalette.border;
+    border-radius: 8px;
+    VerticalLayout {
+        padding: 16px;
+        spacing: 12px;
+        HorizontalLayout {
+            Text { text: root.selected-label; color: ShellPalette.text-primary; font-size: 16px; font-weight: 600; horizontal-stretch: 1; vertical-alignment: center; }
+            ActionButton { label: "关闭"; width: 56px; activated => { root.close(); } }
+        }
+        Text { text: root.panel-text; color: ShellPalette.text-secondary; wrap: word-wrap; vertical-stretch: 1; }
+    }
+}
+
+/// 日历工作区，日期与任务状态由应用层提供。
+export component CalendarPage inherits Rectangle {
+    in property <string> heading;
+    in property <string> selected-label;
+    in property <[string]> weekdays;
+    in property <[CalendarCellView]> days;
+    in property <bool> week-mode;
+    in property <bool> panel-open;
+    in property <bool> compact;
+    in property <string> panel-text;
+    in property <string> error-message;
+    callback action(string);
+    callback select-date(string);
+    background: ShellPalette.surface;
+
+    VerticalLayout {
+        padding: 20px;
+        spacing: 12px;
+        HorizontalLayout {
+            spacing: 8px;
+            Text { text: root.heading; color: ShellPalette.text-primary; font-size: 20px; font-weight: 600; vertical-alignment: center; horizontal-stretch: 1; }
+            ActionButton { label: "‹"; width: 40px; activated => { root.action("previous"); } }
+            ActionButton { label: "今天"; width: 64px; activated => { root.action("today"); } }
+            ActionButton { label: "›"; width: 40px; activated => { root.action("next"); } }
+            ActionButton { label: root.week-mode ? "月视图" : "周视图"; width: 80px; activated => { root.action("mode"); } }
+        }
+        Text { text: root.error-message; color: ShellPalette.danger; visible: root.error-message != ""; }
+        HorizontalLayout {
+            spacing: 12px;
+            Rectangle {
+                horizontal-stretch: 1;
+                VerticalLayout {
+                    spacing: 4px;
+                    HorizontalLayout {
+                        height: 24px;
+                        for day in root.weekdays: Text { text: day; color: ShellPalette.text-secondary; horizontal-alignment: center; font-size: 12px; horizontal-stretch: 1; }
+                    }
+                    Rectangle {
+                        vertical-stretch: 1;
+                        for day[index] in root.days: CalendarCell {
+                            x: mod(index, 7) * (parent.width / 7);
+                            y: floor(index / 7) * (parent.height / (root.week-mode ? 1 : 6));
+                            width: parent.width / 7 - 3px;
+                            height: parent.height / (root.week-mode ? 1 : 6) - 3px;
+                            day-label: day.label;
+                            titles: day.titles;
+                            remaining-label: day.remaining;
+                            completed-label: day.completed;
+                            in-month: day.in-month;
+                            today: day.today;
+                            selected: day.selected;
+                            selected-day => { root.select-date(day.date); }
+                        }
+                    }
+                }
+            }
+            if root.panel-open && !root.compact: DayPanel {
+                selected-label: root.selected-label;
+                panel-text: root.panel-text;
+                close => { root.action("close"); }
+            }
+        }
+    }
+    if root.panel-open && root.compact: DayPanel {
+        x: parent.width - self.width - 20px;
+        y: 64px;
+        height: parent.height - 84px;
+        selected-label: root.selected-label;
+        panel-text: root.panel-text;
+        close => { root.action("close"); }
+    }
+}

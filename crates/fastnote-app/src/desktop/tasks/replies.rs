@@ -193,6 +193,9 @@ impl Runtime {
         if self.finished.get() || id == 0 {
             return;
         }
+        if self.calendar_reply(id, &result) {
+            return;
+        }
         let purpose = self.tasks.borrow_mut().queries.remove(&id);
         let Some(purpose) = purpose else {
             self.today_queried(id, result);
