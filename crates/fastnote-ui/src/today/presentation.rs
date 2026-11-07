@@ -148,7 +148,8 @@ pub fn task_status_index(status: Option<TaskStatus>) -> i32 {
     }
 }
 
-fn row_data(task: &TaskSummary, current_year: i32) -> TaskRowData {
+/// 今日列表与日历共用的状态、日期及关联信息投影，不重新判定派生标记。
+pub(crate) fn row_data(task: &TaskSummary, current_year: i32) -> TaskRowData {
     let mut metadata = Vec::new();
     let dates = schedule_label(
         task.start_date,

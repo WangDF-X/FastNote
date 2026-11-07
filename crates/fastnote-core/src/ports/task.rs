@@ -9,6 +9,14 @@ pub trait TaskRepository {
 
     /// 今日候选投影，不读取长描述；core 统一归组和派生。
     fn today_tasks(&self, date: NaiveDate) -> Result<Vec<TaskSummary>, Self::Error>;
+    /// 日历范围内可能显示的任务；完成时间的时区精确筛选由领域层完成。
+    fn calendar_tasks(
+        &self,
+        _start: NaiveDate,
+        _end: NaiveDate,
+    ) -> Result<Vec<TaskSummary>, Self::Error> {
+        Err(TaskError::Conflict.into())
+    }
     /// 有界查询的逐行候选入口；关系信息可延后为已选前缀补齐，实际 SQLite 必须流式读取。
     fn visit_today_tasks(
         &self,

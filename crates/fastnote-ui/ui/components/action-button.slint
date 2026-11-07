@@ -7,6 +7,8 @@ export component ActionButton inherits Rectangle {
     /// 可选的统一线性图标；未指定时不预留图标空间。
     in property <image> icon;
     in property <bool> with-icon: false;
+    /// 默认不旋转；成对方向按钮可复用同一矢量图标。
+    in property <angle> icon-rotation: 0deg;
     in property <length> text-size: 14px;
     in property <string> text-family: "";
     in property <color> text-color: ShellPalette.text-primary;
@@ -73,6 +75,8 @@ export component ActionButton inherits Rectangle {
         y: (parent.height - 16px) / 2;
         width: 16px; height: 16px;
         source: root.icon;
+        transform-rotation: root.icon-rotation;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
         colorize: root.filled ? ShellPalette.on-accent : root.icon-color;
         accessible-role: none;
     }

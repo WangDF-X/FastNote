@@ -21,6 +21,14 @@ impl TaskRepository for SqliteSettings {
         read::today(&self.connection, date)
     }
 
+    fn calendar_tasks(
+        &self,
+        start: NaiveDate,
+        end: NaiveDate,
+    ) -> Result<Vec<TaskSummary>, TaskStoreError> {
+        read::calendar(&self.connection, start, end)
+    }
+
     fn visit_today_tasks(
         &self,
         date: NaiveDate,

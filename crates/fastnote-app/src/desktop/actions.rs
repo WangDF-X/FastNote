@@ -2,6 +2,7 @@ mod dispatch;
 
 use std::rc::Rc;
 
+use fastnote_core::derive::calendar::WeekStart;
 use fastnote_core::{CloseBehavior, DesktopSetting, EntryMode, ThemeMode};
 use fastnote_platform::{EntryAction, NativeEvent};
 use fastnote_ui::{ShellUpdate, ToastKind};
@@ -47,6 +48,12 @@ impl Runtime {
             "desktop:theme:system" => self.preference(DesktopSetting::Theme(ThemeMode::System)),
             "desktop:theme:light" => self.preference(DesktopSetting::Theme(ThemeMode::Light)),
             "desktop:theme:dark" => self.preference(DesktopSetting::Theme(ThemeMode::Dark)),
+            "desktop:week-start:monday" => {
+                self.preference(DesktopSetting::WeekStart(WeekStart::Monday))
+            }
+            "desktop:week-start:sunday" => {
+                self.preference(DesktopSetting::WeekStart(WeekStart::Sunday))
+            }
             "desktop:close-behavior:entry" => {
                 self.preference(DesktopSetting::CloseBehavior(CloseBehavior::Entry))
             }
@@ -69,6 +76,7 @@ impl Runtime {
                 }
                 let update = self.controller.borrow_mut().handle_action(action);
                 if update.route_changed {
+                    self.release_calendar();
                     self.capture_task_resume();
                     self.today_dirty.set(true);
                     self.tasks.borrow_mut().invalidate_today_read();
@@ -80,7 +88,9 @@ impl Runtime {
                     if self.main_content_visible() {
                         self.ensure_current_page_resources();
                     }
-                    if should_refresh_today(&update, self.main_content_visible()) {
+                    if should_refresh_today(&update, self.main_content_visible())
+                        || (update.view.page_label == "日历" && self.main_content_visible())
+                    {
                         self.defer_page_tasks();
                     }
                 }
@@ -112,6 +122,9 @@ impl Runtime {
                 DesktopSetting::CloseBehavior(self.settings.borrow().close_behavior)
             }
             DesktopSetting::Theme(_) => DesktopSetting::Theme(self.settings.borrow().theme),
+            DesktopSetting::WeekStart(_) => {
+                DesktopSetting::WeekStart(self.settings.borrow().week_start)
+            }
             _ => return,
         };
         if !should_write_preference(

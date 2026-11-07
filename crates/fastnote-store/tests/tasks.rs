@@ -1,3 +1,5 @@
+#[path = "task_cases/calendar.rs"]
+mod calendar;
 #[path = "task_cases/migration_times.rs"]
 mod migration_times;
 #[path = "task_cases/relationships.rs"]

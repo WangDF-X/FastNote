@@ -57,6 +57,31 @@ pub(super) fn today(
     Ok(tasks)
 }
 
+pub(super) fn calendar(
+    connection: &Connection,
+    start: NaiveDate,
+    end: NaiveDate,
+) -> Result<Vec<TaskSummary>, TaskStoreError> {
+    // 完成时间宽取前后一天，避免把 UTC 日期误当本地完成日。
+    let sql = format!(
+        "SELECT {} FROM tasks t LEFT JOIN plans p ON p.id=t.plan_id
+        WHERE t.kind='task' AND (t.plan_id IS NULL OR p.status='active') AND (
+          (t.status='done' AND julianday(t.completed_at)>=julianday(?1)-1
+             AND julianday(t.completed_at)<julianday(?2)+2)
+          OR (t.status<>'done' AND (
+             t.start_date BETWEEN ?1 AND ?2 OR t.due_date BETWEEN ?1 AND ?2
+             OR (t.status='in_progress' AND t.start_date<=?2
+                 AND (t.due_date IS NULL OR t.due_date>=?1)))))",
+        columns(false)
+    );
+    let mut statement = connection.prepare(&sql)?;
+    let rows = statement.query_map(params![start.to_string(), end.to_string()], |row| {
+        let (task, context) = decode(row)?;
+        Ok(TaskSummary::from_owned_task(task, context))
+    })?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
 /// SQLite 行缓冲 + core 有界 collector；不物化全部候选/正文/计划树。
 pub(super) fn visit_today(
     connection: &Connection,

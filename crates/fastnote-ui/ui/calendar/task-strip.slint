@@ -1,0 +1,95 @@
+import { ShellPalette } from "../palette.slint";
+import { TaskStyle } from "../tasks/task-style.slint";
+import { TaskRowData } from "../tasks/types.slint";
+import { CalendarStyle } from "style.slint";
+
+/// 网格预览与日面板共用状态条；这里只展示摘要，不提供未接入的任务操作。
+export component CalendarTaskStrip inherits Rectangle {
+    in property <TaskRowData> data;
+    in property <bool> compact: true;
+    in property <bool> hovered: false;
+    in property <bool> pressed: false;
+
+    height: root.compact ? CalendarStyle.preview-height : root.data.metadata == "" ? 80px : 100px;
+    min-width: 0px;
+    background: TaskStyle.row-background(root.data.status-index, root.data.overdue, root.hovered, root.pressed);
+    border-radius: root.compact ? TaskStyle.control-radius : TaskStyle.row-radius;
+    animate background { duration: 120ms; }
+    accessible-role: text;
+    accessible-label: root.data.title + "，" + root.data.status-label
+        + (root.data.overdue ? "，逾期" : "")
+        + (root.data.metadata == "" ? "" : "，" + root.data.metadata);
+
+    if root.compact: HorizontalLayout {
+        padding-left: 5px; padding-right: 5px; spacing: 4px;
+        alignment: stretch;
+        cross-axis-alignment: center;
+        Image {
+            width: 12px; height: 12px;
+            source: CalendarStyle.status-icon(root.data.status-index, root.data.overdue);
+            colorize: CalendarStyle.status-color(root.data.status-index, root.data.overdue);
+            accessible-role: none;
+        }
+        Text {
+            text: root.data.title;
+            color: ShellPalette.text-primary;
+            font-family: TaskStyle.font-family;
+            font-size: TaskStyle.body;
+            font-weight: 500;
+            min-width: 0px;
+            horizontal-stretch: 1;
+            vertical-alignment: center;
+            overflow: elide;
+            wrap: no-wrap;
+        }
+    }
+
+    if !root.compact: Rectangle {
+        status := HorizontalLayout {
+            x: 10px; y: 8px; width: parent.width - 20px; height: 18px;
+            spacing: 5px; alignment: stretch; cross-axis-alignment: center;
+            Image {
+                width: 14px; height: 14px;
+                source: CalendarStyle.status-icon(root.data.status-index, root.data.overdue);
+                colorize: CalendarStyle.status-color(root.data.status-index, root.data.overdue);
+                accessible-role: none;
+            }
+            Text {
+                text: (root.data.overdue ? "逾期 · " : "") + root.data.status-label;
+                color: ShellPalette.text-secondary;
+                font-family: TaskStyle.font-family;
+                font-size: TaskStyle.caption;
+                font-weight: 500;
+                horizontal-stretch: 1;
+                overflow: elide;
+                vertical-alignment: center;
+            }
+        }
+        title := Text {
+            x: 10px; y: 30px; width: parent.width - 20px; height: 40px;
+            text: root.data.title;
+            color: ShellPalette.text-primary;
+            font-family: TaskStyle.font-family;
+            font-size: TaskStyle.body;
+            font-weight: root.data.done ? 400 : 600;
+            wrap: word-wrap;
+            overflow: elide;
+            vertical-alignment: top;
+        }
+        // 与共享 TaskRow 一样使用线段，不依赖字体中的删除线或状态字形。
+        if root.data.done: Rectangle {
+            x: title.x; y: title.y + 10px;
+            width: min(title.width, title.preferred-width); height: 1px;
+            background: ShellPalette.text-primary;
+        }
+        if root.data.metadata != "": Text {
+            x: 10px; y: 76px; width: parent.width - 20px; height: 16px;
+            text: root.data.metadata;
+            color: ShellPalette.text-secondary;
+            font-family: TaskStyle.font-family;
+            font-size: TaskStyle.caption;
+            overflow: elide;
+            wrap: no-wrap;
+        }
+    }
+}

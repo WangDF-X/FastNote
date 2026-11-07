@@ -1,4 +1,4 @@
-use crate::derive::{derive_task_summary, TodayCollector};
+use crate::derive::{calendar::build_day_agenda, derive_task_summary, TodayCollector};
 use crate::{
     AppEvent, Command, CommandResult, PlanId, Query, QueryResult, ReminderOwner, Task, TaskClock,
     TaskDetail, TaskError, TaskId, TaskRepository, TaskScope, TaskStatus, TaskSummary, WarningCode,
@@ -21,6 +21,13 @@ impl<'a, R: TaskRepository, C: TaskClock> TaskService<'a, R, C> {
         match command {
             Command::CreateTask { id, title } => {
                 let task = Task::new(id, title, self.clock.now())?;
+                self.repository.insert_task(&task)?;
+                Ok(changed(vec![id], None, false))
+            }
+            Command::CreateCalendarTask { id, title, date } => {
+                let mut task = Task::new(id, title, self.clock.now())?;
+                task.start_date = Some(date);
+                task.validate()?;
                 self.repository.insert_task(&task)?;
                 Ok(changed(vec![id], None, false))
             }
@@ -83,6 +90,31 @@ impl<'a, R: TaskRepository, C: TaskClock> TaskService<'a, R, C> {
     /// 统一今日分组/排序或详情标记；不存在返回稳定领域错误。
     pub fn query(&self, query: Query) -> Result<QueryResult, R::Error> {
         match query {
+            Query::Calendar { start, end } => {
+                let days = (end - start).num_days();
+                if !(0..62).contains(&days) {
+                    return Err(TaskError::Conflict.into());
+                }
+                let mut tasks = self.repository.calendar_tasks(start, end)?;
+                // D-CAL-UI-01：日历与今日/详情使用同一标记，基准为真实本地今天，
+                // 不让过去或未来的浏览日期重新定义任务的逾期状态。
+                let today = self.clock.today();
+                for task in &mut tasks {
+                    derive_task_summary(task, today, &self.clock);
+                }
+                let mut result = Vec::with_capacity(days as usize + 1);
+                for offset in 0..=days {
+                    let Some(date) = start.checked_add_signed(chrono::Duration::days(offset))
+                    else {
+                        return Err(TaskError::Conflict.into());
+                    };
+                    result.push((
+                        date,
+                        build_day_agenda(date, tasks.iter().cloned(), &self.clock),
+                    ));
+                }
+                Ok(QueryResult::Calendar(result))
+            }
             Query::Today { date, limits } => {
                 let mut collector = TodayCollector::new(
                     date,

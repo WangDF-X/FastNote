@@ -29,7 +29,6 @@ impl ShellHandle {
     ) -> Result<Self, slint::PlatformError> {
         let window = MainWindow::new()?;
         initial.apply(&window);
-        window.set_dev_tools(cfg!(debug_assertions));
         let shell = Rc::new(Shell {
             window: window.as_weak(),
             handler: RefCell::new(Box::new(handle_action)),

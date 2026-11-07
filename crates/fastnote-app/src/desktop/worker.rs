@@ -251,6 +251,7 @@ fn work(
             Command::Query { id, query } => {
                 let query_scope = match &query {
                     Query::Today { .. } => "today",
+                    Query::Calendar { .. } => "calendar",
                     Query::TaskDetail(_) => "task_detail",
                 };
                 let started = Instant::now();

@@ -1,0 +1,29 @@
+import { ShellPalette } from "../palette.slint";
+import { TaskStyle } from "../tasks/task-style.slint";
+
+/// D-CAL-UI-01：日历仅定义几何尺寸，颜色和字体继续使用共享任务设计系统。
+export global CalendarStyle {
+    out property <length> cell-min-height: 144px;
+    out property <length> cell-padding: 6px;
+    out property <length> cell-spacing: 3px;
+    out property <length> day-header-height: 26px;
+    out property <length> preview-height: 24px;
+    out property <length> more-height: 18px;
+    out property <length> grid-gap: 4px;
+
+    public pure function status-color(status: int, overdue: bool) -> color {
+        return overdue ? TaskStyle.row-danger
+            : status == 1 ? ShellPalette.accent
+            : status == 2 ? TaskStyle.row-warning
+            : status == 3 ? ShellPalette.success
+            : ShellPalette.text-secondary;
+    }
+
+    public pure function status-icon(status: int, overdue: bool) -> image {
+        return overdue ? @image-url("../../../../ui/icons/alert.svg")
+            : status == 1 ? @image-url("../../../../ui/icons/refresh.svg")
+            : status == 2 ? @image-url("../../../../ui/icons/pause.svg")
+            : status == 3 ? @image-url("../../../../ui/icons/check.svg")
+            : @image-url("../../../../ui/icons/clock.svg");
+    }
+}
