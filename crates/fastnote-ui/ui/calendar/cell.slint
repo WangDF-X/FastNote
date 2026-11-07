@@ -1,0 +1,58 @@
+import { ShellPalette } from "../palette.slint";
+
+/// CAL-01 日期格：任务分类和文本由 Rust 提供，非本月日期不可选择。
+export component CalendarCell inherits Rectangle {
+    in property <string> day-label;
+    in property <[string]> titles;
+    in property <string> remaining-label;
+    in property <string> completed-label;
+    in property <bool> in-month: true;
+    in property <bool> today: false;
+    in property <bool> selected: false;
+    callback selected-day();
+
+    background: root.selected ? ShellPalette.subtle : touch.has-hover && root.in-month ? ShellPalette.hover : ShellPalette.surface;
+    border-width: 1px;
+    border-color: root.selected ? ShellPalette.accent : ShellPalette.border;
+    border-radius: 6px;
+    accessible-role: button;
+    accessible-label: root.day-label;
+    accessible-action-default => { if (root.in-month) { root.selected-day(); } }
+
+    VerticalLayout {
+        padding: 6px;
+        spacing: 2px;
+        HorizontalLayout {
+            spacing: 4px;
+            Rectangle {
+                width: 24px;
+                height: 24px;
+                border-radius: 12px;
+                background: root.today && root.in-month ? ShellPalette.accent : transparent;
+                Text {
+                    text: root.day-label;
+                    font-size: 12px;
+                    font-weight: root.today ? 600 : 400;
+                    color: !root.in-month ? ShellPalette.text-secondary : root.today ? ShellPalette.on-accent : ShellPalette.text-primary;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            Rectangle { horizontal-stretch: 1; background: transparent; }
+            Text { text: root.completed-label; color: ShellPalette.text-secondary; font-size: 11px; vertical-alignment: center; }
+        }
+        for title in root.titles: Text {
+            text: title;
+            color: ShellPalette.text-primary;
+            font-size: 11px;
+            overflow: elide;
+            height: 16px;
+        }
+        Text { text: root.remaining-label; color: ShellPalette.text-secondary; font-size: 11px; height: root.remaining-label == "" ? 0px : 16px; }
+        Rectangle { vertical-stretch: 1; background: transparent; }
+    }
+    touch := TouchArea {
+        enabled: root.in-month;
+        clicked => { root.selected-day(); }
+    }
+}

@@ -2,12 +2,14 @@
 
 slint::include_modules!();
 
+mod calendar;
 mod desktop;
 mod feedback;
 mod shell;
 mod theme;
 mod today;
 
+pub use calendar::{cell_preview, CellPreview};
 pub use desktop::storage_message;
 pub use feedback::banner::{BannerAction, BannerKind, BannerRequest, BannerSet};
 pub use feedback::dialog::{
