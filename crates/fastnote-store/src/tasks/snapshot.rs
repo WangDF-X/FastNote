@@ -36,6 +36,13 @@ impl TaskRepository for ReadSnapshot<'_> {
     fn today_tasks(&self, date: NaiveDate) -> Result<Vec<TaskSummary>, Self::Error> {
         read::today(self.connection, date)
     }
+    fn calendar_tasks(
+        &self,
+        start: NaiveDate,
+        end: NaiveDate,
+    ) -> Result<Vec<TaskSummary>, Self::Error> {
+        read::calendar(self.connection, start, end)
+    }
     fn visit_today_tasks(
         &self,
         date: NaiveDate,
