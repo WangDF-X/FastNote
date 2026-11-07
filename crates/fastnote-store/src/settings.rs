@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use fastnote_core::{
-    BallPosition, CloseBehavior, DateTime, DesktopSetting, DesktopSettings, EntryMode,
-    SettingsRepository, ThemeMode, Utc, WindowGeometry,
+    derive::calendar::WeekStart, BallPosition, CloseBehavior, DateTime, DesktopSetting,
+    DesktopSettings, EntryMode, SettingsRepository, ThemeMode, Utc, WindowGeometry,
 };
 use rusqlite::{params, Connection, TransactionBehavior};
 
@@ -47,7 +47,7 @@ impl SettingsRepository for SqliteSettings {
             CASE WHEN length(CAST(value AS BLOB)) <= 4096 THEN value ELSE char(0) END
             FROM app_settings WHERE key IN ('general.entry_mode', 'general.close_behavior',
             'hotkeys.enabled', 'general.first_run_done', 'hotkeys.show_app',
-            'window.main_geometry', 'appearance.ball_position', 'appearance.theme',
+            'window.main_geometry', 'appearance.ball_position', 'appearance.theme', 'appearance.week_starts_on',
             'tasks.default_sort', 'today.show_in_progress', 'today.show_waiting',
             'today.show_unscheduled', 'today.show_completed', 'today.tomorrow_collapsed')",
         )?;
@@ -62,6 +62,12 @@ impl SettingsRepository for SqliteSettings {
             EntryMode::parse,
         );
         result.theme = read(&values, "appearance.theme", result.theme, ThemeMode::parse);
+        result.week_start = read(
+            &values,
+            "appearance.week_starts_on",
+            result.week_start,
+            WeekStart::parse,
+        );
         result.close_behavior = read(
             &values,
             "general.close_behavior",
@@ -162,6 +168,7 @@ fn encode(change: &DesktopSetting) -> Result<String, StoreError> {
     let value = match change {
         DesktopSetting::EntryMode(value) => value.as_str().to_owned(),
         DesktopSetting::Theme(value) => value.as_str().to_owned(),
+        DesktopSetting::WeekStart(value) => value.as_str().to_owned(),
         DesktopSetting::TodaySort(value) => value.as_str().to_owned(),
         DesktopSetting::CloseBehavior(value) => value.as_str().to_owned(),
         DesktopSetting::FirstRunDone(value)

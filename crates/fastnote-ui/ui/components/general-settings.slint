@@ -7,6 +7,7 @@ export component GeneralSettings inherits Rectangle {
     in property <string> entry-mode;
     in property <bool> entry-available;
     in property <string> close-behavior;
+    in property <string> week-start;
     in property <bool> busy;
     in property <string> hotkey-status;
     callback action(string);
@@ -56,6 +57,24 @@ export component GeneralSettings inherits Rectangle {
                     spacing: 8px;
                     ActionButton { label: "隐藏到入口"; primary: root.close-behavior == "entry"; enabled: !root.busy; focus-key: "close-entry"; activated => { root.action("desktop:close-behavior:entry"); } }
                     ActionButton { label: "退出应用"; primary: root.close-behavior == "quit"; enabled: !root.busy; focus-key: "close-quit"; activated => { root.action("desktop:close-behavior:quit"); } }
+                    Rectangle { horizontal-stretch: 1; background: transparent; }
+                }
+            }
+        }
+        Rectangle {
+            height: 104px;
+            background: ShellPalette.surface;
+            border-width: 1px;
+            border-color: ShellPalette.border;
+            border-radius: 8px;
+            VerticalLayout {
+                padding: 16px;
+                spacing: 12px;
+                Text { text: "一周开始于"; font-size: 13px; color: ShellPalette.text-primary; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    ActionButton { label: "星期一"; primary: root.week-start == "monday"; enabled: !root.busy; focus-key: "week-monday"; activated => { root.action("desktop:week-start:monday"); } }
+                    ActionButton { label: "星期日"; primary: root.week-start == "sunday"; enabled: !root.busy; focus-key: "week-sunday"; activated => { root.action("desktop:week-start:sunday"); } }
                     Rectangle { horizontal-stretch: 1; background: transparent; }
                 }
             }

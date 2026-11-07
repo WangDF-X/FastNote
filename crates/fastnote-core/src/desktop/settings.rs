@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{TodayPreferences, TodaySort};
+use crate::{derive::calendar::WeekStart, TodayPreferences, TodaySort};
 
 use super::{BallPosition, WindowGeometry};
 
@@ -118,6 +118,8 @@ pub struct DesktopSettings {
     pub entry_mode: EntryMode,
     /// 主题选择。
     pub theme: ThemeMode,
+    /// 日历每周的起始日。
+    pub week_start: WeekStart,
     /// 关闭窗口策略。
     pub close_behavior: CloseBehavior,
     /// 是否注册全局热键。
@@ -139,6 +141,7 @@ impl Default for DesktopSettings {
         Self {
             entry_mode: EntryMode::Ball,
             theme: ThemeMode::System,
+            week_start: WeekStart::default(),
             close_behavior: CloseBehavior::Entry,
             hotkeys_enabled: true,
             show_hotkey: "Ctrl+Alt+Space".to_owned(),
@@ -157,6 +160,8 @@ pub enum DesktopSetting {
     EntryMode(EntryMode),
     /// 主题三态。
     Theme(ThemeMode),
+    /// 日历每周的起始日。
+    WeekStart(WeekStart),
     /// 主窗口关闭策略。
     CloseBehavior(CloseBehavior),
     /// 主窗口几何；None 清除旧值。
@@ -183,6 +188,7 @@ impl DesktopSetting {
         match self {
             Self::EntryMode(_) => "general.entry_mode",
             Self::Theme(_) => "appearance.theme",
+            Self::WeekStart(_) => "appearance.week_starts_on",
             Self::CloseBehavior(_) => "general.close_behavior",
             Self::MainGeometry(_) => "window.main_geometry",
             Self::BallPosition(_) => "appearance.ball_position",
@@ -202,6 +208,7 @@ impl DesktopSettings {
         match change {
             DesktopSetting::EntryMode(value) => self.entry_mode = *value,
             DesktopSetting::Theme(value) => self.theme = *value,
+            DesktopSetting::WeekStart(value) => self.week_start = *value,
             DesktopSetting::CloseBehavior(value) => self.close_behavior = *value,
             DesktopSetting::MainGeometry(value) => self.geometry = *value,
             DesktopSetting::BallPosition(value) => self.ball_position = value.clone(),

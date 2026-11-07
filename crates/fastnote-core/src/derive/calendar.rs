@@ -4,6 +4,9 @@ use chrono::NaiveDate;
 
 use crate::{TaskClock, TaskKind, TaskStatus, TaskSummary};
 
+mod navigation;
+pub use navigation::{calendar_month_days, calendar_week_days, WeekStart};
+
 /// 某日任务详情；每个任务最多出现在一个分组。
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct DayAgenda {

@@ -235,6 +235,9 @@ impl Runtime {
             ui.shell
                 .component()
                 .set_close_behavior(close_behavior.as_str().into());
+            ui.shell
+                .component()
+                .set_week_start(self.settings.borrow().week_start.as_str().into());
         });
         self.sync_theme();
         self.sync_task_preferences();

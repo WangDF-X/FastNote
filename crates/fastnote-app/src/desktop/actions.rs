@@ -2,6 +2,7 @@ mod dispatch;
 
 use std::rc::Rc;
 
+use fastnote_core::derive::calendar::WeekStart;
 use fastnote_core::{CloseBehavior, DesktopSetting, EntryMode, ThemeMode};
 use fastnote_platform::{EntryAction, NativeEvent};
 use fastnote_ui::{ShellUpdate, ToastKind};
@@ -47,6 +48,12 @@ impl Runtime {
             "desktop:theme:system" => self.preference(DesktopSetting::Theme(ThemeMode::System)),
             "desktop:theme:light" => self.preference(DesktopSetting::Theme(ThemeMode::Light)),
             "desktop:theme:dark" => self.preference(DesktopSetting::Theme(ThemeMode::Dark)),
+            "desktop:week-start:monday" => {
+                self.preference(DesktopSetting::WeekStart(WeekStart::Monday))
+            }
+            "desktop:week-start:sunday" => {
+                self.preference(DesktopSetting::WeekStart(WeekStart::Sunday))
+            }
             "desktop:close-behavior:entry" => {
                 self.preference(DesktopSetting::CloseBehavior(CloseBehavior::Entry))
             }
@@ -112,6 +119,9 @@ impl Runtime {
                 DesktopSetting::CloseBehavior(self.settings.borrow().close_behavior)
             }
             DesktopSetting::Theme(_) => DesktopSetting::Theme(self.settings.borrow().theme),
+            DesktopSetting::WeekStart(_) => {
+                DesktopSetting::WeekStart(self.settings.borrow().week_start)
+            }
             _ => return,
         };
         if !should_write_preference(

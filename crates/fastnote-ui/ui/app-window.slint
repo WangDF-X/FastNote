@@ -76,6 +76,7 @@ export component MainWindow inherits Window {
     in property <bool> entry-available: false;
     in property <string> close-behavior: "entry";
     in property <string> theme-mode: "system";
+    in property <string> week-start: "monday";
     in property <bool> system-dark: false;
     in property <bool> system-theme-available: true;
     in property <bool> desktop-busy: false;
@@ -490,6 +491,7 @@ export component MainWindow inherits Window {
                             entry-mode: root.entry-mode;
                             entry-available: root.entry-available;
                             close-behavior: root.close-behavior;
+                            week-start: root.week-start;
                             busy: root.desktop-busy;
                             hotkey-status: root.show-hotkey-status;
                             action(value) => { root.route_action(value); }
