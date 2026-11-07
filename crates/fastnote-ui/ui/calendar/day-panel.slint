@@ -46,7 +46,7 @@ export component CalendarDayPanel inherits Rectangle {
                     overflow: elide;
                 }
             }
-            ActionButton { label: "关闭"; width: 56px; ghost: true; activated => { root.close(); } }
+            ActionButton { label: "关闭"; width: 56px; ghost: true; dismiss: true; activated => { root.close(); } }
         }
         Rectangle { height: 1px; background: ShellPalette.border; }
         scroll := ScrollView {

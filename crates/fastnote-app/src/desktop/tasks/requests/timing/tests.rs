@@ -311,3 +311,42 @@ fn test_clock_checks_precede_querying_and_never_project_or_construct_ui() {
         "tasks/requests.rs"
     );
 }
+
+#[test]
+fn test_shared_shell_date_refreshes_before_today_gating_and_hidden_ui_is_not_touched() {
+    let source = include_str!("../timing.rs");
+    let refresh = source.split_once("fn refresh_task_clock(").unwrap().1;
+    assert!(
+        refresh
+            .find("self.sync_shell_date(check.sample.local.date());")
+            .unwrap()
+            < refresh.find("!self.today_page_visible()").unwrap()
+    );
+    let sync = source.split_once("fn sync_shell_date(").unwrap().1;
+    assert!(
+        sync.find("!self.main_content_visible()").unwrap() < sync.find("self.with_ui(").unwrap()
+    );
+    assert!(sync.contains("ui.shell.set_local_date(date)"));
+    for forbidden in [
+        "request_today(",
+        "load_calendar(",
+        "ensure_ui(",
+        "TodayPresenter::new",
+    ] {
+        assert!(!sync.contains(forbidden), "timing.rs: {forbidden}");
+    }
+}
+
+#[test]
+fn test_initial_clock_and_explicit_restore_reuse_kernel_resources_without_navigation() {
+    let loading = include_str!("../loading.rs");
+    let start = loading.split_once("fn start_kernel_tasks(").unwrap().1;
+    assert!(
+        start.find("self.task_day_timer.running()").unwrap()
+            < start.find(".start(TimerMode::Repeated").unwrap()
+    );
+    assert!(include_str!("../../../runtime.rs").contains("runtime.start_kernel_tasks();"));
+    let restore = include_str!("../../../runtime/session.rs");
+    assert!(restore.contains("let date = self.observe_task_clock().sample.local.date();"));
+    assert!(restore.contains("ui.shell.set_local_date(date)"));
+}

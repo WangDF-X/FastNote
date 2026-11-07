@@ -1,6 +1,6 @@
 use std::cell::Cell;
 
-use fastnote_core::TaskClock;
+use fastnote_core::{NaiveDate, TaskClock};
 
 use crate::clock::{ClockCheck, ClockTracker, SystemClock};
 use crate::desktop::runtime::Runtime;
@@ -42,6 +42,7 @@ impl Runtime {
             return;
         }
         let check = self.observe_task_clock();
+        self.sync_shell_date(check.sample.local.date());
         if !check.changed || !self.ready.get() || self.closing.get() || !self.today_page_visible() {
             return;
         }
@@ -56,6 +57,14 @@ impl Runtime {
         if let Some(id) = selected {
             self.request_task_detail(DetailPurpose::Refresh(id));
         }
+    }
+
+    /// D-SHELL-02：共享日期先于业务页门控刷新；隐藏不投影、不创建会话或查询。
+    pub(in crate::desktop) fn sync_shell_date(&self, date: NaiveDate) {
+        if !self.main_content_visible() {
+            return;
+        }
+        let _ = self.with_ui(|ui| ui.shell.set_local_date(date));
     }
 }
 

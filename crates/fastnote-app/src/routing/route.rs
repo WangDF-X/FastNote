@@ -189,7 +189,7 @@ impl Route {
         format!("navigate:{}{parameters}", self.page().label())
     }
 
-    pub(crate) fn shell_view(self) -> ShellView {
+    pub(crate) fn shell_view(self, local_today: NaiveDate) -> ShellView {
         let context = match self {
             Self::Today => String::new(),
             Self::Calendar { selected } => format!("选中日期：{selected}"),
@@ -212,6 +212,7 @@ impl Route {
         ShellView {
             page_label: self.page().sidebar_page().label(),
             title: self.page().label(),
+            local_today,
             context,
             route_debug: self.to_action(),
             can_go_back: matches!(self, Self::Settings { .. } | Self::PlanDetail { .. }),
@@ -234,6 +235,26 @@ impl Route {
 mod tests {
     use super::*;
 
+    fn today() -> NaiveDate {
+        "2026-11-08".parse().unwrap()
+    }
+
+    #[test]
+    fn test_shell_date_is_independent_of_calendar_and_journal_business_dates() {
+        for route in [
+            Route::Calendar {
+                selected: "2020-01-01".parse().unwrap(),
+            },
+            Route::Journal {
+                date: "2024-02-29".parse().unwrap(),
+            },
+        ] {
+            let view = route.shell_view(today());
+            assert_eq!(view.local_today, today());
+            assert_eq!(view.route_debug, route.to_action());
+        }
+    }
+
     #[test]
     fn test_plan_detail_keeps_plan_board_selected_and_exposes_both_ids() {
         let plan_id = "019a0fff-aaaa-7000-8000-000000000001".parse().unwrap();
@@ -242,7 +263,7 @@ mod tests {
             plan_id,
             focus: Some(task_id),
         }
-        .shell_view();
+        .shell_view(today());
         assert_eq!(view.page_label, "计划板");
         assert_eq!(view.title, "计划详情");
         assert!(view.can_go_back && view.is_plan_detail);
@@ -253,19 +274,19 @@ mod tests {
 
     #[test]
     fn test_only_detail_and_settings_have_a_back_button() {
-        assert!(!Route::Today.shell_view().can_go_back);
+        assert!(!Route::Today.shell_view(today()).can_go_back);
         assert!(
             !Route::PlanList {
                 tab: PlanTab::Archived
             }
-            .shell_view()
+            .shell_view(today())
             .can_go_back
         );
         assert!(
             Route::Settings {
                 section: SettingsSection::Backup
             }
-            .shell_view()
+            .shell_view(today())
             .can_go_back
         );
     }
@@ -283,14 +304,14 @@ mod tests {
         ] {
             assert_eq!(SettingsSection::from_value(section.value()), Some(section));
             assert!(!section.label().is_empty());
-            let view = Route::Settings { section }.shell_view();
+            let view = Route::Settings { section }.shell_view(today());
             assert_eq!(view.settings_section, section.value());
             assert_eq!(
                 view.is_general_settings,
                 section == SettingsSection::General
             );
         }
-        assert!(Route::Today.shell_view().settings_section.is_empty());
+        assert!(Route::Today.shell_view(today()).settings_section.is_empty());
     }
 
     #[test]

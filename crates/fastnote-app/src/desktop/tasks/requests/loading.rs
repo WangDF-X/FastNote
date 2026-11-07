@@ -9,8 +9,11 @@ use crate::tasks::DetailPurpose;
 use super::super::policy::{needs_page_load, today_page_visible};
 
 impl Runtime {
-    /// DB 就绪后只启动常驻日期检测；正常隐藏启动不请求业务页。
+    /// 内核装配即启动同一个日期检测，DB 就绪时的重复调用不重启计时或读取业务页。
     pub(in crate::desktop) fn start_kernel_tasks(self: &Rc<Self>) {
+        if self.finished.get() || self.task_day_timer.running() {
+            return;
+        }
         self.observe_task_clock();
         let weak = Rc::downgrade(self);
         self.task_day_timer
@@ -31,7 +34,8 @@ impl Runtime {
         {
             return;
         }
-        self.observe_task_clock();
+        let check = self.observe_task_clock();
+        self.sync_shell_date(check.sample.local.date());
         self.ensure_current_page_resources();
         if self.calendar_page_visible() {
             self.load_calendar();

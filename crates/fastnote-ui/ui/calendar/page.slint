@@ -22,7 +22,8 @@ export component CalendarPage inherits Rectangle {
     in property <string> error-message;
     callback action(string);
     callback select-date(string);
-    background: ShellPalette.surface;
+    // 使用 PageFrame 的圆角卡片背景，避免方形页面背景覆盖卡片边角。
+    background: transparent;
 
     VerticalLayout {
         padding: 20px;

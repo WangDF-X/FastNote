@@ -31,7 +31,7 @@ component BannerButton inherits Rectangle {
     height: 24px;
     width: glyph-only ? 24px : label-text.preferred-width + 12px;
     border-radius: 4px;
-    background: mouse-area.has-hover ? ShellPalette.hover : transparent;
+    background: root.glyph-only && (mouse-area.has-hover || mouse-area.pressed) ? ShellPalette.danger-subtle : mouse-area.has-hover ? ShellPalette.hover : transparent;
     forward-focus: keyboard;
     accessible-role: button;
     accessible-label: glyph-only ? "关闭提示" : label;
@@ -54,7 +54,7 @@ component BannerButton inherits Rectangle {
         text: root.label;
         font-size: glyph-only ? 15px : 13px;
         font-weight: glyph-only ? 400 : 500;
-        color: glyph-only ? ShellPalette.text-secondary : ShellPalette.accent;
+        color: glyph-only ? (mouse-area.has-hover || mouse-area.pressed ? ShellPalette.danger : ShellPalette.text-secondary) : ShellPalette.accent;
         vertical-alignment: center;
         accessible-role: none;
     }

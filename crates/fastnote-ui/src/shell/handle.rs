@@ -2,6 +2,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Instant;
 
+use fastnote_core::NaiveDate;
 use slint::{ComponentHandle, ModelRc, Timer, VecModel};
 
 use crate::{
@@ -51,6 +52,12 @@ impl ShellHandle {
     /// 额外的强引用会延长组件/原生窗口寿命，使会话 drop 无法完成预期释放。
     pub fn component(&self) -> &MainWindow {
         &self.window
+    }
+
+    /// 投影应用层注入的本地今日日期，不加载业务模型、导航或移动焦点。
+    /// 应用层在显式显示/恢复及既有时钟观察后调用，不为隐藏窗口创建会话。
+    pub fn set_local_date(&self, date: NaiveDate) {
+        super::date::apply_date(&self.window, date);
     }
 
     /// 显示已有组件，并从剩余时长恢复反馈计时。

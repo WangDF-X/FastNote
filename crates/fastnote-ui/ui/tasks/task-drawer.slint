@@ -88,6 +88,7 @@ export component TaskDrawer inherits Rectangle {
                     }
                     TaskIconButton {
                         icon: @image-url("../../../../ui/icons/window-close.svg");
+                        dismiss: true;
                         label: "关闭任务详情"; focus-key: "editor:close";
                         activated => { root.closed(); }
                     }
@@ -187,7 +188,7 @@ export component TaskDrawer inherits Rectangle {
                     }
                     ActionButton {
                         label: "删除任务"; focus-key: "editor:delete";
-                        icon: @image-url("../../../../ui/icons/trash.svg"); with-icon: true; ghost: true;
+                        icon: @image-url("../../../../ui/icons/trash.svg"); with-icon: true; danger: true;
                         text-size: TaskStyle.body; text-family: TaskStyle.font-family;
                         text-color: ShellPalette.text-primary; icon-color: ShellPalette.danger;
                         enabled: root.enabled && !root.read-only;

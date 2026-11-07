@@ -298,7 +298,9 @@ fn test_brand_images_use_existing_reversed_asset_only_for_effective_dark_theme()
     }
     let main = include_str!("../../ui/app-window.slint");
     assert!(main.contains("icon: ShellPalette.brand-icon;"));
-    assert!(main.contains("source: ShellPalette.brand-icon-small;"));
+    let sidebar = include_str!("../../ui/components/sidebar-date.slint");
+    assert!(main.contains("SidebarDate {"));
+    assert!(sidebar.contains("source: ShellPalette.brand-icon;"));
     for source in [
         include_str!("../../ui/components/title-bar.slint"),
         include_str!("../../ui/floating-ball.slint"),

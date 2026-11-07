@@ -67,6 +67,7 @@ export component TaskDateTimeField inherits Rectangle {
         }
         TaskIconButton {
             icon: @image-url("../../../../ui/icons/window-close.svg");
+            dismiss: true;
             label: "清除" + root.label + "日期和时间";
             focus-key: root.focus-key + ":clear";
             enabled: root.enabled && root.date-text != "";
