@@ -5,7 +5,6 @@ import { PagePlaceholder } from "components/page-placeholder.slint";
 import { PageFrame } from "components/page-frame.slint";
 import { PageHeader } from "components/page-header.slint";
 import { PageState } from "components/page-state.slint";
-import { DevPreviewBar } from "components/dev-preview-bar.slint";
 import { ToastHost, ToastData, ToastTone } from "components/toast-host.slint";
 import { DialogHost, DialogData, DialogTone } from "components/dialog-host.slint";
 import { BannerData, BannerTone } from "components/page-banner.slint";
@@ -92,8 +91,6 @@ export component MainWindow inherits Window {
     in property <bool> system-theme-available: true;
     in property <bool> desktop-busy: false;
     in property <string> show-hotkey-status: "正在注册…";
-    /// 仅 debug 构建为 true，显示页面状态预览条。
-    in property <bool> dev_tools: false;
     in property <[ToastData]> toasts;
     /// SHELL-02 §6：对话框状态由 `feedback::dialog` 的队列计算后写入。
     in property <bool> dialog-visible: false;
@@ -107,8 +104,6 @@ export component MainWindow inherits Window {
     callback route_action(string);
     callback toast_hover(int, bool);
     callback toast_action(int);
-    /// debug 预览条触发的反馈预览，参数为预览项标识。
-    callback preview_feedback(string);
     callback dialog_confirm();
     callback dialog_cancel();
     callback banner_action();
@@ -284,8 +279,7 @@ export component MainWindow inherits Window {
             empty-action: "新建计划",
         },
     ];
-    private property <PageState> preview-state: PageState.ready;
-    private property <PageState> effective-state: root.desktop-state == 0 ? PageState.loading : root.desktop-state == 2 ? PageState.error : root.dev_tools ? (root.current_page == "设置" && root.preview-state == PageState.empty ? PageState.ready : root.preview-state) : PageState.ready;
+    private property <PageState> effective-state: root.desktop-state == 0 ? PageState.loading : root.desktop-state == 2 ? PageState.error : PageState.ready;
     private property <int> active-index: current_page == "日历" ? 1 : current_page == "小记" ? 2 : current_page == "日记" ? 3 : current_page == "计划板" ? 4 : 0;
     private property <image> settings-icon: @image-url("../../../ui/icons/settings.svg");
 
@@ -487,8 +481,6 @@ export component MainWindow inherits Window {
                     retry => {
                         if (root.desktop-state == 2) {
                             root.route_action("desktop:retry");
-                        } else {
-                            root.preview-state = PageState.ready;
                         }
                         // 重试按钮随错误块消失，把焦点交回外壳，快捷键才不会失效。
                         shortcuts.focus();
@@ -573,14 +565,6 @@ export component MainWindow inherits Window {
                     }
                 }
 
-                if root.dev_tools: DevPreviewBar {
-                    state <=> root.preview-state;
-                    empty-available: root.current_page != "设置";
-                    route-debug: root.route-debug;
-                    preview(item) => {
-                        root.preview_feedback(item);
-                    }
-                }
             }
         }
 
@@ -644,7 +628,7 @@ export component MainWindow inherits Window {
             y: root.caption-height;
             width: parent.width - 208px;
             height: parent.height - self.y;
-            bottom-inset: root.dev_tools ? 224px : 24px;
+            bottom-inset: 24px;
             toasts: root.toasts;
             hover-changed(id, hovered) => {
                 root.toast_hover(id, hovered);

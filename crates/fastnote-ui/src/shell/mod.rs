@@ -1,7 +1,6 @@
 //! 主窗口装配：把 Slint 回调接到应用动作入口和反馈组件的视图模型上。
 
 mod handle;
-mod preview;
 mod retained;
 mod view;
 
@@ -131,11 +130,6 @@ fn connect(window: &MainWindow, shell: &Rc<Shell>) {
             if let Some(shell) = weak.upgrade() {
                 shell.dismiss_visible_banner();
             }
-        }
-    });
-    window.on_preview_feedback(move |item| {
-        if let Some(shell) = weak.upgrade() {
-            shell.preview(item.as_str());
         }
     });
 }
@@ -291,12 +285,6 @@ impl Shell {
             self.banners.borrow_mut().dismiss(kind);
             self.sync_banner();
         }
-    }
-
-    /// 清空所有横幅（状态解除时调用）。
-    fn clear_banners(&self) {
-        self.banners.borrow_mut().clear();
-        self.sync_banner();
     }
 
     /// 执行横幅上的操作链接。

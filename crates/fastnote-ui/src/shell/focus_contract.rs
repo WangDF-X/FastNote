@@ -1,6 +1,6 @@
 // D-TODAY-07：只检查视觉策略与焦点接线，不创建窗口；外观与交互由用户手工验收。
 
-fn focus_controls() -> [(&'static str, &'static str, &'static str); 11] {
+fn focus_controls() -> [(&'static str, &'static str, &'static str); 10] {
     [
         (
             "components/action-button.slint",
@@ -26,11 +26,6 @@ fn focus_controls() -> [(&'static str, &'static str, &'static str); 11] {
             "components/page-banner.slint",
             include_str!("../../ui/components/page-banner.slint"),
             "keyboard",
-        ),
-        (
-            "components/dev-preview-bar.slint",
-            include_str!("../../ui/components/dev-preview-bar.slint"),
-            "chip-keyboard",
         ),
         (
             "tasks/task-row.slint",
