@@ -17,7 +17,7 @@ pub enum Command {
         patch: TaskPatch,
         expected_updated_at: DateTime<Utc>,
     },
-    /// 四态转换；confirmed 仅来自明确的警告确认。
+    /// 三态转换；confirmed 仅来自明确的警告确认。
     SetTaskStatus {
         id: TaskId,
         status: TaskStatus,

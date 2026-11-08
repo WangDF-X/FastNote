@@ -175,7 +175,7 @@ fn test_committed_preference_save_precedes_today_query_and_survives_reload() {
             3,
             Query::Today {
                 date: "2026-11-03".parse().unwrap(),
-                limits: [200; 8],
+                limits: [200; 4],
             },
         )
         .unwrap();

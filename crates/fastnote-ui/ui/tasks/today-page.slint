@@ -49,7 +49,7 @@ export component TodayPage inherits Rectangle {
             height: 32px; spacing: 8px;
             TaskCounter {
                 icon: @image-url("../../../../ui/icons/today.svg");
-                label: "待处理"; value: root.open-count;
+                label: "当前未完成"; value: root.open-count;
             }
             TaskCounter {
                 icon: @image-url("../../../../ui/icons/alert.svg");
@@ -115,7 +115,7 @@ export component TodayPage inherits Rectangle {
                 if root.open-count == 0: EmptyState {
                     height: 180px;
                     icon: @image-url("../../../../ui/icons/today.svg");
-                    title: "当前没有显示的待处理任务";
+                    title: "当前没有显示的未完成任务";
                 }
                 for section in root.sections: Rectangle {
                     // 新建重复项先持有空数据；目标就绪后从 0 变为请求版本，不能错过首次恢复。

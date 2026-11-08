@@ -164,23 +164,18 @@ fn test_pastel_task_rows_keep_readable_text_in_default_hover_and_pressed_states(
 }
 
 #[test]
-fn test_all_eight_section_surfaces_have_readable_neutral_text_and_semantic_icons() {
+fn test_four_section_surfaces_have_readable_neutral_text_and_semantic_icons() {
     let section_surfaces = [
-        ("danger-subtle", "danger"),
         ("task-progress", "accent"),
-        ("task-progress", "accent"),
-        ("task-progress", "accent"),
-        ("task-waiting", "warning"),
         ("task-todo", "text-secondary"),
-        ("task-progress", "accent"),
         ("task-done", "success"),
+        ("task-todo", "text-secondary"),
     ];
     let style = include_str!("../../ui/tasks/task-style.slint");
     for expression in [
-        "kind == 0 ? ShellPalette.danger-subtle",
-        "kind == 4 ? ShellPalette.task-waiting",
-        "kind == 5 ? ShellPalette.task-todo",
-        "kind == 7 ? ShellPalette.task-done",
+        "kind == 0 ? ShellPalette.task-progress",
+        "kind == 1 ? ShellPalette.task-todo",
+        "kind == 2 ? ShellPalette.task-done",
     ] {
         assert!(style.contains(expression));
     }

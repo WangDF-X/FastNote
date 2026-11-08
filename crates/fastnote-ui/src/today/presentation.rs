@@ -13,7 +13,7 @@ use super::summary::{display_date, schedule_label};
 /// 保留每组模型实例，刷新数据时不重建整页或文本编辑器。
 pub struct TodayPresenter {
     sections: Rc<VecModel<TodaySectionData>>,
-    rows: [Rc<VecModel<TaskRowData>>; 8],
+    rows: [Rc<VecModel<TaskRowData>>; 4],
 }
 
 impl TodayPresenter {
@@ -54,7 +54,7 @@ impl TodayPresenter {
     }
 
     /// 应用已查询的只读快照与会话折叠状态；不修改业务数据。
-    pub fn apply(&self, window: &MainWindow, view: &TodayView, collapsed: [Option<bool>; 8]) {
+    pub fn apply(&self, window: &MainWindow, view: &TodayView, collapsed: [Option<bool>; 4]) {
         let current_year = view.date.year();
         window.set_task_picker_today(Date {
             year: current_year,
@@ -62,7 +62,7 @@ impl TodayPresenter {
             day: view.date.day() as i32,
         });
         let mut sections = Vec::new();
-        let mut present = [false; 8];
+        let mut present = [false; 4];
         for section in &view.sections {
             let index = section.kind as usize;
             present[index] = true;
@@ -143,8 +143,7 @@ pub fn task_status_index(status: Option<TaskStatus>) -> i32 {
     match status {
         Some(TaskStatus::Todo) | None => 0,
         Some(TaskStatus::InProgress) => 1,
-        Some(TaskStatus::Waiting) => 2,
-        Some(TaskStatus::Done) => 3,
+        Some(TaskStatus::Done) => 2,
     }
 }
 
@@ -158,11 +157,13 @@ pub(crate) fn row_data(task: &TaskSummary, current_year: i32) -> TaskRowData {
         task.due_time,
         current_year,
     );
-    if !dates.is_empty() {
-        metadata.push(dates);
-    }
-    if let Some(days) = task.waiting_days {
-        metadata.push(format!("已等待 {days} 天"));
+    metadata.push(if dates.is_empty() {
+        "未设日期".to_owned()
+    } else {
+        dates
+    });
+    if task.is_overdue {
+        metadata.push("已逾期".to_owned());
     }
     if let Some(plan) = &task.context.plan_name {
         metadata.push(plan.clone());
@@ -185,9 +186,8 @@ pub(crate) fn row_data(task: &TaskSummary, current_year: i32) -> TaskRowData {
         status_index: task_status_index(task.status),
         status_label: match task.status {
             Some(TaskStatus::InProgress) => "进行中",
-            Some(TaskStatus::Waiting) => "等待中",
             Some(TaskStatus::Done) => "已完成",
-            _ => "待处理",
+            _ => "未开始",
         }
         .into(),
         done: task.status == Some(TaskStatus::Done),
@@ -207,14 +207,10 @@ pub(crate) fn row_data(task: &TaskSummary, current_year: i32) -> TaskRowData {
 
 fn section_label(kind: TodaySectionKind) -> &'static str {
     match kind {
-        TodaySectionKind::Overdue => "逾期",
-        TodaySectionKind::DueToday => "今日到期",
-        TodaySectionKind::StartsToday => "今日开始",
-        TodaySectionKind::InProgress => "进行中",
-        TodaySectionKind::Waiting => "等待中",
-        TodaySectionKind::Unscheduled => "未安排",
-        TodaySectionKind::Tomorrow => "明日预告",
-        TodaySectionKind::CompletedToday => "今日已完成",
+        TodaySectionKind::Focus => "当前关注",
+        TodaySectionKind::Unscheduled => "待安排",
+        TodaySectionKind::Later => "稍后",
+        TodaySectionKind::CompletedToday => "今日完成",
     }
 }
 
@@ -271,12 +267,12 @@ mod tests {
         .unwrap();
         let mut summary = TaskSummary::from_task(&task, TaskContext::default());
         assert_eq!(row_data(&summary, 2026).title.as_str(), "假任务");
+        assert_eq!(row_data(&summary, 2026).metadata.as_str(), "未设日期");
         summary.due_date = Some("2020-01-01".parse().unwrap());
         assert!(!row_data(&summary, 2026).overdue);
         summary.is_overdue = true;
-        summary.waiting_days = Some(3);
         assert!(row_data(&summary, 2026).overdue);
-        assert!(row_data(&summary, 2026).metadata.contains("已等待 3 天"));
+        assert!(row_data(&summary, 2026).metadata.contains("已逾期"));
     }
 
     #[test]
@@ -322,7 +318,7 @@ mod tests {
     }
 
     #[test]
-    fn test_concise_date_range_keeps_real_waiting_and_plan_context() {
+    fn test_concise_date_range_keeps_plan_context() {
         let task = Task::new(
             "019a0fff-aaaa-7000-8000-000000000001".parse().unwrap(),
             "假任务".to_owned(),
@@ -334,11 +330,10 @@ mod tests {
         summary.start_time = fastnote_core::parse_task_time("09:05").unwrap();
         summary.due_date = Some("2026-11-04".parse().unwrap());
         summary.due_time = fastnote_core::parse_task_time("15:31").unwrap();
-        summary.waiting_days = Some(2);
         summary.context.plan_name = Some("假计划".to_owned());
         assert_eq!(
             row_data(&summary, 2026).metadata.as_str(),
-            "11-03 09:05 → 11-04 15:31 · 已等待 2 天 · 假计划"
+            "11-03 09:05 → 11-04 15:31 · 假计划"
         );
     }
 

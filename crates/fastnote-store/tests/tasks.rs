@@ -228,9 +228,9 @@ fn test_today_preferences_use_canonical_keys_and_invalid_values_fall_back() {
     let connection = fixture.external();
     for (key, value) in [
         ("tasks.default_sort", "due_date"),
-        ("today.show_waiting", "false"),
+        ("today.show_unscheduled", "false"),
         ("today.show_completed", "false"),
-        ("today.tomorrow_collapsed", "false"),
+        ("today.later_collapsed", "false"),
         ("general.default_sort", "created_desc"),
     ] {
         connection
@@ -243,7 +243,7 @@ fn test_today_preferences_use_canonical_keys_and_invalid_values_fall_back() {
     }
     let prefs = fixture.store.today_preferences().unwrap();
     assert_eq!(prefs.sort, TodaySort::DueDate);
-    assert!(!prefs.show_waiting && !prefs.show_completed && !prefs.tomorrow_collapsed);
+    assert!(!prefs.show_unscheduled && !prefs.show_completed && !prefs.later_collapsed);
     connection
         .execute(
             "UPDATE app_settings SET value=?1 WHERE key='tasks.default_sort'",
@@ -252,13 +252,13 @@ fn test_today_preferences_use_canonical_keys_and_invalid_values_fall_back() {
         .unwrap();
     connection
         .execute(
-            "UPDATE app_settings SET value='invalid' WHERE key='today.show_waiting'",
+            "UPDATE app_settings SET value='invalid' WHERE key='today.show_unscheduled'",
             [],
         )
         .unwrap();
     let prefs = fixture.store.today_preferences().unwrap();
     assert_eq!(prefs.sort, TodaySort::Priority);
-    assert!(prefs.show_waiting);
+    assert!(prefs.show_unscheduled);
 }
 
 #[test]
@@ -277,7 +277,7 @@ fn test_local_completed_today_is_not_filtered_by_utc_midnight() {
     let QueryResult::Today(view) = service
         .query(Query::Today {
             date: "2026-11-03".parse().unwrap(),
-            limits: [200; 8],
+            limits: [200; 4],
         })
         .unwrap()
     else {
@@ -326,7 +326,7 @@ fn test_task_writes_recheck_schema_version_before_changing_data() {
     let task = fixture.add(1);
     fixture
         .external()
-        .pragma_update(None, "user_version", 4)
+        .pragma_update(None, "user_version", 5)
         .unwrap();
     let error = fixture.store.delete_task(task.id, true).unwrap_err();
     assert!(matches!(

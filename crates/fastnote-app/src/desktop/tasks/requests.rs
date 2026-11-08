@@ -288,8 +288,7 @@ impl Runtime {
         let status = match index {
             0 => TaskStatus::Todo,
             1 => TaskStatus::InProgress,
-            2 => TaskStatus::Waiting,
-            3 => TaskStatus::Done,
+            2 => TaskStatus::Done,
             _ => return,
         };
         self.task_transition(Transition::Status {

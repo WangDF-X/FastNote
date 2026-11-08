@@ -18,7 +18,7 @@ fn item(index: usize, status: TaskStatus) -> TaskSummary {
 #[test]
 fn test_preview_limits_open_tasks_and_caps_completed_count() {
     let agenda = DayAgenda {
-        due: vec![item(1, TaskStatus::Todo), item(2, TaskStatus::Waiting)],
+        due: vec![item(1, TaskStatus::Todo), item(2, TaskStatus::Todo)],
         start: vec![item(3, TaskStatus::InProgress)],
         ongoing: vec![
             item(4, TaskStatus::InProgress),
@@ -69,9 +69,8 @@ fn test_completed_count_labels_do_not_include_font_dependent_icons() {
 
 #[test]
 fn test_preview_keeps_actual_state_overdue_and_date_metadata() {
-    let mut task = item(1, TaskStatus::Waiting);
+    let mut task = item(1, TaskStatus::InProgress);
     task.is_overdue = true;
-    task.waiting_days = Some(2);
     task.due_date = Some("2026-11-05".parse().unwrap());
     task.due_time = Some("09:30:00".parse().unwrap());
     let agenda = DayAgenda {
@@ -80,24 +79,24 @@ fn test_preview_keeps_actual_state_overdue_and_date_metadata() {
     };
     let preview = cell_preview(&agenda, 2026);
     let row = &preview.items[0];
-    assert_eq!(row.status_index, 2);
-    assert_eq!(row.status_label, "等待中");
+    assert_eq!(row.status_index, 1);
+    assert_eq!(row.status_label, "进行中");
     assert!(row.overdue);
     assert!(!row.done);
-    assert_eq!(row.metadata, "11-05 09:30 · 已等待 2 天");
+    assert_eq!(row.metadata, "11-05 09:30 · 已逾期");
     assert_eq!(
         cell_preview(&agenda, 2027).items[0].metadata,
-        "2026-11-05 09:30 · 已等待 2 天"
+        "2026-11-05 09:30 · 已逾期"
     );
     assert!(agenda.due[0].is_overdue);
-    assert_eq!(agenda.due[0].status, Some(TaskStatus::Waiting));
+    assert_eq!(agenda.due[0].status, Some(TaskStatus::InProgress));
 }
 
 #[test]
 fn test_day_sections_keep_group_order_and_do_not_override_task_status() {
     let agenda = DayAgenda {
         due: vec![item(1, TaskStatus::Todo)],
-        start: vec![item(2, TaskStatus::Waiting)],
+        start: vec![item(2, TaskStatus::Todo)],
         ongoing: vec![item(3, TaskStatus::InProgress)],
         completed: vec![item(4, TaskStatus::Done)],
         overload: false,
@@ -105,9 +104,9 @@ fn test_day_sections_keep_group_order_and_do_not_override_task_status() {
     let sections = day_sections(&agenda, 2026);
     for (section, (kind, label, status)) in sections.iter().zip([
         (0, "到期", 0),
-        (1, "开始", 2),
+        (1, "开始", 0),
         (2, "进行中", 1),
-        (3, "已完成", 3),
+        (3, "已完成", 2),
     ]) {
         assert_eq!(section.kind, kind);
         assert_eq!(section.label, label);
@@ -115,7 +114,7 @@ fn test_day_sections_keep_group_order_and_do_not_override_task_status() {
         assert_eq!(section.items.row_count(), 1);
         let row = section.items.row_data(0).unwrap();
         assert_eq!(row.status_index, status);
-        assert_eq!(row.done, status == 3);
+        assert_eq!(row.done, status == 2);
     }
     assert_eq!(sections.len(), 4);
 }
@@ -124,7 +123,7 @@ fn test_day_sections_keep_group_order_and_do_not_override_task_status() {
 fn test_day_sections_hide_empty_groups_but_do_not_limit_detail_tasks() {
     assert!(day_sections(&DayAgenda::default(), 2026).is_empty());
     let agenda = DayAgenda {
-        start: (0..5).map(|n| item(n, TaskStatus::Waiting)).collect(),
+        start: (0..5).map(|n| item(n, TaskStatus::Todo)).collect(),
         ..DayAgenda::default()
     };
     let sections = day_sections(&agenda, 2026);

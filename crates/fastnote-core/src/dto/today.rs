@@ -2,39 +2,27 @@ use chrono::{NaiveDate, NaiveDateTime};
 
 use super::TaskSummary;
 
-/// 今日分组的稳定顺序，任务只命中一组（ARCH-03 §8.2）。
+/// 今日四区的稳定顺序，任务只命中一区（ARCH-03 §8.2）。
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(usize)]
 pub enum TodaySectionKind {
-    /// 逾期。
-    Overdue = 0,
-    /// 今日到期。
-    DueToday,
-    /// 今日开始。
-    StartsToday,
-    /// 进行中。
-    InProgress,
-    /// 等待中。
-    Waiting,
-    /// 未安排。
+    /// 已到期、已开始或进行中的当前关注任务。
+    Focus = 0,
+    /// 未设日期的未开始任务。
     Unscheduled,
-    /// 明日预告。
-    Tomorrow,
-    /// 今日已完成。
+    /// 本地今日完成。
     CompletedToday,
+    /// 未开始且日期均在未来的稍后任务。
+    Later,
 }
 
 impl TodaySectionKind {
     /// 按优先级排列的所有分组。
-    pub const ALL: [Self; 8] = [
-        Self::Overdue,
-        Self::DueToday,
-        Self::StartsToday,
-        Self::InProgress,
-        Self::Waiting,
+    pub const ALL: [Self; 4] = [
+        Self::Focus,
         Self::Unscheduled,
-        Self::Tomorrow,
         Self::CompletedToday,
+        Self::Later,
     ];
 
     /// 解析 UI 边界的组索引。
@@ -43,7 +31,7 @@ impl TodaySectionKind {
     }
 }
 
-/// tasks.default_sort，只影响四个日期类分组。
+/// tasks.default_sort，只影响当前关注区，始终保持逾期置顶。
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum TodaySort {
     /// 优先级 → 到期 → 开始 → 创建。
@@ -79,29 +67,23 @@ impl TodaySort {
 /// 今日配置；未知键/非法值在仓储边界回退，不新增偏好副本。
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TodayPreferences {
-    /// 四个日期类分组排序。
+    /// 当前关注排序，逾期置顶不受此选项影响。
     pub sort: TodaySort,
-    /// 显示进行中。
-    pub show_in_progress: bool,
-    /// 显示等待中。
-    pub show_waiting: bool,
-    /// 显示未安排。
+    /// 显示待安排。
     pub show_unscheduled: bool,
     /// 显示今日已完成。
     pub show_completed: bool,
-    /// 明日默认折叠。
-    pub tomorrow_collapsed: bool,
+    /// 稍后默认折叠，继承旧明日折叠偏好。
+    pub later_collapsed: bool,
 }
 
 impl Default for TodayPreferences {
     fn default() -> Self {
         Self {
             sort: TodaySort::Priority,
-            show_in_progress: true,
-            show_waiting: true,
             show_unscheduled: true,
             show_completed: true,
-            tomorrow_collapsed: true,
+            later_collapsed: true,
         }
     }
 }
@@ -110,11 +92,9 @@ impl TodayPreferences {
     /// 命中分组后再判断可见性，不将隐藏任务转移到别组。
     pub fn enabled(self, kind: TodaySectionKind) -> bool {
         match kind {
-            TodaySectionKind::InProgress => self.show_in_progress,
-            TodaySectionKind::Waiting => self.show_waiting,
             TodaySectionKind::Unscheduled => self.show_unscheduled,
             TodaySectionKind::CompletedToday => self.show_completed,
-            _ => true,
+            TodaySectionKind::Focus | TodaySectionKind::Later => true,
         }
     }
 }
@@ -151,6 +131,4 @@ pub struct TodayView {
     pub overdue_count: u32,
     /// 本地今日完成数量。
     pub completed_today_count: u32,
-    /// 明日预告数量。
-    pub tomorrow_count: u32,
 }

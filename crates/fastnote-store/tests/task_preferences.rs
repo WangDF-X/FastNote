@@ -32,8 +32,6 @@ fn value(connection: &Connection, key: &str) -> String {
 fn changes() -> Vec<DesktopSetting> {
     vec![
         DesktopSetting::TodaySort(TodaySort::DueDate),
-        DesktopSetting::TodayShowInProgress(false),
-        DesktopSetting::TodayShowWaiting(false),
         DesktopSetting::TodayShowUnscheduled(false),
         DesktopSetting::TodayShowCompleted(false),
     ]
@@ -56,8 +54,6 @@ fn test_fresh_and_saved_preferences_match_settings_and_task_query_snapshots_afte
                 .save_desktop(
                     &[
                         DesktopSetting::TodaySort(sort),
-                        DesktopSetting::TodayShowInProgress(shown),
-                        DesktopSetting::TodayShowWaiting(shown),
                         DesktopSetting::TodayShowUnscheduled(shown),
                         DesktopSetting::TodayShowCompleted(shown),
                     ],
@@ -66,22 +62,15 @@ fn test_fresh_and_saved_preferences_match_settings_and_task_query_snapshots_afte
                 .unwrap();
             let preferences = store.load_desktop().unwrap().today_preferences;
             assert_eq!(preferences.sort, sort);
-            assert_eq!(preferences.show_in_progress, shown);
-            assert_eq!(preferences.show_waiting, shown);
             assert_eq!(preferences.show_unscheduled, shown);
             assert_eq!(preferences.show_completed, shown);
-            assert!(preferences.tomorrow_collapsed);
+            assert!(preferences.later_collapsed);
             assert_eq!(store.today_preferences().unwrap(), preferences);
         }
     }
     let connection = Connection::open(&path).unwrap();
     assert_eq!(value(&connection, "tasks.default_sort"), "created_desc");
-    for key in [
-        "today.show_in_progress",
-        "today.show_waiting",
-        "today.show_unscheduled",
-        "today.show_completed",
-    ] {
+    for key in ["today.show_unscheduled", "today.show_completed"] {
         assert_eq!(value(&connection, key), "true");
     }
     let before = store.load_desktop().unwrap();
@@ -115,12 +104,7 @@ fn test_missing_preference_keys_fall_back_and_each_supported_key_can_be_inserted
     );
     store.save_desktop(&changes(), now()).unwrap();
     assert_eq!(value(&connection, "tasks.default_sort"), "due_date");
-    for key in [
-        "today.show_in_progress",
-        "today.show_waiting",
-        "today.show_unscheduled",
-        "today.show_completed",
-    ] {
+    for key in ["today.show_unscheduled", "today.show_completed"] {
         assert_eq!(value(&connection, key), "false");
     }
     assert_eq!(
@@ -136,11 +120,9 @@ fn test_invalid_or_oversized_preferences_have_identical_fallback_without_overwri
     let connection = Connection::open(&path).unwrap();
     for (key, invalid) in [
         ("tasks.default_sort", "最近创建"),
-        ("today.show_in_progress", "0"),
-        ("today.show_waiting", "False"),
         ("today.show_unscheduled", "yes"),
         ("today.show_completed", "1"),
-        ("today.tomorrow_collapsed", "invalid"),
+        ("today.later_collapsed", "invalid"),
     ] {
         connection
             .execute(
@@ -177,8 +159,7 @@ fn test_invalid_or_oversized_preferences_have_identical_fallback_without_overwri
         .save_desktop(&[DesktopSetting::TodayShowUnscheduled(false)], now())
         .unwrap();
     assert_eq!(value(&connection, "future.fake"), "preserve");
-    assert_eq!(value(&connection, "today.show_waiting"), "False");
-    assert_eq!(value(&connection, "today.tomorrow_collapsed"), "invalid");
+    assert_eq!(value(&connection, "today.later_collapsed"), "invalid");
     assert_eq!(value(&connection, "today.show_unscheduled"), "false");
 }
 
@@ -186,8 +167,6 @@ fn test_invalid_or_oversized_preferences_have_identical_fallback_without_overwri
 fn test_every_preference_constraint_failure_rolls_back_the_whole_batch() {
     for key in [
         "tasks.default_sort",
-        "today.show_in_progress",
-        "today.show_waiting",
         "today.show_unscheduled",
         "today.show_completed",
     ] {
@@ -208,8 +187,8 @@ fn test_duplicate_keys_and_newer_schema_do_not_mutate_any_preference() {
     assert!(store
         .save_desktop(
             &[
-                DesktopSetting::TodayShowWaiting(false),
-                DesktopSetting::TodayShowWaiting(true)
+                DesktopSetting::TodayShowCompleted(false),
+                DesktopSetting::TodayShowCompleted(true)
             ],
             now()
         )
@@ -236,7 +215,7 @@ fn test_hiding_and_revealing_preferences_do_not_delete_or_modify_tasks_or_other_
         .save_desktop(
             &[
                 DesktopSetting::TodayShowUnscheduled(false),
-                DesktopSetting::TodayShowWaiting(false),
+                DesktopSetting::TodayShowCompleted(false),
             ],
             now(),
         )
@@ -248,6 +227,6 @@ fn test_hiding_and_revealing_preferences_do_not_delete_or_modify_tasks_or_other_
         .unwrap();
     let restored = store.today_preferences().unwrap();
     assert!(restored.show_unscheduled);
-    assert!(!restored.show_waiting);
+    assert!(!restored.show_completed);
     assert_eq!(store.task_detail(id).unwrap().unwrap(), before);
 }

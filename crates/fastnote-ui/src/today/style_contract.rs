@@ -156,8 +156,7 @@ fn test_overdue_background_takes_priority_without_changing_status_text_or_adding
     let style = include_str!("../../ui/tasks/task-style.slint");
     for expression in [
         "status == 1 ? ShellPalette.task-progress",
-        "status == 2 ? ShellPalette.task-waiting",
-        "status == 3 ? ShellPalette.task-done",
+        "status == 2 ? ShellPalette.task-done",
         ": ShellPalette.task-todo;",
     ] {
         assert!(style.contains(expression));
@@ -245,9 +244,11 @@ fn test_all_task_sections_and_status_texts_stay_neutral_while_icons_keep_semanti
     let section = include_str!("../../ui/tasks/section-header.slint");
     assert!(section.contains("background: TaskStyle.section-background(root.data.kind,"));
     assert!(section.contains("colorize: TaskStyle.section-icon-color(root.data.kind);"));
-    assert!(section.contains("icons/check-circle.svg") && section.contains("icons/pause.svg"));
+    assert!(section.contains("icons/check-circle.svg") && section.contains("icons/refresh.svg"));
+    assert!(!section.contains("icons/pause.svg"));
     let counter = include_str!("../../ui/tasks/task-counter.slint");
-    assert!(counter.contains("background: TaskStyle.section-background("));
+    assert!(counter.contains("root.tone == 1 ? ShellPalette.danger-subtle"));
+    assert!(counter.contains("root.tone == 2 ? ShellPalette.task-done"));
     let row = include_str!("../../ui/tasks/task-row.slint");
     assert!(row.contains("if root.data.overdue: Image {"));
     assert!(row.contains("colorize: TaskStyle.row-danger;"));

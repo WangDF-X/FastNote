@@ -43,10 +43,11 @@ pub struct TodayCollector<'a, C: TaskClock> {
     clock: &'a C,
     evaluated_at: NaiveDateTime,
     preferences: TodayPreferences,
-    limits: [usize; 8],
-    groups: [BinaryHeap<RankedTask>; 8],
-    totals: [u32; 8],
+    limits: [usize; 4],
+    groups: [BinaryHeap<RankedTask>; 4],
+    totals: [u32; 4],
     next_overdue_at: Option<NaiveDateTime>,
+    overdue_count: u32,
 }
 
 impl<'a, C: TaskClock> TodayCollector<'a, C> {
@@ -55,7 +56,7 @@ impl<'a, C: TaskClock> TodayCollector<'a, C> {
         today: NaiveDate,
         clock: &'a C,
         preferences: TodayPreferences,
-        limits: [u32; 8],
+        limits: [u32; 4],
     ) -> Self {
         let limits = limits.map(|limit| limit.clamp(200, 1000) as usize);
         Self {
@@ -70,8 +71,9 @@ impl<'a, C: TaskClock> TodayCollector<'a, C> {
                     0
                 })
             }),
-            totals: [0; 8],
+            totals: [0; 4],
             next_overdue_at: None,
+            overdue_count: 0,
         }
     }
 
@@ -93,7 +95,10 @@ impl<'a, C: TaskClock> TodayCollector<'a, C> {
                 );
             }
         }
-        derive_at(&mut task, self.evaluated_at, self.clock);
+        derive_at(&mut task, self.evaluated_at);
+        if task.is_overdue {
+            self.overdue_count = self.overdue_count.saturating_add(1);
+        }
         let Some(kind) = section_at(&task, self.evaluated_at, self.clock) else {
             return;
         };
@@ -123,11 +128,10 @@ impl<'a, C: TaskClock> TodayCollector<'a, C> {
             date: self.evaluated_at.date(),
             evaluated_at: self.evaluated_at,
             next_overdue_at: self.next_overdue_at,
-            sections: Vec::with_capacity(8),
+            sections: Vec::with_capacity(4),
             open_count: 0,
-            overdue_count: self.totals[Kind::Overdue as usize],
+            overdue_count: self.overdue_count,
             completed_today_count: self.totals[Kind::CompletedToday as usize],
-            tomorrow_count: self.totals[Kind::Tomorrow as usize],
         };
         for (kind, group) in Kind::ALL.into_iter().zip(self.groups) {
             let total = self.totals[kind as usize];
@@ -147,7 +151,7 @@ impl<'a, C: TaskClock> TodayCollector<'a, C> {
                 total,
                 has_more: total as usize > self.limits[kind as usize],
                 collapsed_default: kind == Kind::CompletedToday
-                    || (kind == Kind::Tomorrow && self.preferences.tomorrow_collapsed),
+                    || (kind == Kind::Later && self.preferences.later_collapsed),
             });
         }
         view

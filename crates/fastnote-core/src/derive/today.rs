@@ -21,26 +21,17 @@ pub fn is_overdue(task: &TaskSummary, now: NaiveDateTime) -> bool {
         })
 }
 
-/// 使用注入的本地时间转换填充统一标记，不让 UI 推导等待天数。
+/// 使用注入的本地时间转换填充统一逾期与阻塞标记。
 pub fn derive_task_summary(task: &mut TaskSummary, today: NaiveDate, clock: &impl TaskClock) {
     derive_at(
         task,
         today.and_time(clock.local_datetime(clock.now()).time()),
-        clock,
     );
 }
 
-fn derive_at(task: &mut TaskSummary, now: NaiveDateTime, clock: &impl TaskClock) {
+fn derive_at(task: &mut TaskSummary, now: NaiveDateTime) {
     task.is_overdue = is_overdue(task, now);
     task.is_blocked = task.context.blocking_count > 0;
-    task.waiting_days = (task.status == Some(TaskStatus::Waiting)).then(|| {
-        u32::try_from(
-            (now.date() - clock.local_date(task.status_changed_at))
-                .num_days()
-                .max(0),
-        )
-        .unwrap_or(u32::MAX)
-    });
 }
 
 /// 按 ARCH-03 的优先级去重归组；隐藏设置不参与归组。
@@ -53,7 +44,6 @@ pub fn today_section(task: &TaskSummary, today: NaiveDate, clock: &impl TaskCloc
 }
 
 fn section_at(task: &TaskSummary, now: NaiveDateTime, clock: &impl TaskClock) -> Option<Kind> {
-    let today = now.date();
     if task.kind != TaskKind::Task || task.context.read_only {
         return None;
     }
@@ -61,34 +51,21 @@ fn section_at(task: &TaskSummary, now: NaiveDateTime, clock: &impl TaskClock) ->
     if status == TaskStatus::Done {
         return task
             .completed_at
-            .filter(|at| clock.local_date(*at) == today)
+            .filter(|at| clock.local_date(*at) == now.date())
             .map(|_| Kind::CompletedToday);
     }
-    if is_overdue(task, now) {
-        return Some(Kind::Overdue);
-    }
-    if task.due_date == Some(today) {
-        return Some(Kind::DueToday);
-    }
-    if task.start_date == Some(today) {
-        return Some(Kind::StartsToday);
-    }
-    if status == TaskStatus::InProgress
-        && task.start_date.is_none_or(|date| date <= today)
-        && task.due_date.is_none_or(|date| date > today)
+    // D-TODAY-09：过去开始的未开始任务不消失，手动进行中不受未来排期限制。
+    if is_overdue(task, now)
+        || task.start_date.is_some_and(|date| date <= now.date())
+        || task.due_date.is_some_and(|date| date <= now.date())
+        || status == TaskStatus::InProgress
     {
-        return Some(Kind::InProgress);
+        Some(Kind::Focus)
+    } else if task.start_date.is_none() && task.due_date.is_none() {
+        Some(Kind::Unscheduled)
+    } else {
+        Some(Kind::Later)
     }
-    if status == TaskStatus::Waiting {
-        return Some(Kind::Waiting);
-    }
-    if status == TaskStatus::Todo && task.start_date.is_none() && task.due_date.is_none() {
-        return Some(Kind::Unscheduled);
-    }
-    today
-        .succ_opt()
-        .filter(|tomorrow| task.due_date == Some(*tomorrow) || task.start_date == Some(*tomorrow))
-        .map(|_| Kind::Tomorrow)
 }
 
 /// 统一分组、排序、完整计数和每组 200–1000 条加载上限。
@@ -97,7 +74,7 @@ pub fn build_today_view(
     today: NaiveDate,
     clock: &impl TaskClock,
     preferences: TodayPreferences,
-    limits: [u32; 8],
+    limits: [u32; 4],
 ) -> TodayView {
     let mut collector = TodayCollector::new(today, clock, preferences, limits);
     for task in tasks {
@@ -121,15 +98,14 @@ fn compare(a: &TaskSummary, b: &TaskSummary, kind: Kind, sort: TodaySort) -> Ord
         optional_value(a.due_date, b.due_date).then_with(|| optional_value(a.due_time, b.due_time));
     let start =
         optional_value(a.start_date, b.start_date).then_with(|| a.start_time.cmp(&b.start_time));
-    match kind {
-        Kind::Waiting => a.status_changed_at.cmp(&b.status_changed_at).then(priority),
+    let ordering = match kind {
         Kind::Unscheduled => priority.then_with(|| b.created_at.cmp(&a.created_at)),
         Kind::CompletedToday => b.completed_at.cmp(&a.completed_at),
-        Kind::Tomorrow => priority
+        Kind::Later => priority
             .then(due)
             .then(start)
             .then(a.created_at.cmp(&b.created_at)),
-        _ => match sort {
+        Kind::Focus => match sort {
             TodaySort::Priority => priority
                 .then(due)
                 .then(start)
@@ -140,6 +116,11 @@ fn compare(a: &TaskSummary, b: &TaskSummary, kind: Kind, sort: TodaySort) -> Ord
                 .then(a.created_at.cmp(&b.created_at)),
             TodaySort::CreatedDescending => b.created_at.cmp(&a.created_at),
         },
+    };
+    if kind == Kind::Focus {
+        b.is_overdue.cmp(&a.is_overdue).then(ordering)
+    } else {
+        ordering
     }
 }
 

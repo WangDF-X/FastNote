@@ -23,14 +23,6 @@ fn test_task_preference_changes_use_only_registered_keys_and_preserve_other_sett
             "tasks.default_sort",
         ),
         (
-            DesktopSetting::TodayShowInProgress(false),
-            "today.show_in_progress",
-        ),
-        (
-            DesktopSetting::TodayShowWaiting(false),
-            "today.show_waiting",
-        ),
-        (
             DesktopSetting::TodayShowUnscheduled(false),
             "today.show_unscheduled",
         ),
@@ -44,8 +36,6 @@ fn test_task_preference_changes_use_only_registered_keys_and_preserve_other_sett
         let mut expected = TodayPreferences::default();
         match &change {
             DesktopSetting::TodaySort(value) => expected.sort = *value,
-            DesktopSetting::TodayShowInProgress(value) => expected.show_in_progress = *value,
-            DesktopSetting::TodayShowWaiting(value) => expected.show_waiting = *value,
             DesktopSetting::TodayShowUnscheduled(value) => expected.show_unscheduled = *value,
             DesktopSetting::TodayShowCompleted(value) => expected.show_completed = *value,
             _ => panic!("only task preferences are exercised"),
@@ -61,33 +51,24 @@ fn test_task_preference_changes_use_only_registered_keys_and_preserve_other_sett
 }
 
 #[test]
-fn test_group_visibility_changes_leave_mandatory_groups_and_tomorrow_default_unchanged() {
+fn test_group_visibility_changes_leave_focus_later_and_collapse_default_unchanged() {
     use crate::TodaySectionKind;
 
     let mut settings = DesktopSettings::default();
     for change in [
-        DesktopSetting::TodayShowInProgress(false),
-        DesktopSetting::TodayShowWaiting(false),
         DesktopSetting::TodayShowUnscheduled(false),
         DesktopSetting::TodayShowCompleted(false),
     ] {
         settings.apply(&change);
     }
     for kind in [
-        TodaySectionKind::InProgress,
-        TodaySectionKind::Waiting,
         TodaySectionKind::Unscheduled,
         TodaySectionKind::CompletedToday,
     ] {
         assert!(!settings.today_preferences.enabled(kind));
     }
-    for kind in [
-        TodaySectionKind::Overdue,
-        TodaySectionKind::DueToday,
-        TodaySectionKind::StartsToday,
-        TodaySectionKind::Tomorrow,
-    ] {
+    for kind in [TodaySectionKind::Focus, TodaySectionKind::Later] {
         assert!(settings.today_preferences.enabled(kind));
     }
-    assert!(settings.today_preferences.tomorrow_collapsed);
+    assert!(settings.today_preferences.later_collapsed);
 }

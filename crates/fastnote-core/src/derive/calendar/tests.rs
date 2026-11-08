@@ -39,7 +39,7 @@ fn test_agenda_groups_deduplicates_and_filters_archived() {
     let mut due = item(1, TaskStatus::Todo);
     due.due_date = Some(date);
     due.start_date = Some(date);
-    let mut start = item(2, TaskStatus::Waiting);
+    let mut start = item(2, TaskStatus::Todo);
     start.start_date = Some(date);
     let mut ongoing = item(3, TaskStatus::InProgress);
     ongoing.start_date = date.pred_opt();

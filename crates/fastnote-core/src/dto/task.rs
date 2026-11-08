@@ -54,13 +54,11 @@ pub struct TaskSummary {
     pub is_overdue: bool,
     /// core 统一计算的阻塞标记。
     pub is_blocked: bool,
-    /// core 使用本地日期计算的等待天数。
-    pub waiting_days: Option<u32>,
     /// 完成时间。
     pub completed_at: Option<DateTime<Utc>>,
-    /// 创建时间；日期类/未安排排序使用。
+    /// 创建时间；当前关注、待安排及稍后排序使用。
     pub created_at: DateTime<Utc>,
-    /// 最近状态变化；等待中排序使用。
+    /// 最近状态变化；保留历史时间，不随分区调整。
     pub status_changed_at: DateTime<Utc>,
     /// 最近变更。
     pub updated_at: DateTime<Utc>,
@@ -94,7 +92,6 @@ impl TaskSummary {
             context,
             is_overdue: false,
             is_blocked: false,
-            waiting_days: None,
             completed_at: task.completed_at,
             created_at: task.created_at,
             status_changed_at: task.status_changed_at,

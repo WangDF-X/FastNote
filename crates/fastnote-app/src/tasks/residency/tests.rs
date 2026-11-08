@@ -16,7 +16,6 @@ fn today() -> TodayView {
         open_count: 0,
         overdue_count: 0,
         completed_today_count: 0,
-        tomorrow_count: 0,
     }
 }
 

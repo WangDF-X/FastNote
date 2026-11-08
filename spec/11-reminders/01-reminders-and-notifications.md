@@ -107,7 +107,7 @@ pub struct UpsertReminder {
 
 | 事件 | 规则处理 |
 | --- | --- |
-| todo / in_progress / waiting 相互切换 | 保持，不因 waiting 或依赖阻塞禁用 |
+| todo / in_progress 相互切换 | 保持，不因执行状态切换或依赖阻塞禁用；旧 waiting 迁移为 todo 不暂停/重排提醒 |
 | 完成任务 | 同事务 active→paused、revision+1；不自动结束后继，不自动重开重复任务 |
 | 归档计划 | 同事务暂停该计划所有 active 任务提醒；提示影响数量 |
 | 重开任务 / 取消归档 | 不自动恢复；保留用户暂停意图，用户手动恢复/编辑 |

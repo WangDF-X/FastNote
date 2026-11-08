@@ -13,7 +13,6 @@ fn session() -> TaskSession {
         open_count: 2,
         overdue_count: 0,
         completed_today_count: 1,
-        tomorrow_count: 0,
         sections: vec![
             TodaySection {
                 kind: TodaySectionKind::Unscheduled,
@@ -41,9 +40,9 @@ fn session() -> TaskSession {
 fn test_collapsing_groups_preserves_other_groups_and_controls_focus_order() {
     let mut session = session();
     assert_eq!(session.visible_ids(), vec![id(1), id(2)]);
-    assert!(session.toggle_section(7));
+    assert!(session.toggle_section(2));
     assert_eq!(session.visible_ids(), vec![id(1), id(2), id(3)]);
-    assert!(session.toggle_section(5));
+    assert!(session.toggle_section(1));
     assert_eq!(session.visible_ids(), vec![id(3)]);
     assert!(!session.toggle_section(100));
     assert!(!session.toggle_section(0));
@@ -53,12 +52,12 @@ fn test_collapsing_groups_preserves_other_groups_and_controls_focus_order() {
 fn test_load_limits_are_per_group_capped_and_do_not_persist() {
     let mut session = session();
     for _ in 0..4 {
-        assert!(session.load_more(5));
+        assert!(session.load_more(1));
     }
-    assert_eq!(session.limits[5], 1000);
-    assert_eq!(session.limits[7], 200);
-    assert!(!session.load_more(5) && !session.load_more(99));
-    assert_eq!(TaskSession::new().limits, [200; 8]);
+    assert_eq!(session.limits[1], 1000);
+    assert_eq!(session.limits[2], 200);
+    assert!(!session.load_more(1) && !session.load_more(99));
+    assert_eq!(TaskSession::new().limits, [200; 4]);
 }
 
 #[test]
@@ -221,14 +220,14 @@ fn test_outside_close_waits_for_save_ack_and_does_not_discard_failed_draft() {
 #[test]
 fn test_explicit_unscheduled_reveal_only_expands_that_group_and_preserves_pagination() {
     let mut session = session();
-    session.collapsed = [Some(true); 8];
-    session.limits = [400; 8];
+    session.collapsed = [Some(true); 4];
+    session.limits = [400; 4];
     session.request_unscheduled_reveal();
-    assert_eq!(session.collapsed[5], Some(false));
-    for index in [0, 1, 2, 3, 4, 6, 7] {
+    assert_eq!(session.collapsed[1], Some(false));
+    for index in [0, 2, 3] {
         assert_eq!(session.collapsed[index], Some(true));
     }
-    assert_eq!(session.limits, [400; 8]);
+    assert_eq!(session.limits, [400; 4]);
     assert!(session.take_unscheduled_reveal());
     assert!(!session.take_unscheduled_reveal());
 }

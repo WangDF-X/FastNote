@@ -14,16 +14,14 @@ export global CalendarStyle {
     public pure function status-color(status: int, overdue: bool) -> color {
         return overdue ? TaskStyle.row-danger
             : status == 1 ? ShellPalette.accent
-            : status == 2 ? TaskStyle.row-warning
-            : status == 3 ? ShellPalette.success
+            : status == 2 ? ShellPalette.success
             : ShellPalette.text-secondary;
     }
 
     public pure function status-icon(status: int, overdue: bool) -> image {
         return overdue ? @image-url("../../../../ui/icons/alert.svg")
             : status == 1 ? @image-url("../../../../ui/icons/refresh.svg")
-            : status == 2 ? @image-url("../../../../ui/icons/pause.svg")
-            : status == 3 ? @image-url("../../../../ui/icons/check.svg")
+            : status == 2 ? @image-url("../../../../ui/icons/check.svg")
             : @image-url("../../../../ui/icons/clock.svg");
     }
 }

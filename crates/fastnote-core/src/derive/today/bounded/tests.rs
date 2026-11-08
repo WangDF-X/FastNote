@@ -55,12 +55,11 @@ fn item(number: usize) -> TaskSummary {
             summary.status = Some(TaskStatus::InProgress);
         }
         4 => {
-            summary.status = Some(TaskStatus::Waiting);
-            summary.status_changed_at -= Duration::days((number % 9) as i64);
+            summary.start_date = today.pred_opt();
         }
         5 => {}
         6 => {
-            summary.start_date = today.succ_opt();
+            summary.start_date = Some(today + Duration::days(30));
         }
         _ => {
             summary.status = Some(TaskStatus::Done);
@@ -89,7 +88,7 @@ fn test_owned_projection_matches_borrowed_projection() {
 fn test_streaming_twenty_thousand_rows_keeps_only_bounded_prefixes_and_full_counts() {
     let clock = FixedClock(Cell::new(0));
     let mut collector =
-        TodayCollector::new(clock.today(), &clock, TodayPreferences::default(), [200; 8]);
+        TodayCollector::new(clock.today(), &clock, TodayPreferences::default(), [200; 4]);
     for number in 1..=20_000 {
         collector.push(item(number));
         assert!(collector
@@ -101,10 +100,15 @@ fn test_streaming_twenty_thousand_rows_keeps_only_bounded_prefixes_and_full_coun
     let view = collector.finish();
     assert_eq!(view.open_count, 17_500);
     assert_eq!(view.completed_today_count, 2_500);
+    assert_eq!(view.overdue_count, 2_500);
+    assert_eq!(
+        view.sections.iter().map(|s| s.total).collect::<Vec<_>>(),
+        [12_500, 2_500, 2_500, 2_500]
+    );
     assert!(view
         .sections
         .iter()
-        .all(|section| section.total == 2_500 && section.items.len() == 200 && section.has_more));
+        .all(|section| section.items.len() == 200 && section.has_more));
 }
 
 #[test]
@@ -123,7 +127,7 @@ fn test_bounded_heaps_match_reference_sort_for_every_group_and_sort_mode() {
                 sort,
                 ..Default::default()
             },
-            [200; 8],
+            [200; 4],
         );
         for task in &input {
             collector.push(task.clone());
@@ -134,6 +138,10 @@ fn test_bounded_heaps_match_reference_sort_for_every_group_and_sort_mode() {
                 .iter()
                 .filter(|task| section_at(task, view.evaluated_at, &clock) == Some(section.kind))
                 .cloned()
+                .map(|mut task| {
+                    derive_at(&mut task, view.evaluated_at);
+                    task
+                })
                 .collect();
             expected
                 .sort_by(|a, b| compare(a, b, section.kind, sort).then_with(|| a.id.cmp(&b.id)));
@@ -160,8 +168,8 @@ fn test_candidate_order_does_not_change_bounded_results_or_counts() {
             sort,
             ..Default::default()
         };
-        let mut ascending = TodayCollector::new(clock.today(), &clock, preferences, [200; 8]);
-        let mut descending = TodayCollector::new(clock.today(), &clock, preferences, [200; 8]);
+        let mut ascending = TodayCollector::new(clock.today(), &clock, preferences, [200; 4]);
+        let mut descending = TodayCollector::new(clock.today(), &clock, preferences, [200; 4]);
         for number in 1..=4_800 {
             ascending.push(item(number));
             descending.push(item(4_801 - number));
@@ -171,7 +179,6 @@ fn test_candidate_order_does_not_change_bounded_results_or_counts() {
         assert_eq!(first.open_count, second.open_count);
         assert_eq!(first.overdue_count, second.overdue_count);
         assert_eq!(first.completed_today_count, second.completed_today_count);
-        assert_eq!(first.tomorrow_count, second.tomorrow_count);
         assert_eq!(first.next_overdue_at, second.next_overdue_at);
         assert_eq!(first.sections.len(), second.sections.len());
         for (a, b) in first.sections.iter().zip(&second.sections) {
@@ -191,19 +198,29 @@ fn test_hidden_groups_allocate_nothing_and_keep_complete_counts_and_future_deadl
         clock.today(),
         &clock,
         TodayPreferences {
-            show_waiting: false,
+            show_unscheduled: false,
+            show_completed: false,
             ..Default::default()
         },
-        [1000; 8],
+        [1000; 4],
     );
-    let mut task = item(4);
+    collector.push(item(5));
+    collector.push(item(7));
+    let mut task = item(6);
+    task.start_date = None;
     task.due_date = clock.today().succ_opt();
     task.due_time = Some("00:01".parse().unwrap());
     collector.push(task);
-    assert_eq!(collector.groups[Kind::Waiting as usize].capacity(), 0);
+    assert_eq!(collector.groups[Kind::Unscheduled as usize].capacity(), 0);
+    assert_eq!(
+        collector.groups[Kind::CompletedToday as usize].capacity(),
+        0
+    );
     let view = collector.finish();
-    assert!(view.sections.is_empty());
-    assert_eq!(view.open_count, 0);
+    assert_eq!(view.sections.len(), 1);
+    assert_eq!(view.sections[0].kind, Kind::Later);
+    assert_eq!(view.open_count, 1);
+    assert_eq!(view.completed_today_count, 1);
     assert_eq!(
         view.next_overdue_at,
         Some("2026-11-05T00:01:00".parse().unwrap())
@@ -214,12 +231,12 @@ fn test_hidden_groups_allocate_nothing_and_keep_complete_counts_and_future_deadl
 fn test_rank_order_is_total_even_across_different_group_or_sort_configurations() {
     let a = RankedTask {
         task: item(1),
-        kind: Kind::DueToday,
+        kind: Kind::Focus,
         sort: TodaySort::Priority,
     };
     let b = RankedTask {
         task: item(2),
-        kind: Kind::StartsToday,
+        kind: Kind::Later,
         sort: TodaySort::DueDate,
     };
     assert_eq!(a.cmp(&b), b.cmp(&a).reverse());

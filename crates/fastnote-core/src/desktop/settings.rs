@@ -170,13 +170,9 @@ pub enum DesktopSetting {
     BallPosition(Option<BallPosition>),
     /// 首次启动标记。
     FirstRunDone(bool),
-    /// 今日四个日期类分组的排序。
+    /// 当前关注区的排序，始终保持逾期置顶。
     TodaySort(TodaySort),
-    /// 显示进行中分组。
-    TodayShowInProgress(bool),
-    /// 显示等待中分组。
-    TodayShowWaiting(bool),
-    /// 显示未安排分组。
+    /// 显示待安排分组。
     TodayShowUnscheduled(bool),
     /// 显示今日已完成分组。
     TodayShowCompleted(bool),
@@ -194,8 +190,6 @@ impl DesktopSetting {
             Self::BallPosition(_) => "appearance.ball_position",
             Self::FirstRunDone(_) => "general.first_run_done",
             Self::TodaySort(_) => "tasks.default_sort",
-            Self::TodayShowInProgress(_) => "today.show_in_progress",
-            Self::TodayShowWaiting(_) => "today.show_waiting",
             Self::TodayShowUnscheduled(_) => "today.show_unscheduled",
             Self::TodayShowCompleted(_) => "today.show_completed",
         }
@@ -214,10 +208,6 @@ impl DesktopSettings {
             DesktopSetting::BallPosition(value) => self.ball_position = value.clone(),
             DesktopSetting::FirstRunDone(value) => self.first_run_done = *value,
             DesktopSetting::TodaySort(value) => self.today_preferences.sort = *value,
-            DesktopSetting::TodayShowInProgress(value) => {
-                self.today_preferences.show_in_progress = *value
-            }
-            DesktopSetting::TodayShowWaiting(value) => self.today_preferences.show_waiting = *value,
             DesktopSetting::TodayShowUnscheduled(value) => {
                 self.today_preferences.show_unscheduled = *value
             }

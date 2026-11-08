@@ -16,13 +16,13 @@ fn test_task_preferences_entry_uses_the_existing_settings_route_and_live_page() 
 }
 
 #[test]
-fn test_three_sort_choices_and_four_visibility_controls_are_confirmed_value_bindings() {
+fn test_three_sort_choices_and_two_visibility_controls_are_confirmed_value_bindings() {
     let panel = include_str!("../../ui/settings/task-preferences.slint");
     assert!(panel.contains("model: [\"优先级\", \"到期时间\", \"最近创建\"];"));
     assert!(panel.contains("current-index: root.sort-index;"));
     assert!(panel.contains("[\"priority\", \"due_date\", \"created_desc\"][index]"));
-    assert_eq!(panel.matches("VisibilitySwitch {").count(), 4);
-    for group in ["in-progress", "waiting", "unscheduled", "completed"] {
+    assert_eq!(panel.matches("VisibilitySwitch {").count(), 2);
+    for group in ["unscheduled", "completed"] {
         assert!(panel.contains(&format!("checked: root.show-{group};")));
         assert!(panel.contains(&format!("settings:tasks:{group}:")));
     }
@@ -30,15 +30,15 @@ fn test_three_sort_choices_and_four_visibility_controls_are_confirmed_value_bind
         panel
             .matches("enabled: root.enabled && !root.busy;")
             .count(),
-        5
+        3
     );
     assert!(!panel.contains("current-index <=>") && !panel.contains("checked <=>"));
     assert!(panel.contains("text: root.error-message;"));
     assert!(panel.contains("root.busy ? \"正在保存…\""));
     assert!(!panel.contains("label: \"保存\""));
-    // 4 行、3 条分隔线和上下 8px 内边距，不能把最后一行挤出卡片。
-    assert!(panel.contains("height: 243px;"));
-    assert_eq!(4 * 56 + 3 + 2 * 8, 243);
+    // 两行、分隔线及上下内边距。
+    assert!(panel.contains("height: 130px;"));
+    assert_eq!(2 * 56 + 1 + 2 * 8, 129);
 }
 
 #[test]

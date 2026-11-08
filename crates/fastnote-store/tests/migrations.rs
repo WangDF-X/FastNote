@@ -52,12 +52,83 @@ fn create_v1(path: &Path) {
 }
 
 #[test]
-fn test_fresh_database_has_v3_schema_indexes_wal_and_audit() {
+fn test_v3_upgrade_preserves_reminders_custom_schema_and_backup() {
+    let directory = tempdir();
+    let path = directory.path().join("fake.db");
+    create_v1(&path);
+    let db = Connection::open(&path).unwrap();
+    db.execute_batch(include_str!("../migrations/m0002_reminders.sql"))
+        .unwrap();
+    db.execute_batch(include_str!("../migrations/m0003_task_times.sql"))
+        .unwrap();
+    db.execute_batch(
+        "PRAGMA user_version=3;
+         INSERT INTO schema_migrations VALUES (2, '2026-11-02T08:00:00Z', '0.0.1');
+         INSERT INTO schema_migrations VALUES (3, '2026-11-02T08:00:00Z', '0.0.1');
+         INSERT INTO tasks(id,title,status,status_changed_at,created_at,updated_at)
+             VALUES('task','假任务','waiting','old','created','updated');
+         INSERT INTO reminders(id,task_id,schedule_kind,local_time,state,created_at,updated_at)
+             VALUES('reminder','task','daily','09:00','paused','created','updated');
+         CREATE INDEX custom_task_title ON tasks(title);
+         CREATE TRIGGER custom_task_update AFTER UPDATE ON tasks BEGIN SELECT 1; END;
+         INSERT INTO app_settings VALUES('today.tomorrow_collapsed','false','old');",
+    )
+    .unwrap();
+    drop(db);
+
+    let store = SqliteSettings::open(&path, now()).unwrap();
+    let db = Connection::open(&path).unwrap();
+    assert_eq!(version(&db), 4);
+    let status: (String, String) = db
+        .query_row(
+            "SELECT status,status_changed_at FROM tasks WHERE id='task'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(status, ("todo".into(), "old".into()));
+    assert_eq!(
+        db.query_row::<String, _, _>(
+            "SELECT task_id FROM reminders WHERE id='reminder'",
+            [],
+            |row| row.get(0)
+        )
+        .unwrap(),
+        "task"
+    );
+    assert_eq!(db.query_row::<i64, _, _>("SELECT count(*) FROM sqlite_schema WHERE name IN ('custom_task_title','custom_task_update')", [], |row| row.get(0)).unwrap(), 2);
+    assert_eq!(
+        db.query_row::<i64, _, _>("SELECT count(*) FROM pragma_foreign_key_check", [], |row| {
+            row.get(0)
+        })
+        .unwrap(),
+        0
+    );
+    let backup_path = fs::read_dir(directory.path().join("backups"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let backup = Connection::open(backup_path).unwrap();
+    assert_eq!(version(&backup), 3);
+    assert_eq!(
+        backup
+            .query_row::<String, _, _>("SELECT status FROM tasks WHERE id='task'", [], |row| row
+                .get(0))
+            .unwrap(),
+        "waiting"
+    );
+    drop(store);
+}
+
+#[test]
+fn test_fresh_database_has_v4_schema_indexes_wal_and_audit() {
     let directory = tempdir();
     let path = directory.path().join("nested/fake.db");
     let store = SqliteSettings::open(&path, now()).unwrap();
     let connection = Connection::open(&path).unwrap();
-    assert_eq!(version(&connection), 3);
+    assert_eq!(version(&connection), 4);
     let mode: String = connection
         .pragma_query_value(None, "journal_mode", |row| row.get(0))
         .unwrap();
@@ -107,7 +178,7 @@ fn test_fresh_database_has_v3_schema_indexes_wal_and_audit() {
             .query_row::<i64, _, _>("SELECT count(*) FROM schema_migrations", [], |row| row
                 .get(0))
             .unwrap(),
-        3
+        4
     );
     drop(connection);
     store.checkpoint().unwrap();
@@ -132,7 +203,7 @@ fn test_v1_upgrade_preserves_data_and_produces_complete_v1_backup() {
     assert_eq!(store.load_desktop().unwrap().entry_mode.as_str(), "tray");
     assert_eq!(store.load_desktop().unwrap().theme.as_str(), "dark");
     let connection = Connection::open(&path).unwrap();
-    assert_eq!(version(&connection), 3);
+    assert_eq!(version(&connection), 4);
     let plan: String = connection
         .query_row("SELECT name FROM plans", [], |row| row.get(0))
         .unwrap();

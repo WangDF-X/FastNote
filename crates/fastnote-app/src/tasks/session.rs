@@ -60,8 +60,8 @@ pub(crate) enum DetailPurpose {
 #[derive(Default)]
 pub(crate) struct TaskSession {
     pub today: Option<TodayView>,
-    pub collapsed: [Option<bool>; 8],
-    pub limits: [u32; 8],
+    pub collapsed: [Option<bool>; 4],
+    pub limits: [u32; 4],
     pub editor: Option<EditorSession>,
     pub pending: HashMap<u64, PendingTask>,
     pub queries: HashMap<u64, DetailPurpose>,
@@ -86,7 +86,7 @@ pub(crate) struct TaskSession {
 impl TaskSession {
     pub(crate) fn new() -> Self {
         Self {
-            limits: [200; 8],
+            limits: [200; 4],
             ..Default::default()
         }
     }

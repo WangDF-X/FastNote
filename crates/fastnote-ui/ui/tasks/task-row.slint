@@ -43,7 +43,7 @@ export component TaskRow inherits Rectangle {
         TaskIconButton {
             checkbox: true;
             checked: root.data.done;
-            foreground: root.data.status-index == 1 ? ShellPalette.accent : root.data.status-index == 2 ? TaskStyle.row-warning : ShellPalette.text-secondary;
+            foreground: root.data.status-index == 1 ? ShellPalette.accent : ShellPalette.text-secondary;
             label: (root.data.done ? "重新打开：" : "完成：") + root.data.title;
             focus-key: "task:check:" + root.data.id;
             enabled: root.enabled && !root.data.read-only;
@@ -109,8 +109,8 @@ export component TaskRow inherits Rectangle {
             min-width: 112px;
             max-width: 112px;
             preferred-width: 112px;
-            model: ["待处理", "进行中", "等待中", "已完成"];
-            current-index: root.data.status-index;
+            model: ["未开始", "进行中", "已完成"];
+            current-index: root.data.done ? 2 : root.data.status-index;
             quiet: true;
             enabled: root.enabled && !root.data.read-only;
             label: "修改任务状态：" + root.data.title;

@@ -63,7 +63,14 @@ fn test_arrow_rotation_is_centered_and_other_action_buttons_stay_unrotated() {
 fn test_calendar_title_has_no_description_and_preserves_state_legend() {
     assert!(PAGE.contains("text: root.heading;"));
     assert!(!PAGE.contains("任务状态一目了然"));
-    for label in ["待处理", "进行中", "等待中", "已完成", "逾期"] {
+    for label in [
+        "执行状态：",
+        "未开始",
+        "进行中",
+        "已完成",
+        "时间提示：",
+        "逾期",
+    ] {
         assert!(PAGE.contains(label));
     }
 }

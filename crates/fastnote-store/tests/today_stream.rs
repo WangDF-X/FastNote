@@ -54,7 +54,7 @@ fn test_streamed_candidates_match_legacy_projection_with_real_sqlite() {
     let QueryResult::Today(view) = service
         .query(Query::Today {
             date: now().date_naive(),
-            limits: [200; 8],
+            limits: [200; 4],
         })
         .unwrap()
     else {
@@ -89,7 +89,7 @@ fn test_invalid_stored_candidate_fails_without_returning_a_partially_loaded_view
     assert!(service
         .query(Query::Today {
             date: now().date_naive(),
-            limits: [200; 8]
+            limits: [200; 4]
         })
         .is_err());
     let status: String = connection
@@ -159,7 +159,7 @@ fn test_bounded_projection_restores_plan_children_and_dependency_flags_without_b
         .query_tasks(
             Query::Today {
                 date: now().date_naive(),
-                limits: [200; 8],
+                limits: [200; 4],
             },
             FixedClock(now(), 0),
         )
@@ -188,7 +188,7 @@ fn test_projection_rejects_missing_or_changed_entities_without_modifying_the_dat
             .query_tasks(
                 Query::Today {
                     date: now().date_naive(),
-                    limits: [200; 8],
+                    limits: [200; 4],
                 },
                 FixedClock(now(), 0),
             )

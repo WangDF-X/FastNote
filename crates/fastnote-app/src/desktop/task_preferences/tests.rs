@@ -15,14 +15,12 @@ fn test_sort_actions_are_typed_and_do_not_request_a_group_reveal() {
 }
 
 #[test]
-fn test_visibility_actions_only_accept_the_four_supported_groups_and_strict_boolean_values() {
+fn test_visibility_actions_only_accept_supported_groups_and_strict_boolean_values() {
     for (group, setting) in [
         (
-            "in-progress",
-            DesktopSetting::TodayShowInProgress as fn(bool) -> DesktopSetting,
+            "unscheduled",
+            DesktopSetting::TodayShowUnscheduled as fn(bool) -> DesktopSetting,
         ),
-        ("waiting", DesktopSetting::TodayShowWaiting),
-        ("unscheduled", DesktopSetting::TodayShowUnscheduled),
         ("completed", DesktopSetting::TodayShowCompleted),
     ] {
         for shown in [false, true] {
@@ -37,6 +35,8 @@ fn test_visibility_actions_only_accept_the_four_supported_groups_and_strict_bool
         "settings:tasks:sort:created",
         "settings:tasks:sort:priority:true",
         "settings:tasks:waiting:1",
+        "settings:tasks:waiting:true",
+        "settings:tasks:in-progress:true",
         "settings:tasks:waiting:True",
         "settings:tasks:waiting:false:extra",
         "settings:tasks:overdue:false",
@@ -52,8 +52,6 @@ fn test_visibility_actions_only_accept_the_four_supported_groups_and_strict_bool
 fn test_confirmed_value_reads_the_current_snapshot_and_rejects_other_settings() {
     let preferences = TodayPreferences {
         sort: TodaySort::CreatedDescending,
-        show_in_progress: false,
-        show_waiting: false,
         show_unscheduled: false,
         show_completed: false,
         ..Default::default()
@@ -62,14 +60,6 @@ fn test_confirmed_value_reads_the_current_snapshot_and_rejects_other_settings() 
         (
             DesktopSetting::TodaySort(TodaySort::Priority),
             DesktopSetting::TodaySort(TodaySort::CreatedDescending),
-        ),
-        (
-            DesktopSetting::TodayShowInProgress(true),
-            DesktopSetting::TodayShowInProgress(false),
-        ),
-        (
-            DesktopSetting::TodayShowWaiting(true),
-            DesktopSetting::TodayShowWaiting(false),
         ),
         (
             DesktopSetting::TodayShowUnscheduled(true),
@@ -94,19 +84,18 @@ fn test_hidden_creation_notice_has_an_explicit_persistent_reveal_action_without_
     assert_eq!(hidden_task_created(TodayPreferences::default()), None);
     let preferences = TodayPreferences {
         show_unscheduled: false,
-        show_waiting: false,
         ..Default::default()
     };
     let request = hidden_task_created(preferences).unwrap();
     assert_eq!(request.kind, ToastKind::Info);
-    assert_eq!(request.message, "任务已添加，未安排分组已隐藏。");
+    assert_eq!(request.message, "任务已添加，待安排分组已隐藏。");
     assert_eq!(request.kind.duration_ms(request.action.is_some()), 6000);
     let action = request.action.unwrap();
     assert_eq!(action.label, "撤销隐藏分组");
     let reveal = parse_request(&action.command).unwrap();
     assert_eq!(reveal.change, DesktopSetting::TodayShowUnscheduled(true));
     assert!(reveal.reveal_unscheduled);
-    assert!(!preferences.show_unscheduled && !preferences.show_waiting);
+    assert!(!preferences.show_unscheduled);
 }
 
 #[test]

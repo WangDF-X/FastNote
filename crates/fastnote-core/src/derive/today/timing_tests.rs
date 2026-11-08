@@ -35,18 +35,21 @@ fn task(number: usize, due: &str) -> TaskSummary {
 }
 
 #[test]
-fn test_due_time_moves_from_due_today_to_overdue_only_after_exact_local_deadline() {
+fn test_due_time_sets_overdue_only_after_deadline_without_changing_focus_section() {
     let task = task(1, "15:30");
     for (now, expected) in [
-        ("2026-11-03T15:29:59Z", Kind::DueToday),
-        ("2026-11-03T15:30:00Z", Kind::DueToday),
-        ("2026-11-03T15:30:01Z", Kind::Overdue),
+        ("2026-11-03T15:29:59Z", false),
+        ("2026-11-03T15:30:00Z", false),
+        ("2026-11-03T15:30:01Z", true),
     ] {
         let clock = FixedClock(now.parse().unwrap(), 0);
-        assert_eq!(today_section(&task, clock.today(), &clock), Some(expected));
+        assert_eq!(
+            today_section(&task, clock.today(), &clock),
+            Some(Kind::Focus)
+        );
         assert_eq!(
             is_overdue(&task, clock.local_datetime(clock.now())),
-            expected == Kind::Overdue
+            expected
         );
     }
 }
@@ -57,13 +60,15 @@ fn test_all_day_legacy_task_stays_due_today_until_next_day() {
     let clock = FixedClock("2026-11-03T23:59:59Z".parse().unwrap(), 0);
     assert_eq!(
         today_section(&task, clock.today(), &clock),
-        Some(Kind::DueToday)
+        Some(Kind::Focus)
     );
+    assert!(!is_overdue(&task, clock.local_datetime(clock.now())));
     let clock = FixedClock(clock.0 + Duration::seconds(1), 0);
     assert_eq!(
         today_section(&task, clock.today(), &clock),
-        Some(Kind::Overdue)
+        Some(Kind::Focus)
     );
+    assert!(is_overdue(&task, clock.local_datetime(clock.now())));
 }
 
 #[test]
@@ -72,17 +77,19 @@ fn test_deadline_is_compared_in_device_local_time_not_utc() {
     let clock = FixedClock("2026-11-03T07:31:00Z".parse().unwrap(), 8);
     assert_eq!(
         today_section(&task, clock.today(), &clock),
-        Some(Kind::Overdue)
+        Some(Kind::Focus)
     );
+    assert!(is_overdue(&task, clock.local_datetime(clock.now())));
     let clock = FixedClock(clock.0, 0);
     assert_eq!(
         today_section(&task, clock.today(), &clock),
-        Some(Kind::DueToday)
+        Some(Kind::Focus)
     );
+    assert!(!is_overdue(&task, clock.local_datetime(clock.now())));
 }
 
 #[test]
-fn test_today_clock_boundary_uses_full_candidate_set_before_hiding_and_pagination() {
+fn test_today_clock_boundary_covers_pagination_and_collapsed_later_section() {
     let clock = FixedClock("2026-11-03T08:00:00Z".parse().unwrap(), 0);
     let mut items: Vec<_> = (1..=201).map(|index| task(index, "16:00")).collect();
     items[200].due_time = crate::parse_task_time("09:00").unwrap();
@@ -91,7 +98,7 @@ fn test_today_clock_boundary_uses_full_candidate_set_before_hiding_and_paginatio
         clock.today(),
         &clock,
         TodayPreferences::default(),
-        [200; 8],
+        [200; 4],
     );
     assert_eq!(
         view.next_overdue_at,
@@ -99,20 +106,18 @@ fn test_today_clock_boundary_uses_full_candidate_set_before_hiding_and_paginatio
     );
     assert_eq!(view.sections[0].total, 201);
     assert_eq!(view.sections[0].items.len(), 200);
-    let mut hidden = task(1, "16:00");
-    hidden.status = Some(TaskStatus::Waiting);
-    hidden.due_date = Some("2026-11-04".parse().unwrap());
+    let mut later = task(1, "16:00");
+    later.due_date = Some("2026-11-04".parse().unwrap());
     let view = build_today_view(
-        vec![hidden],
+        vec![later],
         clock.today(),
         &clock,
-        TodayPreferences {
-            show_waiting: false,
-            ..Default::default()
-        },
-        [200; 8],
+        TodayPreferences::default(),
+        [200; 4],
     );
-    assert!(view.sections.is_empty());
+    assert_eq!(view.sections[0].kind, Kind::Later);
+    assert!(view.sections[0].collapsed_default);
+    assert_eq!(view.open_count, 1);
     assert_eq!(
         view.next_overdue_at,
         Some("2026-11-04T16:00:00".parse().unwrap())
@@ -132,7 +137,7 @@ fn test_completed_and_archived_tasks_do_not_schedule_deadline_refresh() {
         clock.today(),
         &clock,
         TodayPreferences::default(),
-        [200; 8],
+        [200; 4],
     );
     assert!(view.next_overdue_at.is_none());
     assert_eq!(view.overdue_count, 0);
@@ -146,7 +151,7 @@ fn test_same_date_sort_orders_times_and_keeps_all_day_due_last() {
         clock.today(),
         &clock,
         TodayPreferences::default(),
-        [200; 8],
+        [200; 4],
     );
     assert_eq!(
         view.sections[0]
@@ -175,9 +180,9 @@ fn test_same_date_start_sort_places_all_day_before_specific_start_times() {
         clock.today(),
         &clock,
         TodayPreferences::default(),
-        [200; 8],
+        [200; 4],
     );
-    assert_eq!(view.sections[0].kind, Kind::StartsToday);
+    assert_eq!(view.sections[0].kind, Kind::Focus);
     assert_eq!(
         view.sections[0]
             .items

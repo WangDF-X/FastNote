@@ -9,15 +9,13 @@ pub enum TaskKind {
     Stage,
 }
 
-/// 四种互不限制转换的执行状态（ARCH-03 §4.2）。
+/// 三种互不限制转换的执行状态（ARCH-03 §4.2，D-TODAY-09）。
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TaskStatus {
-    /// 待处理。
+    /// 未开始。
     Todo,
     /// 进行中。
     InProgress,
-    /// 等待中。
-    Waiting,
     /// 已完成。
     Done,
 }
@@ -28,7 +26,6 @@ impl TaskStatus {
         match self {
             Self::Todo => "todo",
             Self::InProgress => "in_progress",
-            Self::Waiting => "waiting",
             Self::Done => "done",
         }
     }
@@ -38,7 +35,6 @@ impl TaskStatus {
         match value {
             "todo" => Some(Self::Todo),
             "in_progress" => Some(Self::InProgress),
-            "waiting" => Some(Self::Waiting),
             "done" => Some(Self::Done),
             _ => None,
         }

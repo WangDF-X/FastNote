@@ -48,8 +48,7 @@ impl SettingsRepository for SqliteSettings {
             FROM app_settings WHERE key IN ('general.entry_mode', 'general.close_behavior',
             'hotkeys.enabled', 'general.first_run_done', 'hotkeys.show_app',
             'window.main_geometry', 'appearance.ball_position', 'appearance.theme', 'appearance.week_starts_on',
-            'tasks.default_sort', 'today.show_in_progress', 'today.show_waiting',
-            'today.show_unscheduled', 'today.show_completed', 'today.tomorrow_collapsed')",
+            'tasks.default_sort', 'today.show_unscheduled', 'today.show_completed', 'today.later_collapsed')",
         )?;
         let values: HashMap<String, String> = statement
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
@@ -172,8 +171,6 @@ fn encode(change: &DesktopSetting) -> Result<String, StoreError> {
         DesktopSetting::TodaySort(value) => value.as_str().to_owned(),
         DesktopSetting::CloseBehavior(value) => value.as_str().to_owned(),
         DesktopSetting::FirstRunDone(value)
-        | DesktopSetting::TodayShowInProgress(value)
-        | DesktopSetting::TodayShowWaiting(value)
         | DesktopSetting::TodayShowUnscheduled(value)
         | DesktopSetting::TodayShowCompleted(value) => value.to_string(),
         DesktopSetting::MainGeometry(Some(value)) => {
