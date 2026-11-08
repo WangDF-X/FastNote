@@ -120,9 +120,8 @@ impl Runtime {
                         ToastKind::Success,
                         match status {
                             TaskStatus::Done => "已完成。",
-                            TaskStatus::Todo => "已设为待处理。",
+                            TaskStatus::Todo => "已设为未开始。",
                             TaskStatus::InProgress => "已设为进行中。",
-                            TaskStatus::Waiting => "已设为等待中。",
                         },
                     );
                 }

@@ -125,27 +125,17 @@ fn test_single_date_is_valid_but_out_of_range_date_is_rejected() {
 }
 
 #[test]
-fn test_all_sixteen_state_transitions_preserve_dates_and_completion_invariant() {
+fn test_all_nine_state_transitions_preserve_dates_and_completion_invariant() {
     let original = task();
     let first = original.updated_at + chrono::Duration::seconds(1);
     let second = first + chrono::Duration::seconds(1);
-    for from in [
-        TaskStatus::Todo,
-        TaskStatus::InProgress,
-        TaskStatus::Waiting,
-        TaskStatus::Done,
-    ] {
+    for from in [TaskStatus::Todo, TaskStatus::InProgress, TaskStatus::Done] {
         let mut task = original.with_status(from, first).unwrap();
         task.start_date = parse_task_date("2026-11-03").unwrap();
         task.due_date = parse_task_date("2026-11-04").unwrap();
         task.start_time = parse_task_time("09:00").unwrap();
         task.due_time = parse_task_time("15:30").unwrap();
-        for to in [
-            TaskStatus::Todo,
-            TaskStatus::InProgress,
-            TaskStatus::Waiting,
-            TaskStatus::Done,
-        ] {
+        for to in [TaskStatus::Todo, TaskStatus::InProgress, TaskStatus::Done] {
             let next = task.with_status(to, second).unwrap();
             assert_eq!(next.status, Some(to));
             assert_eq!(next.completed_at.is_some(), to == TaskStatus::Done);
@@ -203,15 +193,11 @@ fn test_task_and_stage_invariants_reject_inconsistent_entities() {
 
 #[test]
 fn test_status_and_priority_boundaries_are_stable() {
-    for status in [
-        TaskStatus::Todo,
-        TaskStatus::InProgress,
-        TaskStatus::Waiting,
-        TaskStatus::Done,
-    ] {
+    for status in [TaskStatus::Todo, TaskStatus::InProgress, TaskStatus::Done] {
         assert_eq!(TaskStatus::parse(status.as_str()), Some(status));
     }
     assert!(TaskStatus::parse("unknown").is_none());
+    assert!(TaskStatus::parse("waiting").is_none());
     for priority in [
         Priority::None,
         Priority::Low,

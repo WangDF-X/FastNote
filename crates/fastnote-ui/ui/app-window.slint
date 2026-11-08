@@ -77,8 +77,6 @@ export component MainWindow inherits Window {
     in property <bool> task-preferences-enabled: false;
     in property <string> task-preferences-error;
     in property <int> task-sort-index;
-    in property <bool> task-show-in-progress: true;
-    in property <bool> task-show-waiting: true;
     in property <bool> task-show-unscheduled: true;
     in property <bool> task-show-completed: true;
     private property <int> today-reveal-kind: -1;
@@ -485,8 +483,6 @@ export component MainWindow inherits Window {
                         }
                         if root.settings-section == "task-preferences": TaskPreferences {
                             sort-index: root.task-sort-index;
-                            show-in-progress: root.task-show-in-progress;
-                            show-waiting: root.task-show-waiting;
                             show-unscheduled: root.task-show-unscheduled;
                             show-completed: root.task-show-completed;
                             enabled: root.task-preferences-enabled && !root.dialog-visible;

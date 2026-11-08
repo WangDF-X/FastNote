@@ -13,7 +13,6 @@ fn view() -> TodayView {
         open_count: 0,
         overdue_count: 0,
         completed_today_count: 0,
-        tomorrow_count: 0,
     }
 }
 
@@ -41,8 +40,8 @@ fn test_successful_current_reply_releases_in_flight_state_and_applies_once() {
 fn test_hidden_current_reply_releases_request_without_caching_or_projecting_snapshot() {
     let mut tasks = TaskSession::new();
     tasks.latest_today = 7;
-    tasks.collapsed[5] = Some(true);
-    tasks.limits[5] = 800;
+    tasks.collapsed[1] = Some(true);
+    tasks.limits[1] = 800;
     assert_eq!(
         complete_today(&mut tasks, 7, Some(view()), false, now()),
         Some(TodayCompletion {
@@ -52,8 +51,8 @@ fn test_hidden_current_reply_releases_request_without_caching_or_projecting_snap
     );
     assert_eq!(tasks.latest_today, 0);
     assert!(tasks.today.is_none());
-    assert_eq!(tasks.collapsed[5], Some(true));
-    assert_eq!(tasks.limits[5], 800);
+    assert_eq!(tasks.collapsed[1], Some(true));
+    assert_eq!(tasks.limits[1], 800);
 }
 
 #[test]

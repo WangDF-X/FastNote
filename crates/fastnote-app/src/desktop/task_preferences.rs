@@ -30,8 +30,6 @@ fn parse_request(action: &str) -> Option<PreferenceRequest> {
             _ => return None,
         };
         match group {
-            "in-progress" => DesktopSetting::TodayShowInProgress(shown),
-            "waiting" => DesktopSetting::TodayShowWaiting(shown),
             "unscheduled" => DesktopSetting::TodayShowUnscheduled(shown),
             "completed" => DesktopSetting::TodayShowCompleted(shown),
             _ => return None,
@@ -49,12 +47,6 @@ fn confirmed_value(
 ) -> Option<DesktopSetting> {
     Some(match change {
         DesktopSetting::TodaySort(_) => DesktopSetting::TodaySort(preferences.sort),
-        DesktopSetting::TodayShowInProgress(_) => {
-            DesktopSetting::TodayShowInProgress(preferences.show_in_progress)
-        }
-        DesktopSetting::TodayShowWaiting(_) => {
-            DesktopSetting::TodayShowWaiting(preferences.show_waiting)
-        }
         DesktopSetting::TodayShowUnscheduled(_) => {
             DesktopSetting::TodayShowUnscheduled(preferences.show_unscheduled)
         }
@@ -85,7 +77,7 @@ fn preference_focus_scope(page: &str, section: &str) -> bool {
 pub(super) fn hidden_task_created(preferences: TodayPreferences) -> Option<ToastRequest> {
     (!preferences.show_unscheduled).then(|| ToastRequest {
         kind: ToastKind::Info,
-        message: "任务已添加，未安排分组已隐藏。".to_owned(),
+        message: "任务已添加，待安排分组已隐藏。".to_owned(),
         action: Some(ToastAction {
             label: "撤销隐藏分组".to_owned(),
             command: REVEAL_ACTION.to_owned(),
@@ -109,8 +101,6 @@ impl Runtime {
             );
             window.set_task_preferences_error(error.into());
             window.set_task_sort_index(sort_index(preferences.sort));
-            window.set_task_show_in_progress(preferences.show_in_progress);
-            window.set_task_show_waiting(preferences.show_waiting);
             window.set_task_show_unscheduled(preferences.show_unscheduled);
             window.set_task_show_completed(preferences.show_completed);
         });

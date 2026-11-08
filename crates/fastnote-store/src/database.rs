@@ -87,7 +87,7 @@ fn inspect(connection: &Connection) -> Result<i64, StoreError> {
     ] {
         require_table(connection, table)?;
     }
-    if version == 2 {
+    if version >= 2 {
         for table in ["reminders", "reminder_deliveries"] {
             require_table(connection, table)?;
         }

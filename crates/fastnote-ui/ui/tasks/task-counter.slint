@@ -9,8 +9,8 @@ export component TaskCounter inherits Rectangle {
     in property <int> tone;
     width: 140px; height: 32px;
     border-radius: TaskStyle.control-radius;
-    background: TaskStyle.section-background(root.tone == 1 ? 0 : root.tone == 2 ? 7 : 5, false, false);
-    private property <color> icon-color: TaskStyle.section-icon-color(root.tone == 1 ? 0 : root.tone == 2 ? 7 : 5);
+    background: root.tone == 1 ? ShellPalette.danger-subtle : root.tone == 2 ? ShellPalette.task-done : ShellPalette.task-todo;
+    private property <color> icon-color: root.tone == 1 ? ShellPalette.danger : root.tone == 2 ? ShellPalette.success : ShellPalette.text-secondary;
     HorizontalLayout {
         padding-left: 10px; padding-right: 10px; spacing: 8px;
         cross-axis-alignment: center;

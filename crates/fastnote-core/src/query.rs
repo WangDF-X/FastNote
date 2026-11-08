@@ -7,7 +7,7 @@ use crate::{TaskDetail, TaskId, TodayView};
 #[derive(Clone, Copy, Debug)]
 pub enum Query {
     /// 每组初始 200，最多 1000。
-    Today { date: NaiveDate, limits: [u32; 8] },
+    Today { date: NaiveDate, limits: [u32; 4] },
     /// 查询闭区间内每日的日历安排；最多 62 天。
     Calendar { start: NaiveDate, end: NaiveDate },
     /// 全局复用的任务详情。

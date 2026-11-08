@@ -52,8 +52,8 @@ fn test_row_action_order_is_status_dates_priority_delete_without_duplicate_drawe
     let priority = row.find("glyph: root.data.priority-label;").unwrap();
     let delete = row.find("label: \"删除：\"").unwrap();
     assert!(status < date && date < priority && priority < delete);
-    assert!(row.contains("model: [\"待处理\", \"进行中\", \"等待中\", \"已完成\"];"));
-    assert!(row.contains("current-index: root.data.status-index;"));
+    assert!(row.contains("model: [\"未开始\", \"进行中\", \"已完成\"];"));
+    assert!(row.contains("current-index: root.data.done ? 2 : root.data.status-index;"));
     assert!(row.contains("selected(index) => { root.status-changed(index); }"));
     assert!(!row.contains("current-index <=>"));
     let drawer = include_str!("../../ui/tasks/task-drawer.slint");

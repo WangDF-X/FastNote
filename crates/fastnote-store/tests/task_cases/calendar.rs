@@ -184,7 +184,7 @@ fn test_calendar_status_flags_match_today_and_detail_at_local_deadline() {
             now(),
         )
         .unwrap()
-        .with_status(TaskStatus::Waiting, now())
+        .with_status(TaskStatus::Todo, now())
         .unwrap();
     fixture.store.replace_task(&task, &scheduled).unwrap();
 
@@ -205,7 +205,7 @@ fn test_calendar_status_flags_match_today_and_detail_at_local_deadline() {
         let QueryResult::Today(today) = service
             .query(Query::Today {
                 date: "2026-11-03".parse().unwrap(),
-                limits: [200; 8],
+                limits: [200; 4],
             })
             .unwrap()
         else {
@@ -223,8 +223,7 @@ fn test_calendar_status_flags_match_today_and_detail_at_local_deadline() {
             .unwrap();
         for item in [&days[0].1.start[0], &days[2].1.due[0], today_task] {
             assert_eq!(item.is_overdue, overdue);
-            assert_eq!(item.status, Some(TaskStatus::Waiting));
-            assert_eq!(item.waiting_days, Some(0));
+            assert_eq!(item.status, Some(TaskStatus::Todo));
         }
         assert_eq!(detail.is_overdue, overdue);
     }

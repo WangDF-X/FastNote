@@ -233,7 +233,7 @@ fn test_service_projects_the_same_local_overdue_flag_in_today_and_detail() {
     let QueryResult::Today(view) = service
         .query(Query::Today {
             date: "2026-11-03".parse().unwrap(),
-            limits: [200; 8],
+            limits: [200; 4],
         })
         .unwrap()
     else {

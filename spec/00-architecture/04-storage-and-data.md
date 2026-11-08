@@ -1,6 +1,6 @@
 # ARCH-04 数据存储与配置项
 
-> 文档编号：ARCH-04 ｜ 模块：00 总览与架构 ｜ 状态：Confirmed ｜ 更新：2026-11-04
+> 文档编号：ARCH-04 ｜ 模块：00 总览与架构 ｜ 状态：In Progress ｜ 更新：2026-11-08
 > 上游：[ARCH-01](01-tech-and-runtime.md)、[ARCH-03](03-domain-model.md) ｜ 下游：[09-data-management](../09-data-management/)、[08-settings](../08-settings/)
 
 ---
@@ -108,7 +108,7 @@ pub trait Store: Send + Sync {
 
 ---
 
-## 4. 数据库 Schema（当前 v3）
+## 4. 数据库 Schema（当前 v4）
 
 > 日期列为 `TEXT`，格式 `YYYY-MM-DD`；任务本地时分为可空 `HH:MM`；审计时间戳为 RFC 3339 UTC（`YYYY-MM-DDTHH:MM:SSZ`）；ID 为 UUIDv7 小写字符串。v1/v2 迁移脚本保持不变，v3 只追加任务时分字段。
 
@@ -164,7 +164,7 @@ CREATE TABLE tasks (
                       CHECK (kind IN ('task', 'stage')),
     title             TEXT NOT NULL CHECK (length(trim(title)) BETWEEN 1 AND 200),
     description       TEXT NOT NULL DEFAULT '',
-    status            TEXT CHECK (status IN ('todo', 'in_progress', 'waiting', 'done')),
+    status            TEXT CHECK (status IN ('todo', 'in_progress', 'done')),
     priority          INTEGER NOT NULL DEFAULT 0 CHECK (priority BETWEEN 0 AND 3),
     start_date        TEXT CHECK (start_date IS NULL OR length(start_date) = 10),
     due_date          TEXT CHECK (due_date IS NULL OR length(due_date) = 10),
@@ -347,7 +347,9 @@ CREATE INDEX idx_journal_date      ON journal_entries(entry_date DESC);
 
 ### 5.1 版本规则
 
-- 当前 schema 版本：**3**。保留 `m0001_init.sql`、`m0002_reminders.sql`，新增 `m0003_task_times.sql` 增加任务可空时分；v1/v2 均先预迁移备份再顺序迁移，原日期/正文/状态/提醒完整保留。
+- 当前 schema 版本：**4**。旧 `m0001_init.sql`、`m0002_reminders.sql`、`m0003_task_times.sql` 保持不变；新增 `m0004_task_workflow.sql` 实现 D-TODAY-09。旧库先预迁移备份再顺序升级。
+- v4 在一个 `BEGIN IMMEDIATE` 事务内重建 tasks 的三态 CHECK，所有旧 `waiting` 转为 `todo`，其余字段逐列保留；任务树、依赖、小记转换关联、提醒/投递账本及既有索引/时分校验触发器完整保留。为防重建时外键级联删除，事务前临时停用外键执行，事务内完成外键和完整性检查，成功或失败都恢复外键开启；失败不留下部分状态/结构/设置变化。
+- v4 保留 `tasks.default_sort`、`today.show_unscheduled/show_completed` 原值；将 `today.tomorrow_collapsed` 原值和更新时间复制到 `today.later_collapsed`，缺失时用默认 `true`；删除 `today.show_in_progress/show_waiting/tomorrow_collapsed`。无关设置和历史时间不改写。
 - `PRAGMA user_version` 为权威版本；`schema_migrations` 记录历史。
 - 迁移脚本只增不改，命名 `m0001_init.sql`、`m0002_xxx.sql`，编译期 `include_str!` 嵌入。
 - 每个版本一个事务；DDL 在 SQLite 中可回滚。
@@ -355,7 +357,7 @@ CREATE INDEX idx_journal_date      ON journal_entries(entry_date DESC);
 ### 5.2 启动流程
 
 1. 读取 `user_version`。
-2. `= 0` 且库为空 → 顺序执行 `m0001_init.sql`、`m0002_reminders.sql`、`m0003_task_times.sql`，每版记录 `schema_migrations`，最终 `user_version=3`。
+2. `= 0` 且库为空 → 顺序执行 m0001–m0004，每版记录 `schema_migrations`，最终 `user_version=4`。
 3. `> 当前支持版本` → 拒绝打开，提示「数据由更高版本创建，请升级应用」，不写库。
 4. `< 当前版本` → 先创建预迁移备份（`backups/pre-migration-v{from}-{timestamp}.fnsbackup`），再逐版本迁移；失败回滚并保留原库。
 5. 迁移后执行 `PRAGMA foreign_key_check` + `quick_check`；异常进入数据恢复流程。
@@ -430,12 +432,12 @@ CREATE INDEX idx_journal_date      ON journal_entries(entry_date DESC);
 
 | 键 | 类型 | 默认值 | 取值 | 归属 | 说明 |
 | --- | --- | --- | --- | --- | --- |
-| `tasks.default_sort` | enum | `priority` | `priority` / `due_date` / `created_desc` | TODAY | 今日日期类分组排序。 |
-| `today.show_in_progress` | bool | `true` | — | TODAY | 显示「进行中」分组。 |
-| `today.show_waiting` | bool | `true` | — | TODAY | 显示「等待中」分组。 |
-| `today.show_unscheduled` | bool | `true` | — | TODAY | 显示「未安排」分组。 |
-| `today.show_completed` | bool | `true` | — | TODAY | 显示「今日已完成」分组（默认折叠）。 |
-| `today.tomorrow_collapsed` | bool | `true` | — | TODAY | 明日预告默认折叠。 |
+| `tasks.default_sort` | enum | `priority` | `priority` / `due_date` / `created_desc` | TODAY | 仅调整当前关注，始终逾期置顶。 |
+| `today.show_unscheduled` | bool | `true` | — | TODAY | 显示「待安排」区域。 |
+| `today.show_completed` | bool | `true` | — | TODAY | 显示「今日完成」区域（默认折叠）。 |
+| `today.later_collapsed` | bool | `true` | — | TODAY | 稍后默认折叠，迁移继承旧明日折叠偏好。 |
+
+当前关注和稍后不提供隐藏开关；旧进行中/等待中开关不映射为隐藏当前关注，避免误隐藏重要任务。
 
 ### 7.5 数据与窗口
 
@@ -483,8 +485,8 @@ CREATE INDEX idx_journal_date      ON journal_entries(entry_date DESC);
 
 | 编号 | 验收标准 |
 | --- | --- |
-| AC-ARCH-16 | 全新启动创建 v2 数据库，`user_version=2`，包括提醒两表及所有索引。 |
-| AC-ARCH-17 | v1 数据库可迁移至 v2，原数据不变；v2 重复启动不重复迁移。 |
+| AC-ARCH-16 | 全新启动创建 v4 数据库，`user_version=4`，含三态 CHECK、时分校验、提醒两表及所有索引。 |
+| AC-ARCH-17 | v1/v2/v3 可顺序迁移至 v4；等待中转未开始，内容/日期/关系/历史时间保留，适用偏好继承；重复启动不重复迁移。 |
 | AC-ARCH-18 | 迁移失败时原数据库保持可用，且已生成预迁移备份。 |
 | AC-ARCH-19 | 强制结束进程后重启，已提交的事务全部存在，无半个任务树移动。 |
 | AC-ARCH-20 | 数据库版本高于应用支持版本时拒绝打开并给出明确提示，不修改文件。 |

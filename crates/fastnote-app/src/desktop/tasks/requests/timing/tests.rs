@@ -47,7 +47,6 @@ fn view(at: &str, deadline: Option<&str>) -> TodayView {
         open_count: 0,
         overdue_count: 0,
         completed_today_count: 0,
-        tomorrow_count: 0,
     }
 }
 
@@ -60,8 +59,8 @@ fn test_twenty_hidden_ticks_across_deadline_and_midnight_only_invalidate_with_ze
         if has_snapshot {
             tasks.today = Some(view("2026-11-04T23:55:00", Some("2026-11-04T23:56:00")));
         }
-        tasks.collapsed[5] = Some(true);
-        tasks.limits[5] = 800;
+        tasks.collapsed[1] = Some(true);
+        tasks.limits[1] = 800;
         let today_dirty = Cell::new(!has_snapshot);
         let detail_dirty = Cell::new(false);
         observe_invalidation(
@@ -91,8 +90,8 @@ fn test_twenty_hidden_ticks_across_deadline_and_midnight_only_invalidate_with_ze
         assert!(today_dirty.get());
         assert!(detail_dirty.get());
         assert_eq!(tasks.today.is_some(), has_snapshot);
-        assert_eq!(tasks.collapsed[5], Some(true));
-        assert_eq!(tasks.limits[5], 800);
+        assert_eq!(tasks.collapsed[1], Some(true));
+        assert_eq!(tasks.limits[1], 800);
         let check = observe_invalidation(
             &mut tracker,
             &clock,

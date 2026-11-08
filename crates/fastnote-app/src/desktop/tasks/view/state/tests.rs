@@ -93,8 +93,8 @@ fn test_close_editor_without_ui_cancels_open_reads_but_keeps_confirmation_reads(
     tasks.queries.insert(7, DetailPurpose::Open(id(1)));
     tasks.queries.insert(8, DetailPurpose::SaveAck(id(1)));
     tasks.queries.insert(9, DetailPurpose::Delete(id(2)));
-    tasks.collapsed[5] = Some(true);
-    tasks.limits[5] = 600;
+    tasks.collapsed[1] = Some(true);
+    tasks.limits[1] = 600;
     assert_eq!(close_editor(&mut tasks), Some(id(1)));
     assert!(tasks.editor.is_none());
     assert_eq!(tasks.latest_open, 0);
@@ -107,8 +107,8 @@ fn test_close_editor_without_ui_cancels_open_reads_but_keeps_confirmation_reads(
         tasks.queries.get(&9),
         Some(DetailPurpose::Delete(_))
     ));
-    assert_eq!(tasks.collapsed[5], Some(true));
-    assert_eq!(tasks.limits[5], 600);
+    assert_eq!(tasks.collapsed[1], Some(true));
+    assert_eq!(tasks.limits[1], 600);
 }
 
 #[test]
@@ -126,15 +126,15 @@ fn test_reload_without_an_accepted_read_keeps_input_and_kernel_session() {
     let mut tasks = TaskSession::new();
     tasks.editor = Some(editor());
     tasks.latest_open = 7;
-    tasks.collapsed[5] = Some(false);
-    tasks.limits[5] = 600;
+    tasks.collapsed[1] = Some(false);
+    tasks.limits[1] = 600;
     assert!(!discard_for_reload(&mut tasks, id(1)));
     assert_eq!(
         tasks.editor.as_ref().unwrap().fields.title,
         "待保留的假输入"
     );
-    assert_eq!(tasks.collapsed[5], Some(false));
-    assert_eq!(tasks.limits[5], 600);
+    assert_eq!(tasks.collapsed[1], Some(false));
+    assert_eq!(tasks.limits[1], 600);
     assert!(tasks.queries.is_empty());
 }
 

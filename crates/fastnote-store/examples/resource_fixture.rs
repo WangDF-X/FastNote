@@ -110,7 +110,7 @@ fn benchmark(root: &Path, date: NaiveDate) -> Result<(), Box<dyn std::error::Err
             store.query_tasks(
                 Query::Today {
                     date,
-                    limits: [limit; 8],
+                    limits: [limit; 4],
                 },
                 FixedClock { now, date },
             )?;
@@ -123,7 +123,7 @@ fn benchmark(root: &Path, date: NaiveDate) -> Result<(), Box<dyn std::error::Err
             let result = store.query_tasks(
                 Query::Today {
                     date,
-                    limits: [limit; 8],
+                    limits: [limit; 4],
                 },
                 FixedClock { now, date },
             )?;
@@ -161,7 +161,7 @@ fn diagnose(root: &Path, date: NaiveDate) -> Result<(), Box<dyn std::error::Erro
             let read = start.elapsed().as_micros();
             count = tasks.len();
             let start = Instant::now();
-            let mut collector = TodayCollector::new(date, &clock, preferences, [limit; 8]);
+            let mut collector = TodayCollector::new(date, &clock, preferences, [limit; 4]);
             for task in tasks {
                 collector.push(task);
             }

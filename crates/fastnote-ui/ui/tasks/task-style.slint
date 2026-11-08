@@ -25,19 +25,19 @@ export global TaskStyle {
 
     /// 逾期优先显示浅红底，仍保持真实状态文字，不反推或修改任务状态。
     public pure function row-background(status: int, overdue: bool, hovered: bool, pressed: bool) -> color {
-        let surface = overdue ? ShellPalette.danger-subtle : status == 1 ? ShellPalette.task-progress : status == 2 ? ShellPalette.task-waiting : status == 3 ? ShellPalette.task-done : ShellPalette.task-todo;
+        let surface = overdue ? ShellPalette.danger-subtle : status == 1 ? ShellPalette.task-progress : status == 2 ? ShellPalette.task-done : ShellPalette.task-todo;
         return TaskStyle.interactive-surface(surface, hovered, pressed);
     }
 
-    /// 八个分区共享已完成分区的结构，只区分轻背景色。
+    /// 四个分区共享结构，只区分轻背景色。
     public pure function section-background(kind: int, hovered: bool, pressed: bool) -> color {
-        let surface = kind == 0 ? ShellPalette.danger-subtle : kind == 4 ? ShellPalette.task-waiting : kind == 5 ? ShellPalette.task-todo : kind == 7 ? ShellPalette.task-done : ShellPalette.task-progress;
+        let surface = kind == 0 ? ShellPalette.task-progress : kind == 1 ? ShellPalette.task-todo : kind == 2 ? ShellPalette.task-done : ShellPalette.task-todo;
         return TaskStyle.interactive-surface(surface, hovered, pressed);
     }
 
     /// 标题和计数不染色，语义色集中在对应的图标上。
     public pure function section-icon-color(kind: int) -> color {
-        return kind == 0 ? TaskStyle.row-danger : kind == 4 ? TaskStyle.row-warning : kind == 7 ? ShellPalette.success : kind == 5 ? ShellPalette.text-secondary : ShellPalette.accent;
+        return kind == 0 ? ShellPalette.accent : kind == 2 ? ShellPalette.success : ShellPalette.text-secondary;
     }
 
     /// 分区与任务行使用相同的轻量交互明度变化。

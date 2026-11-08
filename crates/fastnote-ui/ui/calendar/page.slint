@@ -64,15 +64,26 @@ export component CalendarPage inherits Rectangle {
             height: 20px;
             spacing: 12px;
             cross-axis-alignment: center;
-            for label[index] in ["待处理", "进行中", "等待中", "已完成", "逾期"]: HorizontalLayout {
+            Text { text: "执行状态："; color: ShellPalette.text-secondary; font-family: TaskStyle.font-family; font-size: TaskStyle.caption; }
+            for label[index] in ["未开始", "进行中", "已完成"]: HorizontalLayout {
                 spacing: 5px; horizontal-stretch: 0; cross-axis-alignment: center;
                 Rectangle {
                     width: 10px; height: 10px; border-radius: 3px;
-                    background: TaskStyle.row-background(index == 4 ? 0 : index, index == 4, false, false);
+                    background: TaskStyle.row-background(index, false, false, false);
                     border-width: 1px;
-                    border-color: CalendarStyle.status-color(index, index == 4);
+                    border-color: CalendarStyle.status-color(index, false);
                 }
                 Text { text: label; color: ShellPalette.text-secondary; font-family: TaskStyle.font-family; font-size: TaskStyle.caption; }
+            }
+            Text { text: "时间提示："; color: ShellPalette.text-secondary; font-family: TaskStyle.font-family; font-size: TaskStyle.caption; }
+            HorizontalLayout {
+                spacing: 5px; horizontal-stretch: 0; cross-axis-alignment: center;
+                Rectangle {
+                    width: 10px; height: 10px; border-radius: 3px;
+                    background: TaskStyle.row-background(0, true, false, false);
+                    border-width: 1px; border-color: CalendarStyle.status-color(0, true);
+                }
+                Text { text: "逾期"; color: ShellPalette.text-secondary; font-family: TaskStyle.font-family; font-size: TaskStyle.caption; }
             }
             Rectangle { horizontal-stretch: 1; background: transparent; }
         }

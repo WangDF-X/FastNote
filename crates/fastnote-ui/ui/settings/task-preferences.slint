@@ -7,8 +7,6 @@ import { VisibilitySwitch } from "visibility-switch.slint";
 /// SET-03：只展示已提交偏好；同一动作入口负责保存、失败反馈及今日重查。
 export component TaskPreferences inherits Rectangle {
     in property <int> sort-index;
-    in property <bool> show-in-progress;
-    in property <bool> show-waiting;
     in property <bool> show-unscheduled;
     in property <bool> show-completed;
     in property <bool> enabled: true;
@@ -38,7 +36,7 @@ export component TaskPreferences inherits Rectangle {
                     VerticalLayout {
                         horizontal-stretch: 1; spacing: 8px;
                         Text { text: "今日排序"; font-size: TaskStyle.body; font-family: TaskStyle.font-family; color: ShellPalette.text-primary; }
-                        Text { text: "仅调整逾期、今日到期、今日开始和进行中。"; wrap: word-wrap; font-size: TaskStyle.caption; font-family: TaskStyle.font-family; color: ShellPalette.text-secondary; }
+                        Text { text: "调整当前关注的排序，逾期任务始终优先。"; wrap: word-wrap; font-size: TaskStyle.caption; font-family: TaskStyle.font-family; color: ShellPalette.text-secondary; }
                     }
                     TaskSelect {
                         min-width: 144px; max-width: 144px;
@@ -54,35 +52,21 @@ export component TaskPreferences inherits Rectangle {
             }
             Text { text: "显示分组"; font-size: TaskStyle.body; font-family: TaskStyle.font-family; color: ShellPalette.text-primary; }
             Rectangle {
-                height: 243px;
+                height: 130px;
                 border-radius: TaskStyle.card-radius;
                 border-width: 1px; border-color: ShellPalette.border;
                 background: ShellPalette.surface;
                 VerticalLayout {
                     padding: 8px; spacing: 0px;
                     VisibilitySwitch {
-                        label: "进行中"; description: "跨天进行的任务";
-                        checked: root.show-in-progress; enabled: root.enabled && !root.busy;
-                        focus-key: "settings:tasks:in-progress";
-                        toggled(shown) => { root.action("settings:tasks:in-progress:" + (shown ? "true" : "false")); }
-                    }
-                    Rectangle { height: 1px; background: ShellPalette.border; }
-                    VisibilitySwitch {
-                        label: "等待中"; description: "等待反馈或后续处理的任务";
-                        checked: root.show-waiting; enabled: root.enabled && !root.busy;
-                        focus-key: "settings:tasks:waiting";
-                        toggled(shown) => { root.action("settings:tasks:waiting:" + (shown ? "true" : "false")); }
-                    }
-                    Rectangle { height: 1px; background: ShellPalette.border; }
-                    VisibilitySwitch {
-                        label: "未安排"; description: "未设置开始或到期日期的任务";
+                        label: "待安排"; description: "未开始且未设置日期的任务";
                         checked: root.show-unscheduled; enabled: root.enabled && !root.busy;
                         focus-key: "settings:tasks:unscheduled";
                         toggled(shown) => { root.action("settings:tasks:unscheduled:" + (shown ? "true" : "false")); }
                     }
                     Rectangle { height: 1px; background: ShellPalette.border; }
                     VisibilitySwitch {
-                        label: "今日已完成"; description: "本地今天完成的任务";
+                        label: "今日完成"; description: "本地今天完成的任务";
                         checked: root.show-completed; enabled: root.enabled && !root.busy;
                         focus-key: "settings:tasks:completed";
                         toggled(shown) => { root.action("settings:tasks:completed:" + (shown ? "true" : "false")); }

@@ -45,12 +45,12 @@
 | --- | --- | --- |
 | 快速添加、编辑、完成、删除任务 | [TODAY-02](../03-today-tasks/02-task-actions.md)、[TODAY-03](../03-today-tasks/03-task-detail.md) | AC-TODAY-* |
 | 查看当天需要完成的任务 | [TODAY-01 §3](../03-today-tasks/01-overview-and-sections.md)、[ARCH-03 §8.2](../00-architecture/03-domain-model.md) | AC-CORE-02 |
-| 查看当天计划开始的任务 | 同上（`starts_today`） | AC-CORE-02 |
-| 查看等待处理/等待反馈的任务 | 同上（`waiting`） | AC-CORE-02 |
+| 查看当天及过去计划开始但未完成的任务 | 同上（`focus`） | AC-CORE-02、AC-TODAY-09 |
+| 三态与排期/风险独立展示 | 同上，ARCH-03 §4.2；等待中删除，旧值转未开始 | AC-TODAY-08、AC-TODAY-10 |
 | 查看尚未安排日期的任务 | 同上（`unscheduled`） | AC-CORE-02 |
 | 逾期任务提醒 | [TODAY-01 §5](../03-today-tasks/01-overview-and-sections.md)、[SHELL-02 §9](../01-app-shell/02-interaction-and-feedback.md) | AC-TODAY-*、AC-SHELL-18 |
 | 查看任务所属计划 | [TODAY-01 §4](../03-today-tasks/01-overview-and-sections.md) | AC-TODAY-* |
-| 明日任务独立折叠区、默认不展开 | [TODAY-01 §3](../03-today-tasks/01-overview-and-sections.md)、[SET-03](../08-settings/03-hotkeys-task-prefs-and-about.md) | AC-TODAY-*、AC-SET-* |
+| 明天及远期未开始任务进入稍后，默认折叠 | [TODAY-01 §3](../03-today-tasks/01-overview-and-sections.md)、[SET-03](../08-settings/03-hotkeys-task-prefs-and-about.md) | AC-TODAY-*、AC-SET-* |
 | 不填日期/优先级即可创建 | [TODAY-02 §2](../03-today-tasks/02-task-actions.md)、[ARCH-03 §7.1](../00-architecture/03-domain-model.md) | AC-CORE-01、AC-TODAY-* |
 
 ### 3.2 日历

@@ -1,4 +1,4 @@
-//! 统一任务实体、字段补丁和四态转换（ARCH-03 §3–7）。
+//! 统一任务实体、字段补丁和三态转换（ARCH-03 §3–7）。
 
 use chrono::{DateTime, NaiveDate, NaiveTime, Timelike, Utc};
 
@@ -21,7 +21,7 @@ pub struct Task {
     pub title: String,
     /// 原样保留的纯文本，最多 10,000 字符。
     pub description: String,
-    /// 阶段为 None，任务必须有四态之一。
+    /// 阶段为 None，任务必须有三态之一。
     pub status: Option<TaskStatus>,
     /// 优先级；阶段为 None。
     pub priority: Priority,
@@ -87,7 +87,7 @@ pub struct TaskPatch {
 }
 
 impl Task {
-    /// 构造只要求标题的独立待处理任务；不读取时钟、不生成 ID。
+    /// 构造只要求标题的独立未开始任务；不读取时钟、不生成 ID。
     pub fn new(id: TaskId, title: String, now: DateTime<Utc>) -> Result<Self, TaskError> {
         let task = Self {
             id,
@@ -206,7 +206,7 @@ impl Task {
         Ok(next)
     }
 
-    /// 四态允许任意转换；重复设置不改变历史时间（INV-12）。
+    /// 三态允许任意转换；重复设置不改变历史时间（INV-12）。
     pub fn with_status(&self, status: TaskStatus, now: DateTime<Utc>) -> Result<Self, TaskError> {
         if self.kind != TaskKind::Task {
             return Err(TaskError::StageParentInvalid);

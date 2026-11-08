@@ -75,7 +75,7 @@ impl UiSession {
     }
 
     /// 回包只能投影已经安装的模型，不能在此顺手加载页面。
-    pub(super) fn apply_today(&self, view: &TodayView, collapsed: [Option<bool>; 8]) -> bool {
+    pub(super) fn apply_today(&self, view: &TodayView, collapsed: [Option<bool>; 4]) -> bool {
         let Self { shell, .. } = self;
         self.today_presenter
             .borrow()

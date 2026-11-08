@@ -1,6 +1,6 @@
 # ARCH-03 领域模型与业务规则
 
-> 文档编号：ARCH-03 ｜ 模块：00 总览与架构 ｜ 状态：Confirmed ｜ 更新：2026-11-03
+> 文档编号：ARCH-03 ｜ 模块：00 总览与架构 ｜ 状态：In Progress ｜ 更新：2026-11-08
 > 上游：[ARCH-02](02-architecture.md) ｜ 下游：全部功能模块（**唯一事实来源**）
 
 ---
@@ -112,7 +112,7 @@ erDiagram
 | `start_time` | `Option<NaiveTime>` | 否 | `NULL` | 开始日期的本地时分，分钟精度；只能随开始日期存在 |
 | `due_time` | `Option<NaiveTime>` | 否 | `NULL` | 到期日期的本地时分，分钟精度；只能随到期日期存在 |
 | `completed_at` | `Option<DateTime<Utc>>` | 否 | `NULL` | 仅 `status=done` 时有值 |
-| `status_changed_at` | `DateTime<Utc>` | 是 | now | 状态变更时更新，用于「等待 N 天」 |
+| `status_changed_at` | `DateTime<Utc>` | 是 | now | 保留最近一次用户状态变更时间 |
 | `sort_order` | i64 | 是 | 追加 | 同父节点内手动排序 |
 | `created_at` / `updated_at` | `DateTime<Utc>` | 是 | now | 字段变更更新 `updated_at` |
 
@@ -180,14 +180,14 @@ erDiagram
 
 | 值 | 中文 | 语义 | 与日期关系 |
 | --- | --- | --- | --- |
-| `todo` | 待处理 | 尚未开始 | 可无日期、可逾期 |
+| `todo` | 未开始 | 尚未开始 | 可无日期、可逾期 |
 | `in_progress` | 进行中 | 正在执行 | 可无日期 |
-| `waiting` | 等待中 | 等待他人/外部反馈 | 可逾期，保留原始截止日期 |
 | `done` | 已完成 | 已结束 | 写入 `completed_at` |
 
-- 四种状态之间**允许任意直接切换**，不设强制流转（product §5.3、§5.6）。
+- 三种状态之间**允许任意直接切换**，不设强制流转（product §5.3、§5.6）。普通任务可直接由未开始勾选完成，不必经过进行中。
 - 状态与日期相互独立：系统不因日期自动改状态，也不因状态自动改日期。
 - 状态变更不触发父任务/阶段状态（阶段无状态；父任务不自动完成）。
+- **D-TODAY-09（2026-11-08 用户确认）：** 删除 `waiting` 状态。升级时所有旧 `waiting`（含归档计划任务）统一转换为 `todo`，只改变状态值，保留 ID、内容、排期、完成时间及创建/更新/状态变更时间；移除等待天数投影。迁移先备份、原子执行，见 ARCH-04 §8。
 
 ### 4.3 Priority
 
@@ -210,11 +210,9 @@ erDiagram
 ### 4.5 状态机
 
 ```text
-            ┌─────────────────────────────┐
-            ▼                             │
-  [todo] ⇄ [in_progress] ⇄ [waiting]      │
-     ⇅          ⇅              ⇅          │
-     └──────── [done] ────────────────────┘
+  [todo] ⇄ [in_progress]
+     ⇅          ⇅
+     └── [done] ┘
 ```
 
 - 进入 `done`：写 `completed_at = now`，`status_changed_at = now`。
@@ -233,7 +231,7 @@ erDiagram
 | INV-03 | `kind=stage` 必须 `plan_id NOT NULL` 且 `parent_id IS NULL` | `E_STAGE_PARENT_INVALID` |
 | INV-04 | 任务树不得成环；节点不能移动到自身或后代 | `E_MOVE_INTO_DESCENDANT` |
 | INV-05 | `kind=stage` 的 `status IS NULL`、`priority=none` | 领域层强制 |
-| INV-06 | `kind=task` 的 `status` 必须为四态之一 | 数据库 CHECK + 领域校验 |
+| INV-06 | `kind=task` 的 `status` 必须为三态之一 | 数据库 CHECK + 领域校验 |
 | INV-07 | 任何节点 `start_date ≤ due_date`（两者都有时） | `E_DATE_RANGE` |
 | INV-08 | 依赖两端必须为同计划的 `kind=task`，且非自身、非祖先/后代、无环；单任务前置 ≤20 | `E_DEP_*`（含 `E_DEP_LIMIT`） |
 | INV-09 | `journal_entries.entry_date` 唯一 | `E_JOURNAL_DUP`（内部） |
@@ -257,7 +255,6 @@ erDiagram
 3. **今天**：由注入的 `Clock` 返回本地日期；应用每 30s 检查日期是否变化，变化时广播 `TodayChanged` 并刷新「今日」「日历」。
 4. **逾期（D-TODAY-02）**：未完成且未归档的普通任务，有时分则本地当前时刻严格超过 `due_date + due_time` 即逾期；旧全天任务仍在 `due_date < today` 时逾期。无到期日期不逾期；开始时间不自动切状态。每 30s 检查到期边界和时钟变化。
 5. **日期时间约束**：时间不能脱离对应日期；同一天且双方均有时间时 `start_time ≤ due_time`。旧全天开始相当于当日起点，旧全天到期到次日才逾期；新选择保存日期与时分组合，清除时一并清除。
-5. **等待天数**：`today - local_date(status_changed_at)`，最小 0；仅当 `status=waiting` 时展示。
 6. **完成于今日**：`status=done && local_date(completed_at) == today`。
 7. **夏令时**：日期加减使用 `chrono` 的日历运算，不假设每天 24 小时；跨时区不改变已存日期。
 8. **日期输入**：UI 使用日期选择器，允许清空；手输格式必须为 `YYYY-MM-DD`，非法输入不提交。
@@ -356,27 +353,25 @@ is_overdue(task, today) =
 
 ### 8.2 今日视图（TodayView）
 
-按以下**优先级顺序**分组，每个任务只出现在第一个命中的分组（去重）：
+**D-TODAY-09（2026-11-08 用户确认）替代旧八组：** 展示顺序固定为「当前关注 → 待安排 → 今日完成 → 稍后」。区域表达关注范围，执行状态及日期/风险提示分别展示，不再把逾期、今日开始、进行中等作为并列区域。
 
 | 顺序 | 分组 `TodaySectionKind` | 命中条件（排除归档计划） |
 | --- | --- | --- |
-| 1 | `overdue` 逾期 | `is_overdue` |
-| 2 | `due_today` 今日到期 | `status != done && due_date == today` |
-| 3 | `starts_today` 今日开始 | `status != done && start_date == today`，且未命中 1–2 |
-| 4 | `in_progress` 进行中 | `status == in_progress`，且未命中 1–3，且 `start_date` 为空或 `≤ today`，且 `due_date` 为空或 `> today` |
-| 5 | `waiting` 等待中 | `status == waiting`，且未命中 1–4 |
-| 6 | `unscheduled` 未安排 | `status == todo && start_date IS NULL && due_date IS NULL`，且未命中 1–5 |
-| 7 | `tomorrow` 明日预告 | `status != done && (due_date == tomorrow || start_date == tomorrow)`，且未命中 1–6 |
-| 8 | `completed_today` 今日已完成 | `status == done && local_date(completed_at) == today` |
+| 1 | `focus` 当前关注 | 未完成，且满足任一：`is_overdue`、`due_date <= today`、`start_date <= today`、`status == in_progress` |
+| 2 | `unscheduled` 待安排 | `status == todo && start_date IS NULL && due_date IS NULL` |
+| 3 | `completed_today` 今日完成 | `status == done && local_date(completed_at) == today` |
+| 4 | `later` 稍后 | 剩余未完成任务：`status == todo`，已设置日期且所有已设置日期均晚于今天 |
 
 **补充规则**
 
-- 分组 1–7 只包含未完成任务；分组 8 单独统计，默认折叠。
-- 明日预告默认折叠（设置 `today.tomorrow_collapsed`，默认 `true`）。
-- 空分组不展示；若 1–7 全为空，展示页面级空态。
-- 页面顶部统计：`open_count` = 当前启用的 1–7 分组去重后的任务数（被 `today.show_*` 隐藏的分组不计入）；`overdue_count`；`completed_today_count`。
-- 任务行同时展示其状态徽标（例如逾期且等待中 → 逾期分组 + 「等待中」徽标）。
-- 归档计划任务不参与 1–8；`completed_today` 也不包含归档计划任务（今日页只关心当前工作）。
+- 先排除阶段、归档及无状态节点；完成项只按本地完成日归类，未完成项按当前关注、待安排、稍后去重。每个有效未完成任务必有归属，不再漏掉「过去开始但未开始、无到期日」及明天以后的任务。
+- 手动设为进行中的任务始终进入当前关注，即使排期在未来或没有日期；开始日期到达不会自动改状态。
+- 今日安排按自然日进入当前关注，不等当天开始时分到达；逾期仍按 §8.1 的具体到期时分计算。
+- 当前关注和稍后固定显示；`today.show_unscheduled/show_completed` 分别控制待安排和今日完成，隐藏不改变归属。
+- 今日完成默认折叠；稍后读取 `today.later_collapsed`（默认 `true`），迁移继承旧 `today.tomorrow_collapsed` 值。
+- 空区域不展示；启用的未完成区域均为空时展示页面级空态，不遮挡今日完成。
+- 页面顶部「当前未完成」=`open_count`，统计启用的当前关注、待安排、稍后的完整任务数；另展示 `overdue_count`、`completed_today_count`。统计不受折叠/分页影响，完成计数不受完成区域隐藏影响；不新增稍后预告徽标。
+- 执行状态固定显示三态，日期与「已逾期」警示位于独立信息区；无日期明确显示「未设日期」，不是第四种状态。归档计划任务不参与任何区域。
 
 ### 8.3 日历视图
 
@@ -409,7 +404,7 @@ is_blocked(task) = 存在依赖边 task -> p，且 p.status != done
 
 - 前置任务全部完成（或依赖已删除）→ 不再阻塞。
 - 阻塞状态仅影响展示（图标、详情提示、计划问题列表），不改变任务状态，不禁止任何操作。
-- 开始阻塞任务时（`todo/waiting → in_progress`）必须弹出非阻塞确认；用户确认后正常保存。
+- 开始阻塞任务时（`todo → in_progress`）必须弹出非阻塞确认；用户确认后正常保存。
 - 标记阻塞任务为完成时给一次性提示，用户确认后保存。
 - 依赖日期冲突（`W_DEP_DATE`）：`p.due_date` 存在，且
   - `task.start_date` 存在且 `task.start_date < p.due_date`；或
@@ -454,7 +449,6 @@ progress(nodes) = { done: 叶子任务中 status=done 的数量,
 
 - `open_count`：未完成任务数（按查询范围）。
 - `overdue_count`：§8.1 计数。
-- `waiting_days`：当前等待天数。
 - `child_total` / `child_done`：直接子任务数与其中完成数。
 - `descendant_leaf_total` / `descendant_leaf_done`：子树叶子统计（用于阶段/计划进度）。
 - `read_only`：所属计划已归档。
@@ -465,12 +459,11 @@ progress(nodes) = { done: 叶子任务中 status=done 的数量,
 
 | 列表 | 排序（优先级从高到低） |
 | --- | --- |
-| 今日：逾期 / 今日到期 / 今日开始 / 进行中 | 优先级降序 → `due_date` 升序（空值最后）→ `start_date` 升序（空值最后）→ `created_at` 升序 |
-| 今日：等待中 | `status_changed_at` 升序（等待最久在前）→ 优先级降序 |
-| 今日：未安排 | 优先级降序 → `created_at` 降序（新任务在前） |
-| 今日：明日预告 | 同「今日到期」规则 |
-| 今日：已完成 | `completed_at` 降序 |
-| 日历日面板 | 同今日对应分组规则；`ongoing` 按 `start_date` 升序 → 优先级降序 |
+| 今日：当前关注 | 逾期置顶 → 优先级降序 → `due_date` 升序（空值最后）→ `start_date` 升序（空值最后）→ `created_at` 升序 |
+| 今日：待安排 | 优先级降序 → `created_at` 降序（新任务在前） |
+| 今日：稍后 | 优先级降序 → 到期升序（空值最后）→ 开始升序（空值最后）→ 创建升序 |
+| 今日：今日完成 | `completed_at` 降序 |
+| 日历日面板 | `due/start` 保留日期类默认排序；`ongoing` 按 `start_date` 升序 → 优先级降序；完成按完成时间倒序，不套用当前关注的逾期置顶 |
 | 计划板任务树 | 同父节点内 `sort_order` 升序 → `created_at` 升序 |
 | 计划列表（进行中） | `sort_order` 升序 → `created_at` 降序 |
 | 计划列表（已归档） | `archived_at` 降序 |
@@ -479,13 +472,13 @@ progress(nodes) = { done: 叶子任务中 status=done 的数量,
 | 日记浏览列表 | `entry_date` 降序 |
 | 依赖选择器 | 同计划内按阶段顺序 → 任务树先序 |
 
-**默认排序设置**（`tasks.default_sort`）只影响今日四个日期类分组的排序：
+**默认排序设置**（`tasks.default_sort`）只影响当前关注内部排序，三种排序都先将逾期置顶：
 
 - `priority`（默认）：优先级 → 截止日期。
 - `due_date`：截止日期（空值最后）→ 优先级。
 - `created_desc`：创建时间倒序。
 
-等待中、已完成分组不受该设置影响。
+待安排、今日完成、稍后不受该设置影响。日期相同继续比较时分，完全相同用任务 ID 稳定兜底。
 
 ---
 
@@ -588,7 +581,6 @@ pub struct TaskSummary {
     pub child_done: u32,
     pub is_overdue: bool,
     pub is_blocked: bool,
-    pub waiting_days: Option<u32>,
     pub dependency_count: u32,
     pub completed_at: Option<DateTime<Utc>>,
     pub updated_at: DateTime<Utc>,
@@ -827,7 +819,7 @@ pub struct JournalSummary {
 
 | 场景 | 预期行为 |
 | --- | --- |
-| 任务只有开始日期没有截止日期 | 可保存；今日「今日开始」展示；永不逾期。 |
+| 任务只有开始日期没有截止日期 | 可保存；开始日到达后持续进入当前关注直至完成；未来未开始进入稍后，永不逾期。 |
 | 任务只有截止日期没有开始日期 | 可保存；正常逾期判断。 |
 | 开始日期 = 截止日期 | 合法，单日任务。 |
 | 计划没有起止日期 | 可保存；不做落后判定；日期越界提示不触发。 |
@@ -851,7 +843,7 @@ pub struct JournalSummary {
 | 编号 | 验收标准 |
 | --- | --- |
 | AC-CORE-01 | 同一任务在今日/日历/计划板中状态、日期、标题修改后三处一致。 |
-| AC-CORE-02 | 今日视图八个分组的归属与去重完全符合 §8.2，边界日期（今天/明天）正确。 |
+| AC-CORE-02 | 今日四区按 §8.2 顺序去重；过去开始未执行不消失，远期未开始进入稍后，手动进行中始终当前关注，三态与日期独立。 |
 | AC-CORE-03 | 逾期判断在跨午夜后 60s 内自动更新，无需重启。 |
 | AC-CORE-04 | 任意层级子任务创建、移动、删除均不产生环，且 `plan_id` 全树一致。 |
 | AC-CORE-05 | 进度计算符合 §8.5：空阶段不显示 100%，父任务不重复计数。 |

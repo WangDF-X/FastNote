@@ -26,7 +26,7 @@ export component SectionHeader inherits Rectangle {
     }
     Image {
         x: 32px; y: 10px; width: TaskStyle.icon-size; height: TaskStyle.icon-size;
-        source: root.data.kind == 0 ? @image-url("../../../../ui/icons/alert.svg") : root.data.kind == 4 ? @image-url("../../../../ui/icons/pause.svg") : root.data.kind == 7 ? @image-url("../../../../ui/icons/check-circle.svg") : root.data.kind == 3 ? @image-url("../../../../ui/icons/refresh.svg") : root.data.kind == 5 ? @image-url("../../../../ui/icons/today.svg") : @image-url("../../../../ui/icons/calendar.svg");
+        source: root.data.kind == 0 ? @image-url("../../../../ui/icons/refresh.svg") : root.data.kind == 1 ? @image-url("../../../../ui/icons/today.svg") : root.data.kind == 2 ? @image-url("../../../../ui/icons/check-circle.svg") : @image-url("../../../../ui/icons/calendar.svg");
         colorize: TaskStyle.section-icon-color(root.data.kind);
         accessible-role: none;
     }

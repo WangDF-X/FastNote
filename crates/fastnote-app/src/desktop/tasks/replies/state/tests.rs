@@ -29,7 +29,6 @@ fn fake_today(date: NaiveDate, evaluated_at: NaiveDateTime) -> TodayView {
         open_count: 0,
         overdue_count: 0,
         completed_today_count: 0,
-        tomorrow_count: 0,
     }
 }
 
@@ -39,12 +38,12 @@ fn test_no_ui_today_reply_does_not_cache_snapshot_or_change_fold_and_page_state(
     let at = "2026-11-04T12:00:00".parse().unwrap();
     let mut tasks = TaskSession::new();
     tasks.latest_today = 7;
-    tasks.collapsed[5] = Some(true);
-    tasks.limits[5] = 600;
+    tasks.collapsed[1] = Some(true);
+    tasks.limits[1] = 600;
     assert!(!adopt_today(&mut tasks, 7, fake_today(date, at), false));
     assert!(tasks.today.is_none());
-    assert_eq!(tasks.collapsed[5], Some(true));
-    assert_eq!(tasks.limits[5], 600);
+    assert_eq!(tasks.collapsed[1], Some(true));
+    assert_eq!(tasks.limits[1], 600);
 }
 
 #[test]
