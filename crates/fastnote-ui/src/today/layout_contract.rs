@@ -19,8 +19,11 @@ fn test_task_row_stretches_title_instead_of_centering_a_zero_width_body() {
 #[test]
 fn test_date_button_is_visible_and_connected_to_the_shared_task_drawer() {
     let row = include_str!("../../ui/tasks/task-row.slint");
-    assert!(row.contains("label: \"设置日期\";"));
-    assert!(row.contains("activated => { root.dates-requested(); }"));
+    assert!(row.contains("? \"设置日期\" : root.data.start-label"));
+    assert!(row.contains("root.dates-requested();"));
+    assert!(row.contains(
+        "accessible-action-default => { if (root.enabled) { root.dates-requested(); } }"
+    ));
     let page = include_str!("../../ui/tasks/today-page.slint");
     assert!(page.contains("dates-requested => { root.dates-requested(task.id); }"));
     let window = include_str!("../../ui/app-window.slint");
@@ -48,7 +51,7 @@ fn test_drawer_and_text_fields_have_explicit_nonzero_geometry() {
 fn test_row_action_order_is_status_dates_priority_delete_without_duplicate_drawer_controls() {
     let row = include_str!("../../ui/tasks/task-row.slint");
     let status = row.find("status-choice := TaskSelect {").unwrap();
-    let date = row.find("label: \"设置日期\";").unwrap();
+    let date = row.find("date-entry := Rectangle {").unwrap();
     let priority = row.find("glyph: root.data.priority-label;").unwrap();
     let delete = row.find("label: \"删除：\"").unwrap();
     assert!(status < date && date < priority && priority < delete);

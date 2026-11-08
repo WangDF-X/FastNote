@@ -1,6 +1,5 @@
 import { TaskRowData } from "types.slint";
 import { TaskIconButton } from "icon-button.slint";
-import { ActionButton } from "../components/action-button.slint";
 import { ShellPalette } from "../palette.slint";
 import { ShellFocus } from "../shell-focus.slint";
 import { TaskSelect } from "task-select.slint";
@@ -33,6 +32,7 @@ export component TaskRow inherits Rectangle {
     changed focus-tick => {
         if (ShellFocus.anchor == "task:" + root.data.id) { body-keyboard.focus(); }
         else if (ShellFocus.anchor == "task:status:" + root.data.id) { status-choice.focus(); }
+        else if (ShellFocus.anchor == "task:date:" + root.data.id) { date-keyboard.focus(); }
     }
 
     HorizontalLayout {
@@ -59,26 +59,35 @@ export component TaskRow inherits Rectangle {
             accessible-label: root.data.title + "，" + root.data.status-label + (root.data.overdue ? "，逾期" : "");
             accessible-action-default => { if (root.enabled) { root.opened(); } }
             title := Text {
-                x: 4px; y: root.data.metadata == "" ? 16px : 8px;
-                width: parent.width - 8px; height: 20px;
+                x: 4px; y: root.data.today-context == "" && root.data.blocking-label == "" ? 16px : 8px;
+                width: max(0px, parent.width - (root.data.overdue ? 78px : 8px)); height: 20px;
                 text: root.data.title;
                 color: ShellPalette.text-primary;
                 font-size: TaskStyle.body; font-family: TaskStyle.font-family; overflow: elide; vertical-alignment: center;
+            }
+            if root.data.overdue: Rectangle {
+                x: title.x + min(title.width, title.preferred-width) + 8px; y: title.y;
+                width: 62px; height: 20px;
+                Image {
+                    x: 0px; y: 2px; width: TaskStyle.icon-size; height: TaskStyle.icon-size;
+                    source: @image-url("../../../../ui/icons/alert.svg");
+                    colorize: TaskStyle.row-danger; accessible-role: none;
+                }
+                Text {
+                    x: 19px; width: parent.width - 19px; height: parent.height;
+                    text: "已逾期"; color: ShellPalette.text-secondary;
+                    font-size: TaskStyle.caption; font-family: TaskStyle.font-family; vertical-alignment: center;
+                }
             }
             if root.data.done: Rectangle {
                 x: title.x; y: title.y + 10px;
                 width: min(title.width, title.preferred-width); height: 1px;
                 background: ShellPalette.text-primary;
             }
-            if root.data.overdue: Image {
-                x: 4px; y: 30px; width: TaskStyle.icon-size; height: TaskStyle.icon-size;
-                source: @image-url("../../../../ui/icons/alert.svg");
-                colorize: TaskStyle.row-danger; accessible-role: none;
-            }
             Text {
-                x: root.data.overdue ? 26px : 4px; y: 30px;
+                x: 4px; y: 30px;
                 width: parent.width - self.x - 4px; height: 16px;
-                text: root.data.metadata;
+                text: root.data.today-context + (root.data.today-context != "" && root.data.blocking-label != "" ? " · " : "") + root.data.blocking-label;
                 color: ShellPalette.text-secondary;
                 font-size: TaskStyle.caption; font-family: TaskStyle.font-family; overflow: elide;
             }
@@ -104,27 +113,60 @@ export component TaskRow inherits Rectangle {
                     clicked => { body-keyboard.focus(); root.opened(); }
                 }
             }
+            if root.data.blocking-label != "": TouchArea {
+                x: 0px; y: 28px; width: parent.width; height: 20px;
+                mouse-cursor: pointer;
+                clicked => { root.opened(); }
+                changed has-hover => { if (self.has-hover) { blockers.show(); } else { blockers.close(); } }
+                blockers := PopupWindow {
+                    x: 0px; y: 20px; width: 300px;
+                    height: min(260px, blocker-text.preferred-height + 20px);
+                    close-policy: no-auto-close;
+                    Rectangle {
+                        background: ShellPalette.surface; border-width: 1px; border-color: ShellPalette.border; border-radius: 6px;
+                        blocker-text := Text {
+                            x: 10px; y: 10px; width: parent.width - 20px; height: parent.height - 20px;
+                            text: root.data.blocking-tooltip; wrap: word-wrap; overflow: elide;
+                            color: ShellPalette.text-primary; font-size: TaskStyle.caption; font-family: TaskStyle.font-family;
+                        }
+                    }
+                }
+            }
         }
         status-choice := TaskSelect {
-            min-width: 112px;
-            max-width: 112px;
-            preferred-width: 112px;
+            min-width: 90px;
+            max-width: 90px;
+            preferred-width: 90px;
             model: ["未开始", "进行中", "已完成"];
             current-index: root.data.done ? 2 : root.data.status-index;
-            quiet: true;
             enabled: root.enabled && !root.data.read-only;
             label: "修改任务状态：" + root.data.title;
             focus-key: "task:status:" + root.data.id;
             selected(index) => { root.status-changed(index); }
         }
-        ActionButton {
-            label: "设置日期";
-            width: 120px;
-            ghost: true; icon: @image-url("../../../../ui/icons/calendar.svg"); with-icon: true;
-            text-size: TaskStyle.body; text-family: TaskStyle.font-family; text-color: ShellPalette.text-secondary;
-            enabled: root.enabled;
-            focus-key: "task:date:" + root.data.id;
-            activated => { root.dates-requested(); }
+        date-entry := Rectangle {
+            width: 160px; height: 44px; border-radius: 6px;
+            background: date-mouse.pressed ? ShellPalette.subtle : date-mouse.has-hover ? ShellPalette.hover : transparent;
+            accessible-role: button;
+            accessible-label: "设置日期：" + root.data.title + (root.data.start-label != "" ? "，开始 " + root.data.start-label : "") + (root.data.due-label != "" ? "，到期 " + root.data.due-label : "");
+            accessible-action-default => { if (root.enabled) { root.dates-requested(); } }
+            Image { x: 4px; y: 14px; width: 16px; height: 16px; source: @image-url("../../../../ui/icons/calendar.svg"); colorize: ShellPalette.text-secondary; accessible-role: none; }
+            Text {
+                x: 24px; y: 2px; width: parent.width - 28px; height: parent.height - 4px;
+                text: root.data.start-label == "" && root.data.due-label == "" ? "设置日期" : root.data.start-label + (root.data.start-label != "" && root.data.due-label != "" ? "\n" : "") + root.data.due-label;
+                color: ShellPalette.text-secondary; font-size: TaskStyle.caption; font-family: root.data.start-label == "" && root.data.due-label == "" ? TaskStyle.font-family : TaskStyle.date-font-family; vertical-alignment: center; overflow: elide;
+            }
+            Rectangle {
+                width: parent.width; height: parent.height; border-radius: 6px;
+                border-width: 2px; border-color: ShellPalette.accent; background: transparent;
+                visible: ShellFocus.show-indicators && date-keyboard.has-focus;
+            }
+            date-keyboard := FocusScope {
+                width: parent.width; height: parent.height; enabled: root.enabled;
+                changed has-focus => { if (self.has-focus) { ShellFocus.claim("task:date:" + root.data.id); } }
+                key-pressed(event) => { if (event.text == Key.Return || event.text == " ") { root.dates-requested(); return accept; } return reject; }
+                date-mouse := TouchArea { mouse-cursor: pointer; clicked => { date-keyboard.focus(); root.dates-requested(); } }
+            }
         }
         TaskIconButton {
             glyph: root.data.priority-label;

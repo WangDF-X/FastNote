@@ -230,6 +230,7 @@ fn decode(row: &Row<'_>) -> rusqlite::Result<(Task, TaskContext)> {
             child_done: row.get(18)?,
             dependency_count: row.get(19)?,
             blocking_count: row.get(20)?,
+            blocking_titles: Vec::new(),
             read_only: row.get(21)?,
             descendant_count: row.get(22)?,
         },

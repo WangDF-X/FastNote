@@ -14,12 +14,15 @@ fn pixel_token(name: &str) -> u32 {
 }
 
 #[test]
-fn test_task_text_uses_three_shared_sizes_and_one_font_including_popups() {
+fn test_task_text_uses_shared_sizes_and_distinct_date_font() {
     assert_eq!(pixel_token("body"), 14);
     assert_eq!(pixel_token("caption"), 12);
     assert_eq!(pixel_token("heading"), 15);
     assert!(include_str!("../../ui/tasks/task-style.slint")
         .contains("font-family: \"Microsoft YaHei UI\";"));
+    assert!(
+        include_str!("../../ui/tasks/task-style.slint").contains("date-font-family: \"Segoe UI\";")
+    );
     for (name, source) in [
         ("today", include_str!("../../ui/tasks/today-page.slint")),
         ("row", include_str!("../../ui/tasks/task-row.slint")),
@@ -57,7 +60,7 @@ fn test_add_date_priority_and_destructive_actions_have_consistent_icons() {
     let today = include_str!("../../ui/tasks/today-page.slint");
     assert!(today.contains("icons/plus.svg\"); with-icon: true;"));
     let row = include_str!("../../ui/tasks/task-row.slint");
-    assert!(row.contains("icons/calendar.svg\"); with-icon: true;"));
+    assert!(row.contains("icons/calendar.svg\");"));
     assert!(row.contains("glyph-with-icon: true; icon:"));
     assert!(row.contains("icons/flag.svg") && row.contains("icons/trash.svg"));
     let field = include_str!("../../ui/tasks/datetime-field.slint");
@@ -250,7 +253,7 @@ fn test_all_task_sections_and_status_texts_stay_neutral_while_icons_keep_semanti
     assert!(counter.contains("root.tone == 1 ? ShellPalette.danger-subtle"));
     assert!(counter.contains("root.tone == 2 ? ShellPalette.task-done"));
     let row = include_str!("../../ui/tasks/task-row.slint");
-    assert!(row.contains("if root.data.overdue: Image {"));
+    assert!(row.contains("if root.data.overdue: Rectangle {"));
     assert!(row.contains("colorize: TaskStyle.row-danger;"));
     let button = include_str!("../../ui/components/action-button.slint");
     assert!(button.contains("in property <color> icon-color: root.text-color;"));
@@ -258,6 +261,23 @@ fn test_all_task_sections_and_status_texts_stay_neutral_while_icons_keep_semanti
     assert!(
         drawer.contains("text-color: ShellPalette.text-primary; icon-color: ShellPalette.danger;")
     );
+}
+
+#[test]
+fn test_row_keeps_overdue_by_title_and_status_control_visibly_bordered() {
+    let row = include_str!("../../ui/tasks/task-row.slint");
+    let body = row.split_once("body := Rectangle {").unwrap().1;
+    let body = body.split_once("status-choice := TaskSelect {").unwrap().0;
+    assert!(body.contains("text: \"已逾期\""));
+    assert!(
+        body.contains("x: title.x + min(title.width, title.preferred-width) + 8px; y: title.y;")
+    );
+    let status = row.split_once("status-choice := TaskSelect {").unwrap().1;
+    let status = status.split_once("date-entry := Rectangle {").unwrap().0;
+    assert!(!status.contains("quiet: true"));
+    assert!(status.contains("max-width: 90px;"));
+    assert!(row.find("text: \"已逾期\"").unwrap() < row.find("date-entry := Rectangle {").unwrap());
+    assert!(row.contains("TaskStyle.date-font-family"));
 }
 
 #[test]

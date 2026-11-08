@@ -34,10 +34,23 @@ fn complete_batch(
     let rows = statement.query_map(params_from_iter(&ids), decode)?;
     for row in rows {
         let (task, context) = row?;
-        contexts.insert(task.id, (task.updated_at, context));
+        contexts.insert(task.id.to_string(), (task.updated_at, context));
+    }
+    let sql = format!("SELECT task_id, title FROM (SELECT d.task_id, pre.title, ROW_NUMBER() OVER (PARTITION BY d.task_id ORDER BY pre.title COLLATE NOCASE, pre.id) AS position FROM task_dependencies d JOIN tasks pre ON pre.id=d.depends_on_task_id WHERE d.task_id IN ({placeholders}) AND pre.status<>'done') WHERE position<=10 ORDER BY task_id, position");
+    let mut names = connection.prepare(&sql)?;
+    let rows = names.query_map(params_from_iter(&ids), |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    for row in rows {
+        let (id, title) = row?;
+        if let Some((_, context)) = contexts.get_mut(&id) {
+            context.blocking_titles.push(title);
+        }
     }
     for summary in batch {
-        let (updated_at, context) = contexts.remove(&summary.id).ok_or(TaskError::Conflict)?;
+        let (updated_at, context) = contexts
+            .remove(&summary.id.to_string())
+            .ok_or(TaskError::Conflict)?;
         // 外部进程若在两次读取间改变实体，拒绝混合版本，不把失效标记当作可编辑确认值。
         if updated_at != summary.updated_at || context.read_only {
             return Err(TaskError::Conflict.into());

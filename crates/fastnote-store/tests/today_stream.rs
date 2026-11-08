@@ -173,7 +173,58 @@ fn test_bounded_projection_restores_plan_children_and_dependency_flags_without_b
     assert_eq!(parent.context.plan_name.as_deref(), Some("假计划"));
     let blocked = items.iter().find(|task| task.id == ids[2]).unwrap();
     assert_eq!(blocked.context.dependency_count, 1);
+    assert_eq!(blocked.context.blocking_titles, ["假任务"]);
     assert!(blocked.is_blocked);
+}
+
+#[test]
+fn test_today_blocking_names_are_sorted_capped_and_exclude_completed() {
+    let (directory, mut store) = fixture();
+    let target: TaskId = "019a0fff-aaaa-7000-8000-000000000001".parse().unwrap();
+    store
+        .insert_task(&Task::new(target, "目标".into(), now()).unwrap())
+        .unwrap();
+    let db = rusqlite::Connection::open(directory.path().join("fake.db")).unwrap();
+    for number in 2..=14 {
+        let id: TaskId = format!("019a0fff-aaaa-7000-8000-{number:012x}")
+            .parse()
+            .unwrap();
+        store
+            .insert_task(&Task::new(id, format!("前置 {number:02}"), now()).unwrap())
+            .unwrap();
+        db.execute(
+            "INSERT INTO task_dependencies VALUES(?1,?2,?3)",
+            rusqlite::params![target.to_string(), id.to_string(), now().to_rfc3339()],
+        )
+        .unwrap();
+    }
+    db.execute(
+        "UPDATE tasks SET status='done',completed_at=?1 WHERE title='前置 14'",
+        [now().to_rfc3339()],
+    )
+    .unwrap();
+    let QueryResult::Today(view) = store
+        .query_tasks(
+            Query::Today {
+                date: now().date_naive(),
+                limits: [200; 4],
+            },
+            FixedClock(now(), 0),
+        )
+        .unwrap()
+    else {
+        panic!("today")
+    };
+    let task = view
+        .sections
+        .iter()
+        .flat_map(|s| &s.items)
+        .find(|t| t.id == target)
+        .unwrap();
+    assert_eq!(task.context.blocking_count, 12);
+    assert_eq!(task.context.blocking_titles.len(), 10);
+    assert_eq!(task.context.blocking_titles[0], "前置 02");
+    assert_eq!(task.context.blocking_titles[9], "前置 11");
 }
 
 #[test]
