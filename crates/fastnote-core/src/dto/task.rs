@@ -19,6 +19,8 @@ pub struct TaskContext {
     pub dependency_count: u32,
     /// 未完成前置数量。
     pub blocking_count: u32,
+    /// 今日列表最多十个未完成前置任务标题，按标题和 ID 稳定排序。
+    pub blocking_titles: Vec<String>,
     /// 所属计划已归档。
     pub read_only: bool,
 }

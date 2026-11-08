@@ -25,7 +25,7 @@ pub(super) fn display_date(value: &str, current_year: i32) -> String {
     }
 }
 
-fn date_label(date: NaiveDate, time: Option<NaiveTime>, current_year: i32) -> String {
+pub(super) fn date_label(date: NaiveDate, time: Option<NaiveTime>, current_year: i32) -> String {
     let date = date_part(date, current_year);
     match time {
         Some(time) => format!("{date} {}", time.format("%H:%M")),

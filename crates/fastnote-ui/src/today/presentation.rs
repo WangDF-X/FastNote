@@ -8,7 +8,7 @@ use slint::{Model, ModelRc, SharedString, VecModel};
 use crate::{Date, MainWindow, TaskRowData, TodaySectionData};
 
 use super::calendar;
-use super::summary::{display_date, schedule_label};
+use super::summary::{date_label, display_date, schedule_label};
 
 /// 保留每组模型实例，刷新数据时不重建整页或文本编辑器。
 pub struct TodayPresenter {
@@ -200,6 +200,37 @@ pub(crate) fn row_data(task: &TaskSummary, current_year: i32) -> TaskRowData {
         }
         .into(),
         metadata: metadata.join(" · ").into(),
+        today_context: task
+            .context
+            .plan_name
+            .as_ref()
+            .map(|name| format!("所属计划：{name}"))
+            .unwrap_or_default()
+            .into(),
+        blocking_label: if task.context.blocking_count > 0 {
+            format!("{} 个前置任务未完成", task.context.blocking_count)
+        } else {
+            String::new()
+        }
+        .into(),
+        blocking_tooltip: {
+            let mut names = task.context.blocking_titles.clone();
+            let remaining = (task.context.blocking_count as usize).saturating_sub(names.len());
+            if remaining > 0 {
+                names.push(format!("还有 {remaining} 项"));
+            }
+            names.join("\n").into()
+        },
+        start_label: task
+            .start_date
+            .map(|date| date_label(date, task.start_time, current_year).replace('-', "/"))
+            .unwrap_or_default()
+            .into(),
+        due_label: task
+            .due_date
+            .map(|date| date_label(date, task.due_time, current_year).replace('-', "/"))
+            .unwrap_or_default()
+            .into(),
         overdue: task.is_overdue,
         read_only: task.context.read_only,
     }
@@ -335,6 +366,17 @@ mod tests {
             row_data(&summary, 2026).metadata.as_str(),
             "11-03 09:05 → 11-04 15:31 · 假计划"
         );
+        let row = row_data(&summary, 2026);
+        assert_eq!(row.start_label, "11/03 09:05");
+        assert_eq!(row.due_label, "11/04 15:31");
+        assert_eq!(row.today_context, "所属计划：假计划");
+        summary.start_date = None;
+        assert_eq!(row_data(&summary, 2026).start_label, "");
+        summary.context.blocking_count = 12;
+        summary.context.blocking_titles = (1..=10).map(|n| format!("任务 {n}")).collect();
+        let row = row_data(&summary, 2026);
+        assert_eq!(row.blocking_label, "12 个前置任务未完成");
+        assert!(row.blocking_tooltip.ends_with("还有 2 项"));
     }
 
     #[test]

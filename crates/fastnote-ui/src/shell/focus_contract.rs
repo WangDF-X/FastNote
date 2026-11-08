@@ -78,8 +78,19 @@ fn test_all_custom_focus_outlines_use_the_shared_disabled_visual_policy() {
             .lines()
             .filter(|line| line.contains("visible:") && line.contains(".has-focus"))
             .collect();
-        assert_eq!(focus_lines.len(), 1, "{name}");
-        assert!(focus_lines[0].contains(&visibility), "{name}");
+        let expected_count = if name == "tasks/task-row.slint" { 2 } else { 1 };
+        assert_eq!(focus_lines.len(), expected_count, "{name}");
+        assert!(
+            focus_lines
+                .iter()
+                .all(|line| line.contains("ShellFocus.show-indicators &&")),
+            "{name}"
+        );
+        if name == "tasks/task-row.slint" {
+            assert!(
+                source.contains("visible: ShellFocus.show-indicators && date-keyboard.has-focus;")
+            );
+        }
         assert!(
             source.contains(&format!("{scope} := FocusScope {{")),
             "{name}"
