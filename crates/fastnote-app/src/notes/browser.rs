@@ -5,7 +5,7 @@ use fastnote_core::{domain::MAX_NOTE_TREE_DEPTH, NoteFileEntry};
 const MAX_HISTORY: usize = 64;
 
 /// NOTE-03 §2.1：左侧目录导航，刻意不持有编辑器或任何正文。
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct NoteBrowser {
     selected: Option<String>,
     back: VecDeque<Option<String>>,
@@ -13,6 +13,7 @@ pub(crate) struct NoteBrowser {
 }
 
 /// 只改变目录选中位置的导航方向。
+#[derive(Clone, Copy)]
 pub(crate) enum NoteNavigation {
     Back,
     Forward,
@@ -134,6 +135,15 @@ pub(crate) fn virtual_path(tree: &[NoteFileEntry], id: Option<&str>) -> String {
     parts.push("小记");
     parts.reverse();
     parts.join("\\")
+}
+
+/// 路径栏的只读面包屑文本；根目录由界面的独立图标表示。
+pub(crate) fn breadcrumb_path(tree: &[NoteFileEntry], id: Option<&str>) -> String {
+    let path = virtual_path(tree, id);
+    path.strip_prefix("小记\\")
+        .map_or_else(String::new, |rest| {
+            format!("›  {}", rest.replace('\\', "  ›  "))
+        })
 }
 
 /// 判断节点是否位于指定子树内，包含节点本身。

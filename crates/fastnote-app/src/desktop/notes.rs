@@ -5,6 +5,7 @@ mod connect;
 mod editing;
 mod entries;
 mod entry_replies;
+mod name_validation;
 mod replies;
 
 use fastnote_core::{NoteFileEntry, NoteId};

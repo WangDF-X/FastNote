@@ -9,6 +9,9 @@ mod shell;
 mod theme;
 mod today;
 
+#[cfg(test)]
+mod note_save_contract;
+
 pub use calendar::{cell_preview, day_sections, CellPreview};
 pub use desktop::storage_message;
 pub use feedback::banner::{BannerAction, BannerKind, BannerRequest, BannerSet};

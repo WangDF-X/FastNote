@@ -104,6 +104,24 @@ fn test_path_tracks_selected_item_and_ancestor_rename_or_move() {
 }
 
 #[test]
+fn test_breadcrumb_uses_root_icon_and_arrow_separators_without_changing_names() {
+    let mut tree = tree();
+    assert_eq!(breadcrumb_path(&tree, None), "");
+    assert_eq!(breadcrumb_path(&tree, Some("missing")), "");
+    assert_eq!(
+        breadcrumb_path(&tree, Some("note")),
+        "›  工作  ›  灵感  ›  想法.md"
+    );
+    tree[0].name = "小记".into();
+    assert_eq!(breadcrumb_path(&tree, Some("work")), "›  小记");
+    tree[1].parent = Some("other".into());
+    assert_eq!(
+        breadcrumb_path(&tree, Some("note")),
+        "›  其他  ›  灵感  ›  想法.md"
+    );
+}
+
+#[test]
 fn test_deleted_subtree_prunes_history_and_selects_surviving_parent() {
     let old = tree();
     let mut state = NoteBrowser::default();
@@ -162,4 +180,28 @@ fn test_broken_parent_chains_do_not_loop_and_reconcile_falls_back_to_root() {
     assert_eq!(state.selected(), None);
     assert!(!in_subtree(&old, "note", "other"));
     assert!(!virtual_path(&old, Some("note")).is_empty());
+}
+
+#[test]
+fn test_navigation_preview_identifies_file_without_changing_history_before_save() {
+    let tree = tree();
+    let mut browser = NoteBrowser::default();
+    browser.select(&tree, Some("note"));
+    browser.select(&tree, Some("work"));
+    let mut preview = browser.clone();
+    assert!(preview.navigate(&tree, NoteNavigation::Back));
+    let selected = preview.selected().unwrap();
+    assert_eq!(selected, "note");
+    assert!(
+        !tree
+            .iter()
+            .find(|entry| entry.id == selected)
+            .unwrap()
+            .is_folder
+    );
+    assert_eq!(browser.selected(), Some("work"));
+    assert!(browser.can_back());
+    assert!(!browser.can_forward());
+    assert!(browser.navigate(&tree, NoteNavigation::Back));
+    assert_eq!(browser.selected(), Some("note"));
 }

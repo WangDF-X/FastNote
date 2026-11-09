@@ -352,7 +352,9 @@ export component MainWindow inherits Window {
             if (!event.modifiers.control || event.modifiers.alt || event.modifiers.shift) {
                 return reject;
             }
-            if ((event.text == "n" || event.text == "N") && root.current_page == "今日任务") {
+            if ((event.text == "s" || event.text == "S") && root.current_page == "小记" && root.note-has-selection && !root.note-create-open && root.note-rename-id == "") {
+                root.note-flush();
+            } else if ((event.text == "n" || event.text == "N") && root.current_page == "今日任务") {
                 root.focus-task-create();
             } else if (event.text == "1") {
                 root.route_action("navigate:今日任务");
@@ -373,6 +375,8 @@ export component MainWindow inherits Window {
             }
             return accept;
         }
+
+        TouchArea { clicked => { if (root.current_page == "小记") { shortcuts.focus(); } } }
 
         if root.custom-titlebar: TitleBar {
             x: 0px;

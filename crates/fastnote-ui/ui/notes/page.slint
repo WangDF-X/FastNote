@@ -58,6 +58,8 @@ export component NotesPage inherits Rectangle {
     callback toggle-preview();
     callback create(string);
     background: transparent;
+    focus-outside := FocusScope { focus-on-tab-navigation: false; }
+    TouchArea { clicked => { focus-outside.focus(); } }
 
     VerticalLayout {
         padding: 12px; spacing: 4px;
@@ -65,13 +67,25 @@ export component NotesPage inherits Rectangle {
             height: 32px; spacing: 8px;
             ActionButton {
                 label: root.drawer-open ? "收起列表" : "展开列表"; ghost: true;
+                text-family: "Microsoft YaHei UI";
                 with-icon: true; icon: @image-url("../../../../ui/icons/note-panel.svg");
                 activated => { root.drawer-open = !root.drawer-open; }
             }
-            Text {
-                horizontal-stretch: 1; vertical-alignment: center; font-size: 11px; color: ShellPalette.text-tertiary;
-                text: root.has-selection ? root.current-name + "  ·  " + root.save-label + "  ·  创建 " + root.created-date + "  ·  修改 " + root.updated-date : "";
-                overflow: elide;
+            HorizontalLayout {
+                horizontal-stretch: 1; spacing: 8px;
+                if root.has-selection: Text {
+                    text: root.current-name; font-size: 16px; font-weight: 600;
+                    color: ShellPalette.text-primary; vertical-alignment: center; overflow: elide;
+                }
+                if root.has-selection: Text {
+                    text: root.save-label; font-size: 12px; font-weight: 500; vertical-alignment: center;
+                    color: root.error != "" || root.save-label == "未保存" ? ShellPalette.danger : root.save-label == "已保存" ? ShellPalette.success : ShellPalette.text-secondary;
+                }
+                Text {
+                    horizontal-stretch: 1; vertical-alignment: center; font-size: 11px; color: ShellPalette.text-tertiary;
+                    text: root.has-selection ? "创建 " + root.created-date + "  ·  修改 " + root.updated-date : "";
+                    overflow: elide;
+                }
             }
             Text { text: edit-mode.hovered ? "编辑" : preview-mode-button.hovered ? "预览" : ""; width: 28px; font-size: 12px; color: ShellPalette.text-secondary; vertical-alignment: center; }
             Rectangle {
@@ -116,6 +130,7 @@ export component NotesPage inherits Rectangle {
                 delete-requested(id, folder) => { root.delete-id = id; root.delete-folder = folder; }
                 undo => { root.undo(); }
                 move-entry(id, destination) => { root.move-entry(id, destination); }
+                dismiss-editor-focus => { focus-outside.focus(); }
             }
             Rectangle {
                 horizontal-stretch: 1; background: ShellPalette.surface;
@@ -134,6 +149,10 @@ export component NotesPage inherits Rectangle {
                         placeholder-text: "写下你的想法…"; wrap: word-wrap;
                         edited(value) => { root.edited(value); }
                         changed has-focus => { if (!self.has-focus) { root.flush(); } }
+                        key-pressed(event) => {
+                            if (event.modifiers.control && !event.modifiers.alt && !event.modifiers.shift && (event.text == "s" || event.text == "S")) { root.flush(); return accept; }
+                            return reject;
+                        }
                     }
                     if root.preview-mode: ScrollView {
                         vertical-stretch: 1; content-width: self.visible-width; content-height: preview.preferred-height;
@@ -187,7 +206,7 @@ export component NotesPage inherits Rectangle {
         background: ShellPalette.overlay;
         TouchArea { clicked => { } }
         Rectangle {
-            width: min(400px, parent.width - 32px); height: 220px;
+            width: min(400px, parent.width - 32px); height: root.create-error != "" ? 250px : 220px;
             x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
             background: ShellPalette.surface; border-radius: 12px; border-width: 1px; border-color: ShellPalette.border;
             VerticalLayout {
@@ -196,10 +215,11 @@ export component NotesPage inherits Rectangle {
                 Text { text: "位置：" + root.create-path; font-size: 13px; color: ShellPalette.text-secondary; overflow: elide; }
                 TaskField {
                     text <=> root.create-name; label: "文件名"; placeholder: "输入文件名"; enabled: !root.create-busy;
+                    init => { self.focus-input(); }
                     accepted => { root.create(root.create-name); }
                     escaped => { if (!root.create-busy) { root.create-open = false; } }
                 }
-                Text { text: root.create-error; color: ShellPalette.danger; font-size: 12px; overflow: elide; }
+                Text { text: root.create-error; color: ShellPalette.danger; font-size: 12px; wrap: word-wrap; }
                 Rectangle { vertical-stretch: 1; }
                 HorizontalLayout {
                     spacing: 8px; Rectangle { horizontal-stretch: 1; }

@@ -81,10 +81,6 @@ impl Runtime {
         if !self.note_visible() || self.notes.borrow().tree_busy() {
             return;
         }
-        if select {
-            self.notes.borrow_mut().select(Some(&note.to_string()));
-            self.render_note_tree();
-        }
         let current = self
             .notes
             .borrow()
@@ -92,12 +88,23 @@ impl Runtime {
             .as_ref()
             .is_some_and(|editor| editor.detail.note.id == note);
         if current && !self.note_protected() {
+            if select {
+                self.notes.borrow_mut().select(Some(&note.to_string()));
+                self.render_note_tree();
+            }
             self.notes.borrow_mut().preview = false;
             let _ = self.with_ui(|ui| ui.shell.component().set_note_preview_mode(false));
             return;
         }
-        if self.defer_note_transition(format!("open:{note}")) {
+        if self.defer_note_transition(format!(
+            "open:{}:{note}",
+            if select { "select" } else { "keep" }
+        )) {
             return;
+        }
+        if select {
+            self.notes.borrow_mut().select(Some(&note.to_string()));
+            self.render_note_tree();
         }
         let id = self.next_id.get();
         self.next_id.set(id.saturating_add(1));
@@ -217,12 +224,15 @@ impl Runtime {
                     .and_then(|value| value.split_once(':'))
                 {
                     runtime.move_note_entry(id.to_owned(), destination.to_owned());
-                } else if let Some(id) = action
+                } else if let Some(direction) = action.strip_prefix("note-nav:") {
+                    runtime.navigate_note_tree(direction);
+                } else if let Some((selection, id)) = action
                     .strip_prefix("open:")
-                    .and_then(|value| value.parse().ok())
+                    .and_then(|value| value.split_once(':'))
                 {
-                    // 保存过程中左侧可能已经导航，打开请求不能把目录选择改回去。
-                    runtime.open_note(id, false);
+                    if let Ok(id) = id.parse() {
+                        runtime.open_note(id, selection == "select");
+                    }
                 } else {
                     runtime.dispatch_action(action);
                 }
@@ -291,7 +301,7 @@ impl Runtime {
             let window = ui.shell.component();
             window.set_note_rows(ModelRc::default());
             window.set_note_selected_id("".into());
-            window.set_note_selected_path("小记".into());
+            window.set_note_selected_path("".into());
             window.set_note_can_back(false);
             window.set_note_can_forward(false);
             window.set_note_can_parent(false);
@@ -317,7 +327,9 @@ impl Runtime {
             .to_owned();
         let content = editor.content.clone();
         let error = editor.error.clone().unwrap_or_default();
-        let label = if editor.pending.is_some() {
+        let label = if editor.error.is_some() {
+            "保存失败"
+        } else if editor.pending.is_some() {
             "正在保存…"
         } else if editor.dirty() {
             "未保存"

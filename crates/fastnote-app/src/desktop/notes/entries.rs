@@ -12,11 +12,8 @@ impl Runtime {
         if !self.note_visible() || self.notes.borrow().tree_busy() {
             return;
         }
-        if fastnote_core::domain::validate_note_name(&name).is_err() {
-            self.note_name_error(
-                false,
-                "文件名无效，请检查特殊字符、保留名称及末尾空格或句点。",
-            );
+        if let Some(message) = super::name_validation::name_error(&name) {
+            self.note_name_error(false, &message);
             return;
         }
         let folder = self
@@ -74,8 +71,8 @@ impl Runtime {
         {
             return;
         }
-        if fastnote_core::domain::validate_note_name(&name).is_err() {
-            self.note_name_error(true, "名称无效，请检查特殊字符、保留名称及末尾空格或句点。");
+        if let Some(message) = super::name_validation::name_error(&name) {
+            self.note_name_error(true, &message);
             return;
         }
         let entry = self

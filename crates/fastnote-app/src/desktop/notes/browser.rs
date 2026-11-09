@@ -1,13 +1,27 @@
+use std::rc::Rc;
+
 use fastnote_ui::NoteRowData;
 use slint::{Model, ModelRc, VecModel};
 
 use super::super::runtime::Runtime;
 use super::NoteSession;
-use crate::notes::{creation_parent, virtual_path, NoteNavigation};
+use crate::notes::{breadcrumb_path, creation_parent, virtual_path, NoteNavigation};
 
 impl Runtime {
-    pub(super) fn select_note_entry(&self, id: &str) {
+    pub(super) fn select_note_entry(self: &Rc<Self>, id: &str) {
         if !self.note_visible() || self.notes.borrow().tree_busy() {
+            return;
+        }
+        let file = self
+            .notes
+            .borrow()
+            .tree
+            .iter()
+            .any(|entry| entry.id == id && !entry.is_folder);
+        if file {
+            if let Ok(note) = id.parse() {
+                self.open_note(note, true);
+            }
             return;
         }
         self.notes
@@ -16,8 +30,8 @@ impl Runtime {
         self.render_note_tree();
     }
 
-    /// 用户明确导航只影响左侧：此路径不调用 open_note、flush_note 或 sync_note。
-    pub(super) fn navigate_note_tree(&self, direction: &str) {
+    /// 导航到文件时先保护草稿；文件夹和根目录不改变右侧编辑器。
+    pub(super) fn navigate_note_tree(self: &Rc<Self>, direction: &str) {
         if !self.note_visible() || self.notes.borrow().tree_busy() {
             return;
         }
@@ -27,8 +41,37 @@ impl Runtime {
             "up" => NoteNavigation::Parent,
             _ => return,
         };
+        let target = {
+            let session = self.notes.borrow();
+            let mut preview = session.browser.clone();
+            if !preview.navigate(&session.tree, direction) {
+                return;
+            }
+            preview
+                .selected()
+                .and_then(|id| {
+                    session
+                        .tree
+                        .iter()
+                        .find(|entry| entry.id == id && !entry.is_folder)
+                })
+                .and_then(|entry| entry.id.parse().ok())
+        };
+        if target.is_some() {
+            let action = match direction {
+                NoteNavigation::Back => "back",
+                NoteNavigation::Forward => "forward",
+                NoteNavigation::Parent => "up",
+            };
+            if self.defer_note_transition(format!("note-nav:{action}")) {
+                return;
+            }
+        }
         self.notes.borrow_mut().navigate(direction);
         self.render_note_tree();
+        if let Some(note) = target {
+            self.open_note(note, false);
+        }
     }
 
     pub(super) fn toggle_note_folder(&self, id: &str) {
@@ -50,7 +93,7 @@ impl Runtime {
         }
         let session = self.notes.borrow();
         let selected = session.browser.selected().unwrap_or_default().to_owned();
-        let path = virtual_path(&session.tree, session.browser.selected());
+        let path = breadcrumb_path(&session.tree, session.browser.selected());
         let rows: Vec<_> = session
             .tree_state
             .visible(&session.tree)
