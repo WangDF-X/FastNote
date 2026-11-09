@@ -326,7 +326,7 @@ fn test_task_writes_recheck_schema_version_before_changing_data() {
     let task = fixture.add(1);
     fixture
         .external()
-        .pragma_update(None, "user_version", 5)
+        .pragma_update(None, "user_version", 6)
         .unwrap();
     let error = fixture.store.delete_task(task.id, true).unwrap_err();
     assert!(matches!(

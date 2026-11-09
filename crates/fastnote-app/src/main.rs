@@ -2,6 +2,7 @@ mod clock;
 mod controller;
 mod desktop;
 mod logging;
+mod notes;
 mod routing;
 mod tasks;
 

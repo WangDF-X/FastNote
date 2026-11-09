@@ -48,7 +48,7 @@ fn test_v4_success_restores_foreign_keys_and_preserves_old_times_and_setting_tim
     let mut connection = legacy();
     migrate(&mut connection, now()).unwrap();
     assert!(foreign_keys(&connection));
-    assert_eq!(version(&connection), 4);
+    assert_eq!(version(&connection), 5);
     let task: (String, String, String, String) = connection
         .query_row(
             "SELECT status,status_changed_at,created_at,updated_at FROM tasks",
@@ -182,11 +182,11 @@ fn test_migration_rechecks_current_version_and_never_runs_sql_twice() {
         )
         .unwrap();
     assert_eq!(applied, now().to_rfc3339());
-    connection.pragma_update(None, "user_version", 5).unwrap();
+    connection.pragma_update(None, "user_version", 6).unwrap();
     assert!(matches!(
         migrate_step(&mut connection, 4, SCRIPTS[3], "different-time"),
-        Err(StoreError::NewerSchema { found: 5, .. })
+        Err(StoreError::NewerSchema { found: 6, .. })
     ));
     assert!(foreign_keys(&connection));
-    assert_eq!(version(&connection), 5);
+    assert_eq!(version(&connection), 6);
 }

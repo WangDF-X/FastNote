@@ -52,6 +52,82 @@ fn create_v1(path: &Path) {
 }
 
 #[test]
+fn test_v4_note_migration_preserves_notes_tasks_reminders_and_backup() {
+    let directory = tempdir();
+    let path = directory.path().join("fake.db");
+    create_v1(&path);
+    let db = Connection::open(&path).unwrap();
+    for (version, script) in [
+        (2, include_str!("../migrations/m0002_reminders.sql")),
+        (3, include_str!("../migrations/m0003_task_times.sql")),
+        (4, include_str!("../migrations/m0004_task_workflow.sql")),
+    ] {
+        db.execute_batch(script).unwrap();
+        db.execute(
+            "INSERT INTO schema_migrations VALUES(?1,?2,'0.0.1')",
+            params![version, now().to_rfc3339()],
+        )
+        .unwrap();
+    }
+    db.pragma_update(None, "user_version", 4).unwrap();
+    db.execute_batch("INSERT INTO tasks(id,title,status,status_changed_at,created_at,updated_at) VALUES('task','任务','todo','t','t','t');
+        INSERT INTO notes(id,content,converted_task_id,created_at,updated_at) VALUES('note1','Report\n正文','task','a','b');
+        INSERT INTO notes(id,content,created_at,updated_at) VALUES('note2','report\n其他','c','d');
+        INSERT INTO reminders(id,note_id,schedule_kind,local_time,state,created_at,updated_at) VALUES('r','note1','daily','09:00','paused','t','t');
+        INSERT INTO reminder_deliveries(id,reminder_id,rule_revision,scheduled_for,outcome,handled_at) VALUES('d','r',1,'t','submitted','t');").unwrap();
+    drop(db);
+    let _store = SqliteSettings::open(&path, now()).unwrap();
+    let db = Connection::open(&path).unwrap();
+    let first: (String, String, Option<String>, String, String) = db.query_row("SELECT name,content,converted_task_id,created_at,updated_at FROM notes WHERE id='note1'", [], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).unwrap();
+    assert_eq!(
+        first,
+        (
+            "Report".into(),
+            "Report\n正文".into(),
+            None,
+            "a".into(),
+            "b".into()
+        )
+    );
+    assert_eq!(
+        db.query_row::<String, _, _>("SELECT name FROM notes WHERE id='note2'", [], |r| r.get(0))
+            .unwrap(),
+        "report (2)"
+    );
+    for table in ["tasks", "reminders", "reminder_deliveries"] {
+        assert_eq!(
+            db.query_row::<i64, _, _>(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))
+                .unwrap(),
+            1
+        );
+    }
+    assert_eq!(
+        db.query_row::<i64, _, _>("SELECT count(*) FROM pragma_foreign_key_check", [], |r| r
+            .get(0))
+            .unwrap(),
+        0
+    );
+    let backup_path = fs::read_dir(directory.path().join("backups"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let backup = Connection::open(backup_path).unwrap();
+    assert_eq!(version(&backup), 4);
+    assert_eq!(
+        backup
+            .query_row::<String, _, _>(
+                "SELECT converted_task_id FROM notes WHERE id='note1'",
+                [],
+                |r| r.get(0)
+            )
+            .unwrap(),
+        "task"
+    );
+}
+
+#[test]
 fn test_v3_upgrade_preserves_reminders_custom_schema_and_backup() {
     let directory = tempdir();
     let path = directory.path().join("fake.db");
@@ -78,7 +154,7 @@ fn test_v3_upgrade_preserves_reminders_custom_schema_and_backup() {
 
     let store = SqliteSettings::open(&path, now()).unwrap();
     let db = Connection::open(&path).unwrap();
-    assert_eq!(version(&db), 4);
+    assert_eq!(version(&db), 5);
     let status: (String, String) = db
         .query_row(
             "SELECT status,status_changed_at FROM tasks WHERE id='task'",
@@ -123,12 +199,12 @@ fn test_v3_upgrade_preserves_reminders_custom_schema_and_backup() {
 }
 
 #[test]
-fn test_fresh_database_has_v4_schema_indexes_wal_and_audit() {
+fn test_fresh_database_has_v5_schema_indexes_wal_and_audit() {
     let directory = tempdir();
     let path = directory.path().join("nested/fake.db");
     let store = SqliteSettings::open(&path, now()).unwrap();
     let connection = Connection::open(&path).unwrap();
-    assert_eq!(version(&connection), 4);
+    assert_eq!(version(&connection), 5);
     let mode: String = connection
         .pragma_query_value(None, "journal_mode", |row| row.get(0))
         .unwrap();
@@ -140,6 +216,7 @@ fn test_fresh_database_has_v4_schema_indexes_wal_and_audit() {
         "tasks",
         "task_dependencies",
         "notes",
+        "note_folders",
         "journal_entries",
         "app_settings",
         "reminders",
@@ -178,7 +255,7 @@ fn test_fresh_database_has_v4_schema_indexes_wal_and_audit() {
             .query_row::<i64, _, _>("SELECT count(*) FROM schema_migrations", [], |row| row
                 .get(0))
             .unwrap(),
-        4
+        5
     );
     drop(connection);
     store.checkpoint().unwrap();
@@ -203,7 +280,7 @@ fn test_v1_upgrade_preserves_data_and_produces_complete_v1_backup() {
     assert_eq!(store.load_desktop().unwrap().entry_mode.as_str(), "tray");
     assert_eq!(store.load_desktop().unwrap().theme.as_str(), "dark");
     let connection = Connection::open(&path).unwrap();
-    assert_eq!(version(&connection), 4);
+    assert_eq!(version(&connection), 5);
     let plan: String = connection
         .query_row("SELECT name FROM plans", [], |row| row.get(0))
         .unwrap();

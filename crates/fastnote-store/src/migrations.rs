@@ -4,12 +4,13 @@ use rusqlite::{params, Connection, TransactionBehavior};
 use crate::database::check_integrity;
 use crate::StoreError;
 
-pub(crate) const CURRENT_VERSION: i64 = 4;
-const SCRIPTS: [&str; 4] = [
+pub(crate) const CURRENT_VERSION: i64 = 5;
+const SCRIPTS: [&str; 5] = [
     include_str!("../migrations/m0001_init.sql"),
     include_str!("../migrations/m0002_reminders.sql"),
     include_str!("../migrations/m0003_task_times.sql"),
     include_str!("../migrations/m0004_task_workflow.sql"),
+    include_str!("../migrations/m0005_note_files.sql"),
 ];
 
 const DEFAULTS: &[(&str, &str)] = &[
@@ -58,7 +59,7 @@ fn migrate_step(
     script: &str,
     timestamp: &str,
 ) -> Result<(), StoreError> {
-    if version != 4 {
+    if version != 4 && version != 5 {
         return migrate_one(connection, version, script, timestamp);
     }
     // SQLite 表重建必须在事务外临时关闭外键；事务内仍执行 foreign_key_check。
@@ -103,6 +104,9 @@ fn migrate_one(
         Vec::new()
     };
     tx.execute_batch(script)?;
+    if version == 5 {
+        migrate_note_names(&tx)?;
+    }
     for (name, sql) in task_objects {
         let exists: bool = tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name=?1)",
@@ -150,6 +154,29 @@ fn migrate_one(
     // ARCH-04 §8.1：完整性验证在提交前，失败连同 DDL 回滚。
     check_integrity(&tx, false)?;
     tx.commit()?;
+    Ok(())
+}
+
+// 在同一写事务中迁移旧名称；保留正文与时间，不将正文写入日志。
+fn migrate_note_names(tx: &rusqlite::Transaction<'_>) -> Result<(), StoreError> {
+    use crate::notes::names::NameKey;
+    let mut statement = tx.prepare("SELECT id,content FROM notes ORDER BY created_at,id")?;
+    let mut rows = statement.query([])?;
+    let mut used = std::collections::BTreeSet::new();
+    let mut next_numbers = std::collections::BTreeMap::<NameKey, u32>::new();
+    while let Some(row) = rows.next()? {
+        let id: String = row.get(0)?;
+        let content: String = row.get(1)?;
+        let base = crate::notes::names::capture_base(&content);
+        let mut name = base.clone();
+        let number = next_numbers.entry(NameKey(base.clone())).or_insert(2);
+        while used.contains(&NameKey(name.clone())) {
+            name = crate::notes::names::numbered(&base, *number);
+            *number = number.checked_add(1).ok_or_else(StoreError::integrity)?;
+        }
+        tx.execute("UPDATE notes SET name=?2 WHERE id=?1", params![id, name])?;
+        used.insert(NameKey(name));
+    }
     Ok(())
 }
 

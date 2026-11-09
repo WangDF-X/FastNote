@@ -1,0 +1,262 @@
+import { ScrollView, TextEdit } from "std-widgets.slint";
+import { ShellPalette } from "../palette.slint";
+import { ActionButton } from "../components/action-button.slint";
+import { TaskField } from "../tasks/task-field.slint";
+
+export struct NoteRowData { id: string, title: string, preview: string, date: string, is-folder: bool, expanded: bool, depth: int }
+
+component NoteModeButton inherits Rectangle {
+    in property <string> label;
+    in property <image> icon;
+    in property <bool> selected;
+    in property <bool> enabled;
+    out property <bool> hovered: area.has-hover;
+    callback activated();
+    width: 32px; height: 30px; border-radius: 5px;
+    background: root.selected ? ShellPalette.surface : area.has-hover ? ShellPalette.hover : transparent;
+    opacity: root.enabled ? 1 : 0.45;
+    accessible-role: button; accessible-label: root.label;
+    accessible-action-default => { if (root.enabled) { root.activated(); } }
+    forward-focus: key;
+    Image { width: 16px; height: 16px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; source: root.icon; colorize: root.selected ? ShellPalette.accent : ShellPalette.text-secondary; }
+    area := TouchArea { clicked => { if (root.enabled) { root.activated(); } } }
+    key := FocusScope {
+        key-pressed(event) => {
+            if (root.enabled && (event.text == " " || event.text == Key.Return)) { root.activated(); return accept; }
+            return reject;
+        }
+    }
+}
+
+export component NotesPage inherits Rectangle {
+    in property <[NoteRowData]> rows;
+    in property <int> total;
+    in property <string> selected-id;
+    in property <string> error;
+    in property <string> save-label;
+    in-out property <string> content;
+    in property <bool> has-selection;
+    in property <bool> preview-mode;
+    in property <styled-text> preview-text;
+    in property <string> preview-warning;
+    in-out property <string> create-name;
+    in property <string> create-error;
+    in property <bool> create-busy;
+    in-out property <bool> create-open;
+    in-out property <bool> create-folder;
+    in-out property <string> rename-id;
+    in property <string> target-folder;
+    in property <bool> undo-visible;
+    in property <string> created-date;
+    in property <string> updated-date;
+    private property <bool> drawer-open: true;
+    private property <bool> confirm-discard: false;
+    private property <string> delete-id;
+    private property <bool> delete-folder;
+    callback opened(string);
+    callback toggle-folder(string);
+    callback select-root();
+    callback rename-start(string);
+    callback delete-entry(string);
+    callback undo();
+    callback move-entry(string, string);
+    callback edited(string);
+    callback flush();
+    callback discard();
+    callback toggle-preview();
+    callback create(string);
+    background: transparent;
+
+    VerticalLayout {
+        padding: 12px; spacing: 4px;
+        HorizontalLayout {
+            height: 32px; spacing: 8px;
+            ActionButton {
+                label: root.drawer-open ? "收起列表" : "展开列表"; ghost: true;
+                with-icon: true; icon: @image-url("../../../../ui/icons/note-panel.svg");
+                activated => { root.drawer-open = !root.drawer-open; }
+            }
+            Text {
+                horizontal-stretch: 1; vertical-alignment: center; font-size: 11px; color: ShellPalette.text-tertiary;
+                text: root.has-selection ? root.save-label + "  ·  创建 " + root.created-date + "  ·  修改 " + root.updated-date : "";
+                overflow: elide;
+            }
+            Text { text: edit-mode.hovered ? "编辑" : preview-mode-button.hovered ? "预览" : ""; width: 28px; font-size: 12px; color: ShellPalette.text-secondary; vertical-alignment: center; }
+            Rectangle {
+                width: 68px; height: 32px; border-radius: 7px; background: ShellPalette.subtle;
+                HorizontalLayout {
+                    padding: 1px; spacing: 2px;
+                    edit-mode := NoteModeButton {
+                        label: "编辑"; icon: @image-url("../../../../ui/icons/note-edit.svg");
+                        selected: !root.preview-mode; enabled: root.has-selection;
+                        activated => { if (root.preview-mode) { root.toggle-preview(); } }
+                    }
+                    preview-mode-button := NoteModeButton {
+                        label: "预览"; icon: @image-url("../../../../ui/icons/note-preview.svg");
+                        selected: root.preview-mode; enabled: root.has-selection;
+                        activated => { if (!root.preview-mode) { root.toggle-preview(); } }
+                    }
+                }
+            }
+            ActionButton {
+                label: "新建小记"; primary: true; with-icon: true;
+                icon: @image-url("../../../../ui/icons/plus.svg");
+                activated => { root.rename-id = ""; root.create-folder = false; root.create-open = true; }
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px; vertical-stretch: 1;
+            if root.drawer-open: Rectangle {
+                width: 280px; background: ShellPalette.surface;
+                border-width: 1px; border-color: ShellPalette.border; border-radius: 10px;
+                VerticalLayout {
+                    padding: 16px; spacing: 10px;
+                    Text { text: "小记"; font-size: 16px; font-weight: 600; color: ShellPalette.text-primary; }
+                    Text { text: root.total + " 条记录"; font-size: 12px; color: ShellPalette.text-tertiary; }
+                    HorizontalLayout {
+                        spacing: 4px;
+                        ActionButton { label: "根目录"; ghost: true; activated => { root.select-root(); } }
+                        ActionButton { label: "新建文件夹"; ghost: true; with-icon: true; icon: @image-url("../../../../ui/icons/plus.svg"); activated => { root.rename-id = ""; root.create-folder = true; root.create-open = true; } }
+                    }
+                    Text { text: "新建位置：" + root.target-folder; color: ShellPalette.text-tertiary; font-size: 12px; overflow: elide; }
+                    if root.undo-visible: ActionButton { label: "撤销删除"; activated => { root.undo(); } }
+                    ScrollView {
+                        vertical-stretch: 1; content-width: self.visible-width; content-height: list.preferred-height;
+                        list := VerticalLayout {
+                            width: parent.visible-width; spacing: 4px;
+                            for row[index] in root.rows: Rectangle {
+                                height: 36px; border-radius: 6px;
+                                property <length> start-y;
+                                property <bool> dragged: false;
+                                background: root.selected-id == row.id ? ShellPalette.selected : touch.has-hover ? ShellPalette.hover : transparent;
+                                HorizontalLayout {
+                                    padding: 6px; spacing: 4px;
+                                    Rectangle { width: row.depth * 16px; }
+                                    Text { text: row.is-folder ? (row.expanded ? "▾" : "▸") : "·"; width: 16px; color: ShellPalette.text-secondary; vertical-alignment: center; }
+                                    Text { text: row.title; font-weight: row.is-folder ? 600 : 400; color: ShellPalette.text-primary; overflow: elide; vertical-alignment: center; horizontal-stretch: 1; }
+                                    Rectangle { width: 60px; }
+                                }
+                                touch := TouchArea {
+                                    pointer-event(event) => {
+                                        if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) { parent.start-y = self.mouse-y; parent.dragged = false; }
+                                        if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left && parent.dragged) {
+                                            if (self.mouse-x >= 0px && self.mouse-x < self.width) {
+                                                let destination-index = floor((index * 40px + self.mouse-y) / 40px);
+                                                if (destination-index < 0) { root.move-entry(row.id, ""); }
+                                                else if (destination-index < root.rows.length && root.rows[destination-index].is-folder) { root.move-entry(row.id, root.rows[destination-index].id); }
+                                            }
+                                        }
+                                        if (event.kind == PointerEventKind.cancel) { parent.dragged = false; }
+                                    }
+                                    moved => { if (self.pressed && (self.mouse-y - parent.start-y > 8px || parent.start-y - self.mouse-y > 8px)) { parent.dragged = true; } }
+                                    clicked => { if (!parent.dragged) { if (row.is-folder) { root.toggle-folder(row.id); } else { root.opened(row.id); } } }
+                                }
+                                NoteModeButton {
+                                    x: parent.width - 64px; y: 3px;
+                                    label: "重命名"; icon: @image-url("../../../../ui/icons/note-edit.svg");
+                                    enabled: !root.create-busy;
+                                    activated => { root.rename-start(row.id); }
+                                }
+                                NoteModeButton {
+                                    x: parent.width - self.width; y: 3px;
+                                    label: "删除"; icon: @image-url("../../../../ui/icons/trash.svg"); enabled: !root.create-busy;
+                                    activated => { root.delete-id = row.id; root.delete-folder = row.is-folder; }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Rectangle {
+                horizontal-stretch: 1; background: ShellPalette.surface;
+                border-width: 1px; border-color: ShellPalette.border; border-radius: 10px;
+                VerticalLayout {
+                    padding: 12px; spacing: 6px;
+                    if root.error != "": HorizontalLayout {
+                        spacing: 8px;
+                        Text { text: root.error; color: ShellPalette.danger; wrap: word-wrap; horizontal-stretch: 1; vertical-alignment: center; }
+                        ActionButton { label: "重试"; activated => { root.flush(); } }
+                        ActionButton { label: "丢弃更改"; activated => { root.confirm-discard = true; } }
+                    }
+                    if root.preview-mode && root.preview-warning != "": Text { text: root.preview-warning; color: ShellPalette.text-secondary; wrap: word-wrap; }
+                    if !root.preview-mode: TextEdit {
+                        vertical-stretch: 1; enabled: root.has-selection && !root.create-busy; text <=> root.content;
+                        placeholder-text: "写下你的想法…"; wrap: word-wrap;
+                        edited(value) => { root.edited(value); }
+                        changed has-focus => { if (!self.has-focus) { root.flush(); } }
+                    }
+                    if root.preview-mode: ScrollView {
+                        vertical-stretch: 1; content-width: self.visible-width; content-height: preview.preferred-height;
+                        preview := StyledText { width: parent.visible-width; text: root.preview-text; default-color: ShellPalette.text-primary; default-font-size: 14px; }
+                    }
+                }
+            }
+        }
+    }
+    if root.delete-id != "": Rectangle {
+        background: ShellPalette.overlay;
+        TouchArea { clicked => { } }
+        Rectangle {
+            width: min(400px, parent.width - 32px); height: 164px;
+            x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+            background: ShellPalette.surface; border-radius: 12px; border-width: 1px; border-color: ShellPalette.border;
+            VerticalLayout {
+                padding: 20px; spacing: 12px;
+                Text { text: root.delete-folder ? "删除文件夹？" : "删除小记？"; font-size: 16px; font-weight: 600; color: ShellPalette.text-primary; }
+                Text { text: root.delete-folder ? "文件夹内的所有文件和子文件夹也将被删除。" : "删除后可在两秒内撤销。"; color: ShellPalette.text-secondary; wrap: word-wrap; }
+                Rectangle { vertical-stretch: 1; }
+                HorizontalLayout {
+                    spacing: 8px; Rectangle { horizontal-stretch: 1; }
+                    ActionButton { label: "取消"; activated => { root.delete-id = ""; } }
+                    ActionButton { label: "删除"; danger: true; activated => { root.delete-entry(root.delete-id); root.delete-id = ""; } }
+                }
+            }
+        }
+    }
+    if root.confirm-discard: Rectangle {
+        background: ShellPalette.overlay;
+        TouchArea { clicked => { } }
+        Rectangle {
+            width: min(400px, parent.width - 32px); height: 160px;
+            x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+            background: ShellPalette.surface; border-radius: 12px; border-width: 1px; border-color: ShellPalette.border;
+            VerticalLayout {
+                padding: 20px; spacing: 12px;
+                Text { text: "丢弃未保存的更改？"; font-size: 16px; font-weight: 600; color: ShellPalette.text-primary; }
+                Text { text: "内容将恢复到上次成功保存的版本。"; color: ShellPalette.text-secondary; }
+                Rectangle { vertical-stretch: 1; }
+                HorizontalLayout {
+                    spacing: 8px; Rectangle { horizontal-stretch: 1; }
+                    ActionButton { label: "取消"; activated => { root.confirm-discard = false; } }
+                    ActionButton { label: "丢弃更改"; danger: true; activated => { root.confirm-discard = false; root.discard(); } }
+                }
+            }
+        }
+    }
+    if root.create-open: Rectangle {
+        background: ShellPalette.overlay;
+        TouchArea { clicked => { } }
+        Rectangle {
+            width: min(400px, parent.width - 32px); height: 220px;
+            x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+            background: ShellPalette.surface; border-radius: 12px; border-width: 1px; border-color: ShellPalette.border;
+            VerticalLayout {
+                padding: 24px; spacing: 12px;
+                Text { text: root.rename-id != "" ? "重命名" : root.create-folder ? "新建文件夹" : "新建小记"; font-size: 18px; font-weight: 600; color: ShellPalette.text-primary; }
+                Text { text: "新建位置：" + root.target-folder; font-size: 13px; color: ShellPalette.text-secondary; overflow: elide; }
+                TaskField {
+                    text <=> root.create-name; label: "文件名"; placeholder: "输入文件名"; enabled: !root.create-busy;
+                    accepted => { root.create(root.create-name); }
+                    escaped => { if (!root.create-busy) { root.create-open = false; } }
+                }
+                Text { text: root.create-error; color: ShellPalette.danger; font-size: 12px; overflow: elide; }
+                Rectangle { vertical-stretch: 1; }
+                HorizontalLayout {
+                    spacing: 8px; Rectangle { horizontal-stretch: 1; }
+                    ActionButton { label: "取消"; enabled: !root.create-busy; activated => { root.create-open = false; } }
+                    ActionButton { label: root.rename-id != "" ? "保存" : "创建"; primary: true; enabled: !root.create-busy; activated => { root.create(root.create-name); } }
+                }
+            }
+        }
+    }
+}

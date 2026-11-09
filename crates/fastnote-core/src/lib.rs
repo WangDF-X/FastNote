@@ -18,14 +18,20 @@ pub use desktop::{
     WindowGeometry,
 };
 pub use domain::{
-    parse_task_date, parse_task_time, IdError, NoteId, Patch, PlanId, Priority, Task, TaskError,
-    TaskId, TaskKind, TaskPatch, TaskStatus, WarningCode,
+    note_excerpt, parse_task_date, parse_task_time, validate_note_content, IdError, Note,
+    NoteError, NoteId, Patch, PlanId, Priority, Task, TaskError, TaskId, TaskKind, TaskPatch,
+    TaskStatus, WarningCode, MAX_NOTE_LENGTH,
 };
 pub use dto::{
+    NoteDateGroup, NoteDetail, NoteFileEntry, NoteListPage, NoteListQuery, NoteSummary,
     TaskContext, TaskDetail, TaskSummary, TodayPreferences, TodaySection, TodaySectionKind,
     TodaySort, TodayView,
 };
 pub use event::{AppEvent, CommandResult, ReminderOwner, TaskScope};
-pub use ports::{Clock, SettingsRepository, StorageErrorCode, TaskClock, TaskRepository};
+pub use ports::{
+    Clock, NoteRepository, SettingsRepository, StorageErrorCode, TaskClock, TaskRepository,
+};
 pub use query::{Query, QueryResult};
-pub use service::TaskService;
+pub use service::{
+    NoteCommand, NoteCommandResult, NoteService, NoteUndoState, NoteUndoTicket, TaskService,
+};

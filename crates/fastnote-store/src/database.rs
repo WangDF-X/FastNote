@@ -92,6 +92,9 @@ fn inspect(connection: &Connection) -> Result<i64, StoreError> {
             require_table(connection, table)?;
         }
     }
+    if version >= 5 {
+        require_table(connection, "note_folders")?;
+    }
     check_integrity(connection, false)?;
     Ok(version)
 }

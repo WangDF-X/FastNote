@@ -1,16 +1,17 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
-use std::time::{Instant, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
-use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
+use crossbeam_channel::{bounded, Receiver, RecvTimeoutError, Sender, TrySendError};
 use fastnote_core::{
-    Command as TaskCommand, CommandResult, DateTime, DesktopSetting, DesktopSettings, Query,
-    QueryResult, SettingsRepository, Utc,
+    Command as TaskCommand, CommandResult, DateTime, DesktopSetting, DesktopSettings, NoteCommand,
+    NoteCommandResult, NoteUndoState, Query, QueryResult, SettingsRepository, Utc,
 };
-use fastnote_store::{SqliteSettings, StoreError, TaskStoreError};
+use fastnote_store::{NoteStoreError, SqliteSettings, StoreError, TaskStoreError};
 
 use crate::logging::storage_error;
+use crate::notes::{NoteRead, NoteReadResult};
 
 pub(super) enum Command {
     Save {
@@ -28,6 +29,14 @@ pub(super) enum Command {
         id: u64,
         query: Query,
     },
+    NoteExecute {
+        id: u64,
+        command: NoteCommand,
+    },
+    NoteQuery {
+        id: u64,
+        query: NoteRead,
+    },
     Stop,
 }
 
@@ -44,6 +53,14 @@ pub(super) enum Reply {
     Queried {
         id: u64,
         result: Result<QueryResult, TaskStoreError>,
+    },
+    NoteExecuted {
+        id: u64,
+        result: Result<NoteCommandResult, NoteStoreError>,
+    },
+    NoteQueried {
+        id: u64,
+        result: Result<NoteReadResult, NoteStoreError>,
     },
 }
 
@@ -110,6 +127,14 @@ impl DbWorker {
 
     pub(super) fn query(&self, id: u64, query: Query) -> Result<(), SendError> {
         self.send(Command::Query { id, query })
+    }
+
+    pub(super) fn note_execute(&self, id: u64, command: NoteCommand) -> Result<(), SendError> {
+        self.send(Command::NoteExecute { id, command })
+    }
+
+    pub(super) fn note_query(&self, id: u64, query: NoteRead) -> Result<(), SendError> {
+        self.send(Command::NoteQuery { id, query })
     }
 
     fn send(&self, command: Command) -> Result<(), SendError> {
@@ -228,7 +253,8 @@ fn work(
     if !report(&replies, &wake, Reply::Loaded(result)) {
         return;
     }
-    while let Ok(command) = commands.recv() {
+    let mut note_undo = NoteUndoState::default();
+    while let Some(command) = next_command(&commands, &mut store, path.as_deref(), &mut note_undo) {
         let reply = match command {
             Command::Stop => break,
             Command::Execute {
@@ -266,6 +292,7 @@ fn work(
             }
             Command::Reload => {
                 store.take();
+                note_undo.clear();
                 let (new_store, result) = load(&mut path);
                 store = new_store;
                 Reply::Loaded(result)
@@ -283,9 +310,62 @@ fn work(
                 }
                 Reply::Saved { id, result }
             }
+            Command::NoteExecute { id, command } => {
+                let started = Instant::now();
+                let result =
+                    crate::notes::execute(store.as_mut(), path.as_deref(), command, &mut note_undo);
+                if started.elapsed().as_millis() > 50 {
+                    tracing::warn!(
+                        request_id = id,
+                        elapsed_ms = started.elapsed().as_millis() as u64,
+                        "note command slow"
+                    );
+                }
+                Reply::NoteExecuted { id, result }
+            }
+            Command::NoteQuery { id, query } => {
+                let scope = match &query {
+                    NoteRead::List(_) => "note_list",
+                    NoteRead::Detail(_) => "note_detail",
+                    NoteRead::Tree => "note_tree",
+                };
+                let started = Instant::now();
+                let result = crate::notes::query(store.as_mut(), path.as_deref(), query);
+                tracing::info!(
+                    phase = "db_query_completed",
+                    request_id = id,
+                    query_scope = scope,
+                    elapsed_us = started.elapsed().as_micros() as u64
+                );
+                Reply::NoteQueried { id, result }
+            }
         };
         if !report(&replies, &wake, reply) {
             break;
+        }
+    }
+}
+
+// NOTE-01 AC-10：空闲时也到期清掉临时批次，不等下一次用户操作，不新增线程。
+fn next_command(
+    commands: &Receiver<Command>,
+    store: &mut Option<SqliteSettings>,
+    path: Option<&Path>,
+    undo: &mut NoteUndoState,
+) -> Option<Command> {
+    loop {
+        crate::notes::expire(store.as_mut(), path, undo);
+        let Some(ticket) = undo.ticket() else {
+            return commands.recv().ok();
+        };
+        let timeout = (ticket.expires_at - timestamp())
+            .to_std()
+            .unwrap_or(Duration::ZERO)
+            .max(Duration::from_millis(10));
+        match commands.recv_timeout(timeout) {
+            Ok(command) => return Some(command),
+            Err(RecvTimeoutError::Disconnected) => return None,
+            Err(RecvTimeoutError::Timeout) => {}
         }
     }
 }

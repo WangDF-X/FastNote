@@ -8,6 +8,7 @@ mod effects;
 mod gesture;
 mod lease;
 mod lifecycle;
+mod notes;
 mod presentation;
 mod resources;
 mod runtime;

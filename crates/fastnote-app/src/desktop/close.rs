@@ -43,6 +43,16 @@ impl Runtime {
             self.notice(ToastKind::Info, "正在保存设置，请稍候再关闭。");
             return;
         }
+        if self.defer_note_transition(
+            if explicit_exit {
+                "desktop:quit"
+            } else {
+                "desktop:close"
+            }
+            .to_owned(),
+        ) {
+            return;
+        }
         if self.defer_task_transition(Transition::Close {
             exit: explicit_exit,
         }) {
@@ -76,6 +86,9 @@ impl Runtime {
         }
         if self.dialog_blocked() || self.transient_input_blocks_close() {
             self.show_main();
+            return;
+        }
+        if self.defer_note_transition("desktop:minimize".to_owned()) {
             return;
         }
         if self.defer_task_transition(Transition::Minimize) {
