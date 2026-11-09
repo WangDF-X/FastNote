@@ -1,3 +1,5 @@
+#[path = "note_cases/rename_version.rs"]
+mod rename_version;
 #[path = "note_cases/undo.rs"]
 mod undo;
 

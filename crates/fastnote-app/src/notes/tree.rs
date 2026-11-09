@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use fastnote_core::NoteFileEntry;
+use fastnote_core::{domain::MAX_NOTE_TREE_DEPTH, NoteFileEntry};
 
 /// 目录展开状态；收起时递归移除后代的展开状态。
 #[derive(Default)]
@@ -9,6 +9,7 @@ pub(crate) struct TreeState {
 }
 
 impl TreeState {
+    /// 单独切换展开状态，不改变目录选中项或新建目标。
     pub fn toggle(&mut self, tree: &[NoteFileEntry], id: &str) {
         if !tree.iter().any(|e| e.id == id && e.is_folder) {
             return;
@@ -29,6 +30,27 @@ impl TreeState {
         }
     }
 
+    /// 展开选中项的祖先，用于历史导航及新建后定位。
+    pub fn reveal(&mut self, tree: &[NoteFileEntry], id: Option<&str>) {
+        let mut cursor = id;
+        for _ in 0..MAX_NOTE_TREE_DEPTH {
+            let parent = cursor
+                .and_then(|id| tree.iter().find(|entry| entry.id == id))
+                .and_then(|entry| entry.parent.as_deref());
+            if let Some(parent) = parent {
+                self.expanded.insert(parent.to_owned());
+            }
+            cursor = parent;
+        }
+    }
+
+    /// 删除节点刷新后丢弃无效的展开标识。
+    pub fn reconcile(&mut self, tree: &[NoteFileEntry]) {
+        self.expanded
+            .retain(|id| tree.iter().any(|entry| &entry.id == id && entry.is_folder));
+    }
+
+    /// 只投影已展开的目录，文件夹优先，同级名称按大小写不敏感排序。
     pub fn visible<'a>(&self, tree: &'a [NoteFileEntry]) -> Vec<(&'a NoteFileEntry, usize, bool)> {
         fn append<'a>(
             tree: &'a [NoteFileEntry],
@@ -37,7 +59,7 @@ impl TreeState {
             depth: usize,
             rows: &mut Vec<(&'a NoteFileEntry, usize, bool)>,
         ) {
-            if depth >= 3 {
+            if depth >= MAX_NOTE_TREE_DEPTH {
                 return;
             }
             let mut children: Vec<_> = tree
@@ -89,5 +111,33 @@ mod tests {
         state.toggle(&tree, "a");
         assert_eq!(state.visible(&tree).len(), 2);
         assert!(!state.visible(&tree)[1].2);
+    }
+
+    #[test]
+    fn test_reveal_expands_only_ancestors_and_reconcile_discards_removed_folders() {
+        let entry = |id: &str, parent: Option<&str>, is_folder| NoteFileEntry {
+            id: id.into(),
+            parent: parent.map(str::to_owned),
+            name: id.into(),
+            is_folder,
+        };
+        let tree = vec![
+            entry("a", None, true),
+            entry("b", Some("a"), true),
+            entry("c", Some("b"), false),
+            entry("other", None, true),
+        ];
+        let mut state = TreeState::default();
+        state.reveal(&tree, Some("c"));
+        assert_eq!(state.visible(&tree).len(), 4);
+        assert!(state.expanded.contains("a"));
+        assert!(state.expanded.contains("b"));
+        assert!(!state.expanded.contains("other"));
+        state.reconcile(&tree[..1]);
+        assert!(state.expanded.contains("a"));
+        assert!(!state.expanded.contains("b"));
+        state.reveal(&tree, Some("missing"));
+        state.reveal(&tree, None);
+        assert_eq!(state.expanded.len(), 1);
     }
 }

@@ -69,6 +69,13 @@ export component MainWindow inherits Window {
     in property <[NoteRowData]> note-rows;
     in property <int> note-total;
     in property <string> note-selected-id;
+    in property <string> note-current-name;
+    in property <string> note-selected-path;
+    in property <bool> note-can-back;
+    in property <bool> note-can-forward;
+    in property <bool> note-can-parent;
+    in property <int> note-reveal-index;
+    in property <int> note-reveal-tick;
     in property <string> note-error;
     in property <string> note-save-label;
     in property <bool> note-has-selection;
@@ -81,15 +88,21 @@ export component MainWindow inherits Window {
     in property <bool> note-create-busy;
     in-out property <bool> note-create-open;
     in-out property <bool> note-create-folder;
-    in-out property <string> note-rename-id;
-    in property <string> note-target-folder;
+    in property <string> note-rename-id;
+    in-out property <string> note-rename-name;
+    in property <string> note-rename-error;
+    in property <string> note-create-path;
     in property <string> note-created-date;
     in property <string> note-updated-date;
     callback note-create(string);
+    callback note-create-start(string, bool);
     callback note-open(string);
+    callback note-select-entry(string);
     callback note-toggle-folder(string);
-    callback note-select-root();
+    callback note-navigate(string);
     callback note-rename-start(string);
+    callback note-rename-submit(string);
+    callback note-rename-cancel();
     callback note-delete(string);
     callback note-undo();
     callback note-move(string, string);
@@ -575,19 +588,26 @@ export component MainWindow inherits Window {
                     }
                     if root.current_page == "小记": NotesPage {
                         rows: root.note-rows; total: root.note-total; selected-id: root.note-selected-id;
+                        current-name: root.note-current-name; selected-path: root.note-selected-path;
+                        can-back: root.note-can-back; can-forward: root.note-can-forward; can-parent: root.note-can-parent;
+                        reveal-index: root.note-reveal-index; reveal-tick: root.note-reveal-tick;
                         error: root.note-error; save-label: root.note-save-label; has-selection: root.note-has-selection;
                         content <=> root.note-content;
                         create-name <=> root.note-create-name; create-error: root.note-create-error; create-busy: root.note-create-busy;
                         create-open <=> root.note-create-open; created-date: root.note-created-date; updated-date: root.note-updated-date;
-                        create-folder <=> root.note-create-folder; target-folder: root.note-target-folder;
-                        rename-id <=> root.note-rename-id;
+                        create-folder <=> root.note-create-folder; create-path: root.note-create-path;
+                        rename-id: root.note-rename-id; rename-name <=> root.note-rename-name; rename-error: root.note-rename-error;
                         undo-visible: root.note-undo-visible;
                         create(name) => { root.note-create(name); }
+                        create-start(id, folder) => { root.note-create-start(id, folder); }
                         preview-mode: root.note-preview-mode; preview-text: root.note-preview-text; preview-warning: root.note-preview-warning;
                         opened(id) => { root.note-open(id); }
+                        selected-entry(id) => { root.note-select-entry(id); }
                         toggle-folder(id) => { root.note-toggle-folder(id); }
-                        select-root => { root.note-select-root(); }
+                        navigate(direction) => { root.note-navigate(direction); }
                         rename-start(id) => { root.note-rename-start(id); }
+                        rename-submit(name) => { root.note-rename-submit(name); }
+                        rename-cancel => { root.note-rename-cancel(); }
                         delete-entry(id) => { root.note-delete(id); }
                         undo => { root.note-undo(); }
                         move-entry(id, destination) => { root.note-move(id, destination); }

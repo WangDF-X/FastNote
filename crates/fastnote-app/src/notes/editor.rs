@@ -1,8 +1,9 @@
-use fastnote_core::{validate_note_content, NoteCommand, NoteDetail, NoteError};
+use fastnote_core::{validate_note_content, NoteCommand, NoteDetail, NoteError, NoteId};
 
 pub(crate) enum SavePlan {
     Clean,
     Waiting,
+    Refresh(NoteId),
     Invalid(NoteError),
     Submit(NoteCommand),
 }
@@ -13,6 +14,7 @@ pub(crate) struct NoteEditor {
     pub content: String,
     pub pending: Option<u64>,
     pub error: Option<String>,
+    version_stale: bool,
 }
 
 impl NoteEditor {
@@ -22,6 +24,7 @@ impl NoteEditor {
             detail,
             pending: None,
             error: None,
+            version_stale: false,
         }
     }
 
@@ -30,7 +33,7 @@ impl NoteEditor {
     }
 
     pub fn protected(&self) -> bool {
-        self.dirty() || self.pending.is_some() || self.error.is_some()
+        self.dirty() || self.pending.is_some() || self.error.is_some() || self.version_stale
     }
 
     pub fn edit(&mut self, content: String) {
@@ -40,7 +43,7 @@ impl NoteEditor {
 
     /// 仅在没有写入进行时丢弃草稿，回到最后一次确认保存的版本。
     pub fn discard(&mut self) -> bool {
-        if self.pending.is_some() {
+        if self.pending.is_some() || self.version_stale {
             return false;
         }
         self.content.clone_from(&self.detail.note.content);
@@ -51,6 +54,9 @@ impl NoteEditor {
     pub fn save_plan(&self) -> SavePlan {
         if self.pending.is_some() {
             return SavePlan::Waiting;
+        }
+        if self.version_stale {
+            return SavePlan::Refresh(self.detail.note.id);
         }
         if !self.dirty() {
             return SavePlan::Clean;
@@ -80,6 +86,27 @@ impl NoteEditor {
             self.pending = None;
             self.error = Some(message);
         }
+    }
+
+    /// 移动/重命名改变存储版本后，刷新前不能用旧基线保存。
+    pub fn invalidate_version(&mut self) {
+        self.version_stale = true;
+    }
+
+    /// 仅更新当前文件的保存基线，不覆盖草稿或切换预览模式。
+    pub fn refresh_metadata(&mut self, detail: NoteDetail) -> bool {
+        if !self.version_stale
+            || self.pending.is_some()
+            || self.detail.note.id != detail.note.id
+            || detail.note.updated_at < self.detail.note.updated_at
+            || detail.note.content != self.detail.note.content
+        {
+            return false;
+        }
+        self.detail = detail;
+        self.version_stale = false;
+        self.error = None;
+        true
     }
 
     #[cfg(test)]

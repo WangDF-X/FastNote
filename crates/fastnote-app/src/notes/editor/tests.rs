@@ -74,3 +74,45 @@ fn test_discard_rejects_inflight_save_and_restores_confirmed_content_after_failu
     assert_eq!(editor.content, "已保存");
     assert!(!editor.protected());
 }
+
+#[test]
+fn test_rename_refresh_updates_save_version_without_overwriting_newer_draft() {
+    let mut editor = NoteEditor::new(detail("已保存"));
+    editor.invalidate_version();
+    assert!(editor.protected());
+    assert!(matches!(editor.save_plan(), SavePlan::Refresh(_)));
+    assert!(!editor.discard());
+    editor.edit("新草稿".into());
+    let mut renamed = detail("已保存");
+    renamed.note.updated_at += chrono::Duration::seconds(1);
+    assert!(editor.refresh_metadata(renamed.clone()));
+    assert_eq!(editor.content, "新草稿");
+    let SavePlan::Submit(NoteCommand::Update {
+        expected_updated_at,
+        ..
+    }) = editor.save_plan()
+    else {
+        panic!("save expected after metadata refresh")
+    };
+    assert_eq!(expected_updated_at, renamed.note.updated_at);
+}
+
+#[test]
+fn test_metadata_refresh_rejects_stale_wrong_file_changed_content_or_inflight_save() {
+    let mut editor = NoteEditor::new(detail("已保存"));
+    assert!(!editor.refresh_metadata(detail("已保存")));
+    editor.invalidate_version();
+    let mut old = detail("已保存");
+    old.note.updated_at -= chrono::Duration::seconds(1);
+    assert!(!editor.refresh_metadata(old));
+    let mut other = detail("已保存");
+    other.note.id = "019a0fff-aaaa-7000-8000-000000000002".parse().unwrap();
+    assert!(!editor.refresh_metadata(other));
+    assert!(!editor.refresh_metadata(detail("其他正文")));
+    editor.pending = Some(1);
+    assert!(!editor.refresh_metadata(detail("已保存")));
+    assert!(matches!(editor.save_plan(), SavePlan::Waiting));
+    editor.pending = None;
+    assert!(editor.refresh_metadata(detail("已保存")));
+    assert!(matches!(editor.save_plan(), SavePlan::Clean));
+}
