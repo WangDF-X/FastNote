@@ -56,6 +56,7 @@ impl Runtime {
         self.closing.get()
             || self.dialog_blocked()
             || self.tasks.borrow().resource_protected()
+            || self.note_protected()
             || self
                 .with_ui(|ui| {
                     let window = ui.shell.component();

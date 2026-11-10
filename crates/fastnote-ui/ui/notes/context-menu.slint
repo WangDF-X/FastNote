@@ -1,0 +1,72 @@
+import { ShellPalette } from "../palette.slint";
+
+struct NoteMenuItem { label: string, action: string, icon: image, danger: bool }
+
+/// 目录的单一上下文菜单，避免为每个树节点创建一个弹层。
+export component NoteContextMenu inherits PopupWindow {
+    in property <bool> has-entry;
+    in property <bool> is-folder;
+    in property <bool> expanded;
+    callback chosen(string);
+    private property <int> active-index: 0;
+    private property <[NoteMenuItem]> items: !root.has-entry ? [
+        { label: "新建小记", action: "new-note", icon: @image-url("../../../../ui/icons/notes.svg"), danger: false },
+        { label: "新建文件夹", action: "new-folder", icon: @image-url("../../../../ui/icons/folder.svg"), danger: false }
+    ] : root.is-folder ? [
+        { label: root.expanded ? "收起文件夹" : "展开文件夹", action: "toggle", icon: @image-url("../../../../ui/icons/folder.svg"), danger: false },
+        { label: "新建小记", action: "new-note", icon: @image-url("../../../../ui/icons/notes.svg"), danger: false },
+        { label: "新建文件夹", action: "new-folder", icon: @image-url("../../../../ui/icons/folder.svg"), danger: false },
+        { label: "重命名", action: "rename", icon: @image-url("../../../../ui/icons/note-edit.svg"), danger: false },
+        { label: "删除", action: "delete", icon: @image-url("../../../../ui/icons/trash.svg"), danger: true }
+    ] : [
+        { label: "编辑", action: "edit", icon: @image-url("../../../../ui/icons/note-edit.svg"), danger: false },
+        { label: "重命名", action: "rename", icon: @image-url("../../../../ui/icons/note-edit.svg"), danger: false },
+        { label: "删除", action: "delete", icon: @image-url("../../../../ui/icons/trash.svg"), danger: true }
+    ];
+    width: 220px; height: root.items.length * 32px + 8px;
+    close-policy: close-on-click-outside;
+    forward-focus: keys;
+
+    function choose(index: int) {
+        if (index >= 0 && index < root.items.length) {
+            root.chosen(root.items[index].action);
+            root.close();
+        }
+    }
+    Rectangle {
+        border-radius: 8px; border-width: 1px; border-color: ShellPalette.border;
+        background: ShellPalette.surface;
+    }
+    keys := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.DownArrow) { root.active-index = mod(root.active-index + 1, root.items.length); return accept; }
+            if (event.text == Key.UpArrow) { root.active-index = mod(root.active-index + root.items.length - 1, root.items.length); return accept; }
+            if (event.text == Key.Return || event.text == " ") { root.choose(root.active-index); return accept; }
+            if (event.text == Key.Escape || event.text == Key.Tab) { root.close(); return accept; }
+            return reject;
+        }
+        VerticalLayout {
+            padding: 4px; spacing: 0px;
+            for item[index] in root.items: Rectangle {
+                height: 32px; border-radius: 4px;
+                background: index == root.active-index ? (item.danger ? ShellPalette.danger-subtle : ShellPalette.selected) : transparent;
+                accessible-role: button; accessible-label: item.label;
+                accessible-action-default => { root.choose(index); }
+                Image {
+                    x: 10px; y: 8px; width: 16px; height: 16px; source: item.icon;
+                    colorize: item.danger ? ShellPalette.danger : ShellPalette.text-secondary;
+                }
+                Text {
+                    x: 36px; width: parent.width - 44px; height: parent.height;
+                    text: item.label; font-size: 14px;
+                    color: item.danger ? ShellPalette.danger : ShellPalette.text-primary;
+                    vertical-alignment: center;
+                }
+                TouchArea {
+                    changed has-hover => { if (self.has-hover) { root.active-index = index; } }
+                    clicked => { root.choose(index); }
+                }
+            }
+        }
+    }
+}

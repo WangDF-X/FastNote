@@ -1003,6 +1003,7 @@ dependencies = [
  "fastnote-platform",
  "fastnote-store",
  "fastnote-ui",
+ "pulldown-cmark",
  "rusqlite",
  "slint",
  "tempfile",
@@ -1047,6 +1048,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tracing",
  "uuid",
+ "windows",
 ]
 
 [[package]]

@@ -1,0 +1,34 @@
+import { ShellPalette } from "../palette.slint";
+
+/// 小记模式和目录导航共用的轻量图标按钮。
+export component NoteModeButton inherits Rectangle {
+    in property <string> label;
+    in property <image> icon;
+    in property <angle> icon-rotation: 0deg;
+    in property <bool> selected: false;
+    in property <bool> enabled: true;
+    out property <bool> hovered: root.enabled && area.has-hover;
+    callback activated();
+    width: 32px; height: 30px; border-radius: 5px;
+    background: root.enabled && area.pressed ? ShellPalette.subtle : root.selected ? ShellPalette.surface : root.hovered ? ShellPalette.hover : transparent;
+    animate background { duration: 120ms; }
+    opacity: root.enabled ? 1 : 0.45;
+    accessible-role: button; accessible-label: root.label; accessible-enabled: root.enabled;
+    accessible-action-default => { if (root.enabled) { root.activated(); } }
+    forward-focus: key;
+    Image {
+        width: 16px; height: 16px; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+        source: root.icon; colorize: root.selected ? ShellPalette.accent : ShellPalette.text-secondary;
+        transform-rotation: root.icon-rotation;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        accessible-role: none;
+    }
+    key := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == Key.Return) { root.activated(); return accept; }
+            return reject;
+        }
+        area := TouchArea { enabled: root.enabled; clicked => { key.focus(); root.activated(); } }
+    }
+}

@@ -141,7 +141,7 @@ pub enum Command {
     CreateNote { content: String },
     UpdateNote { id: NoteId, content: String },
     DeleteNote(NoteId),
-    ConvertNoteToTask { note: NoteId, title: Option<String> },
+    ConvertNoteToTask { note: NoteId, title: String, start_date: Option<NaiveDate>, due_date: Option<NaiveDate> }, // D-NOTE-01：标题手填，日期默认空
     UnlinkNoteTask(NoteId),
     SaveJournal { date: NaiveDate, content: String },
     DeleteJournal(NaiveDate),

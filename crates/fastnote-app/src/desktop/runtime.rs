@@ -104,6 +104,9 @@ pub(super) struct Runtime {
     /// 无 UI 时仍保留单个 UTC/本地日期观察，检测跨日、时区和时钟回拨。
     pub task_clock: RefCell<ClockTracker>,
     pub task_syncing: Cell<bool>,
+    pub notes: RefCell<super::notes::NoteSession>,
+    pub note_syncing: Cell<bool>,
+    pub note_save_timer: Timer,
 }
 
 impl Runtime {
@@ -178,6 +181,9 @@ impl Runtime {
             task_day_timer: Timer::default(),
             task_clock: RefCell::new(ClockTracker::default()),
             task_syncing: Cell::new(false),
+            notes: RefCell::new(super::notes::NoteSession::default()),
+            note_syncing: Cell::new(false),
+            note_save_timer: Timer::default(),
         });
         register(&runtime);
         runtime.connect_kernel();
@@ -207,6 +213,8 @@ impl Runtime {
                 Reply::Saved { id, result } => self.saved(id, result),
                 Reply::Executed { id, result } => self.task_executed(id, result),
                 Reply::Queried { id, result } => self.task_queried(id, result),
+                Reply::NoteExecuted { id, result } => self.note_executed(id, result),
+                Reply::NoteQueried { id, result } => self.note_queried(id, result),
             }
         }
         while let Ok(event) = self.native.try_recv() {

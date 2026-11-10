@@ -45,6 +45,7 @@ windows = { version = "=0.62.2", features = [
 ] }
 png = "=0.18.1"
 tracing = "=0.1.44"
+pulldown-cmark = { version = "=0.13.6", default-features = false }
 
 [profile.release]
 opt-level = 3

@@ -1,0 +1,154 @@
+import { ScrollView } from "std-widgets.slint";
+import { ShellPalette } from "../palette.slint";
+import { ActionButton } from "../components/action-button.slint";
+import { NoteModeButton } from "mode-button.slint";
+import { NoteTreeRow } from "tree-row.slint";
+import { NoteContextMenu } from "context-menu.slint";
+import { NoteRowData } from "types.slint";
+
+export component NoteTree inherits Rectangle {
+    in property <[NoteRowData]> rows;
+    in property <int> total;
+    in property <string> selected-id;
+    in property <string> path;
+    in property <bool> can-back;
+    in property <bool> can-forward;
+    in property <bool> can-parent;
+    in property <int> reveal-index;
+    in property <int> reveal-tick;
+    in property <bool> busy;
+    in property <bool> undo-visible;
+    in property <string> rename-id;
+    in-out property <string> rename-name;
+    in property <string> rename-error;
+    callback selected-entry(string);
+    callback opened(string);
+    callback toggled(string);
+    callback navigate(string);
+    callback create-start(string, bool);
+    callback rename-start(string);
+    callback rename-submit(string);
+    callback rename-cancel();
+    callback delete-requested(string, bool);
+    callback undo();
+    callback move-entry(string, string);
+    callback dismiss-editor-focus();
+    private property <string> context-id;
+    private property <bool> context-folder;
+    private property <bool> context-expanded;
+    private property <length> context-x;
+    private property <length> context-y;
+    private property <bool> interactive: !root.busy && root.rename-id == "";
+    width: 280px; background: ShellPalette.surface;
+    border-width: 1px; border-color: ShellPalette.border; border-radius: 10px;
+
+    changed reveal-tick => { root.ensure-visible(); }
+    function ensure-visible() {
+        if (root.reveal-index >= 0) {
+            let top = root.reveal-index * 32px;
+            if (top < -scroll.content-y) { scroll.content-y = -top; }
+            else if (top + 30px > -scroll.content-y + scroll.visible-height) { scroll.content-y = scroll.visible-height - top - 30px; }
+        } else { scroll.content-y = 0px; }
+    }
+    function context(id: string, folder: bool, expanded: bool, x: length, y: length) {
+        if (root.interactive) {
+            root.context-id = id; root.context-folder = folder; root.context-expanded = expanded;
+            root.context-x = clamp(x, 8px, root.width - 228px);
+            let menu-height = id == "" ? 72px : folder ? 168px : 104px;
+            root.context-y = clamp(y, 8px, root.height - menu-height - 8px);
+            root.selected-entry(id);
+            menu.show();
+        }
+    }
+    VerticalLayout {
+        padding: 12px; spacing: 4px;
+        HorizontalLayout {
+            spacing: 4px; height: 30px;
+            back := NoteModeButton {
+                label: "返回"; icon: @image-url("../../../../ui/icons/arrow-left.svg");
+                enabled: root.interactive && root.can-back; activated => { root.navigate("back"); }
+            }
+            forward := NoteModeButton {
+                label: "前进"; icon: @image-url("../../../../ui/icons/arrow-left.svg"); icon-rotation: 180deg;
+                enabled: root.interactive && root.can-forward; activated => { root.navigate("forward"); }
+            }
+            parent-folder := NoteModeButton {
+                label: "上一级"; icon: @image-url("../../../../ui/icons/arrow-left.svg"); icon-rotation: 90deg;
+                enabled: root.interactive && root.can-parent; activated => { root.navigate("up"); }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            Text { text: "共"; font-size: 13px; color: ShellPalette.text-secondary; vertical-alignment: center; }
+            Rectangle {
+                width: max(24px, count.preferred-width + 12px); height: 22px; border-radius: 6px;
+                background: ShellPalette.dark ? #1B2B23 : #EDF7F1;
+                count := Text { text: root.total; font-size: 13px; font-weight: 600; color: ShellPalette.success; horizontal-alignment: center; vertical-alignment: center; }
+            }
+            Text { text: "条"; font-size: 13px; color: ShellPalette.text-secondary; vertical-alignment: center; }
+        }
+        Rectangle {
+            height: 32px; border-radius: 6px;
+            background: ShellPalette.dark ? #252D3A : #EAF0F5;
+            accessible-role: text; accessible-label: "所选路径：小记 " + root.path;
+            Image {
+                x: 10px; y: 8px; width: 16px; height: 16px;
+                source: @image-url("../../../../ui/icons/note-root.svg");
+                colorize: ShellPalette.text-secondary; accessible-role: none;
+            }
+            Text {
+                x: 34px; width: parent.width - 42px; height: parent.height;
+                text: root.path; color: ShellPalette.text-primary; font-size: 13px;
+                overflow: elide; vertical-alignment: center;
+            }
+            TouchArea { clicked => { root.dismiss-editor-focus(); } }
+        }
+        if root.undo-visible: ActionButton { label: "撤销删除"; enabled: !root.busy; activated => { root.undo(); } }
+        scroll := ScrollView {
+            vertical-stretch: 1; content-width: self.visible-width; content-height: content.height;
+            content := Rectangle {
+                width: scroll.visible-width; height: max(list.preferred-height, scroll.visible-height);
+                TouchArea {
+                    enabled: root.interactive;
+                    clicked => { root.dismiss-editor-focus(); root.selected-entry(""); }
+                    pointer-event(event) => {
+                        if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
+                            root.context("", false, false, self.absolute-position.x - root.absolute-position.x + self.mouse-x, self.absolute-position.y - root.absolute-position.y + self.mouse-y);
+                        }
+                    }
+                }
+                list := VerticalLayout {
+                    width: parent.width; spacing: 2px;
+                    for row[index] in root.rows: item := NoteTreeRow {
+                        data: row; selected: root.selected-id == row.id; enabled: root.interactive;
+                        busy: root.busy; renaming: root.rename-id == row.id;
+                        rename-name <=> root.rename-name; rename-error: root.rename-error;
+                        selected-entry => { root.selected-entry(row.id); }
+                        opened => { root.opened(row.id); }
+                        toggled => { root.toggled(row.id); }
+                        context-requested(x, y) => { root.context(row.id, row.is-folder, row.expanded, item.absolute-position.x - root.absolute-position.x + x, item.absolute-position.y - root.absolute-position.y + y); }
+                        rename-start => { root.rename-start(row.id); }
+                        rename-submit(name) => { root.rename-submit(name); }
+                        rename-cancel => { root.rename-cancel(); }
+                        delete-requested => { root.delete-requested(row.id, row.is-folder); }
+                        focus-moved(delta) => { let next = clamp(index + delta, 0, root.rows.length - 1); root.selected-entry(root.rows[next].id); }
+                        dropped(y) => {
+                            let destination = floor((index * 32px + y) / 32px);
+                            if (destination < 0 || destination >= root.rows.length) { root.move-entry(row.id, ""); }
+                            else if (root.rows[destination].is-folder) { root.move-entry(row.id, root.rows[destination].id); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    menu := NoteContextMenu {
+        x: root.context-x; y: root.context-y;
+        has-entry: root.context-id != ""; is-folder: root.context-folder; expanded: root.context-expanded;
+        chosen(action) => {
+            if (action == "edit") { root.opened(root.context-id); }
+            else if (action == "toggle") { root.toggled(root.context-id); }
+            else if (action == "new-note" || action == "new-folder") { root.create-start(root.context-id, action == "new-folder"); }
+            else if (action == "rename") { root.rename-start(root.context-id); }
+            else if (action == "delete") { root.delete-requested(root.context-id, root.context-folder); }
+        }
+    }
+}

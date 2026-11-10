@@ -14,6 +14,50 @@ fn receive(worker: &DbWorker) -> Reply {
 }
 
 #[test]
+fn test_note_create_list_and_detail_share_worker_fifo() {
+    let directory = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+    let worker = DbWorker::spawn(Some(directory.path().join("fake.db")), Arc::new(|| {})).unwrap();
+    assert!(matches!(receive(&worker), Reply::Loaded(Ok(_))));
+    let note = "019a0fff-aaaa-7000-8000-000000000001".parse().unwrap();
+    worker
+        .note_execute(
+            1,
+            NoteCommand::Create {
+                id: note,
+                content: "假小记正文".to_owned(),
+            },
+        )
+        .unwrap();
+    worker
+        .note_query(2, NoteRead::List(Default::default()))
+        .unwrap();
+    worker.note_query(4, NoteRead::Detail(note)).unwrap();
+    assert!(matches!(
+        receive(&worker),
+        Reply::NoteExecuted {
+            id: 1,
+            result: Ok(_)
+        }
+    ));
+    let Reply::NoteQueried {
+        id: 2,
+        result: Ok(NoteReadResult::List(page)),
+    } = receive(&worker)
+    else {
+        panic!("list reply expected")
+    };
+    assert_eq!(page.total, 1);
+    let Reply::NoteQueried {
+        id: 4,
+        result: Ok(NoteReadResult::Detail(Some(detail))),
+    } = receive(&worker)
+    else {
+        panic!("note detail expected")
+    };
+    assert_eq!(detail.note.content, "假小记正文");
+}
+
+#[test]
 fn test_worker_owns_connection_saves_in_fifo_order_and_joins() {
     let directory = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
     let path = directory.path().join("fake.db");

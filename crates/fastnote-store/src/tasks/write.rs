@@ -1,17 +1,26 @@
 use fastnote_core::{Task, TaskError, TaskId, TaskKind, TaskStatus};
-use rusqlite::{params, Connection, TransactionBehavior};
+use rusqlite::{params, Connection, Transaction, TransactionBehavior};
 
 use crate::database::check_write_version;
 
 use super::{read, TaskStoreError};
 
 pub(super) fn insert(connection: &mut Connection, task: &Task) -> Result<(), TaskStoreError> {
+    let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    check_write_version(&tx)?;
+    insert_in_transaction(&tx, task)?;
+    tx.commit()?;
+    Ok(())
+}
+
+pub(crate) fn insert_in_transaction(
+    tx: &Transaction<'_>,
+    task: &Task,
+) -> Result<(), TaskStoreError> {
     task.validate()?;
     if task.kind != TaskKind::Task || task.plan_id.is_some() || task.parent_id.is_some() {
         return Err(TaskError::Conflict.into());
     }
-    let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    check_write_version(&tx)?;
     let maximum: i64 = tx.query_row(
         "SELECT COALESCE(max(sort_order),0) FROM tasks
         WHERE parent_id IS NULL AND plan_id IS NULL",
@@ -40,7 +49,6 @@ pub(super) fn insert(connection: &mut Connection, task: &Task) -> Result<(), Tas
             task.due_time.map(|time| time.format("%H:%M").to_string())
         ],
     )?;
-    tx.commit()?;
     Ok(())
 }
 
