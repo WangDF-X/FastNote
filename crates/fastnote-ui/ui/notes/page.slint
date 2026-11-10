@@ -4,8 +4,8 @@ import { ActionButton } from "../components/action-button.slint";
 import { TaskField } from "../tasks/task-field.slint";
 import { NoteModeButton } from "mode-button.slint";
 import { NoteTree } from "tree.slint";
-import { NoteRowData } from "types.slint";
-export { NoteRowData } from "types.slint";
+import { NoteRowData, NotePreviewBlock } from "types.slint";
+export { NoteRowData, NotePreviewBlock } from "types.slint";
 
 export component NotesPage inherits Rectangle {
     in property <[NoteRowData]> rows;
@@ -23,7 +23,7 @@ export component NotesPage inherits Rectangle {
     in-out property <string> content;
     in property <bool> has-selection;
     in property <bool> preview-mode;
-    in property <styled-text> preview-text;
+    in property <[NotePreviewBlock]> preview-blocks;
     in property <string> preview-warning;
     in-out property <string> create-name;
     in property <string> create-error;
@@ -56,6 +56,7 @@ export component NotesPage inherits Rectangle {
     callback flush();
     callback discard();
     callback toggle-preview();
+    callback open-link(string);
     callback create(string);
     background: transparent;
     focus-outside := FocusScope { focus-on-tab-navigation: false; }
@@ -155,8 +156,29 @@ export component NotesPage inherits Rectangle {
                         }
                     }
                     if root.preview-mode: ScrollView {
-                        vertical-stretch: 1; content-width: self.visible-width; content-height: preview.preferred-height;
-                        preview := StyledText { width: parent.visible-width; text: root.preview-text; default-color: ShellPalette.text-primary; default-font-size: 14px; }
+                        vertical-stretch: 1; content-width: self.visible-width;
+                        content-height: preview.preferred-height;
+                        preview := VerticalLayout {
+                            width: parent.visible-width; spacing: 8px;
+                            for block in root.preview-blocks: HorizontalLayout {
+                                Rectangle { width: block.indent * 18px; }
+                                Rectangle {
+                                    horizontal-stretch: 1;
+                                    background: block.kind == 7 ? ShellPalette.subtle : transparent;
+                                    border-radius: block.kind == 7 ? 6px : 0px;
+                                    VerticalLayout {
+                                        padding: block.kind == 7 ? 10px : 0px;
+                                        StyledText {
+                                            text: block.text; default-color: ShellPalette.text-primary;
+                                            link-color: ShellPalette.accent;
+                                            link-clicked(url) => { root.open-link(url); }
+                                            default-font-size: block.kind == 1 ? 26px : block.kind == 2 ? 23px : block.kind == 3 ? 20px : block.kind == 4 ? 18px : block.kind == 5 ? 16px : 14px;
+                                            default-font-family: block.kind == 7 ? "Consolas" : "Microsoft YaHei UI";
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

@@ -1,3 +1,4 @@
+use fastnote_ui::ToastKind;
 use std::rc::Rc;
 
 use super::super::runtime::Runtime;
@@ -135,6 +136,16 @@ impl Runtime {
                 move || {
                     if let Some(runtime) = weak.upgrade() {
                         runtime.toggle_note_preview();
+                    }
+                }
+            });
+            window.on_note_open_link({
+                let weak = self.ui_target();
+                move |url| {
+                    if let Some(runtime) = weak.upgrade() {
+                        if !fastnote_platform::open_web_link(&url) {
+                            runtime.notice(ToastKind::Error, "无法打开链接，仅支持网页链接。");
+                        }
                     }
                 }
             });

@@ -16,6 +16,7 @@ slint.workspace = true
 crossbeam-channel.workspace = true
 tracing.workspace = true
 uuid.workspace = true
+pulldown-cmark.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

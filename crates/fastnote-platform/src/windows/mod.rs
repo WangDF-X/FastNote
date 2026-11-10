@@ -1,6 +1,7 @@
 mod caption;
 mod error;
 mod hotkey;
+mod links;
 mod monitors;
 mod resources;
 mod theme;
@@ -10,6 +11,7 @@ mod window;
 pub use caption::configure_custom_caption;
 pub use error::PlatformError;
 pub use hotkey::WindowsHotkey;
+pub use links::open_web_link;
 pub use monitors::{monitor_at_point, monitors};
 pub use resources::{
     process_resources, uptime_milliseconds, window_belongs_to_process, ProcessResources,

@@ -6,13 +6,17 @@ use fastnote_ui::ToastKind;
 use slint::{ModelRc, Timer};
 
 use super::super::runtime::Runtime;
-use crate::notes::{NoteEditor, NoteRead, SavePlan, TreeState};
+use crate::notes::{preview_blocks, NoteEditor, NoteRead, SavePlan, TreeState};
 
 impl Runtime {
     pub(super) fn toggle_note_preview(self: &Rc<Self>) {
         if self.notes.borrow().preview {
             self.notes.borrow_mut().preview = false;
-            let _ = self.with_ui(|ui| ui.shell.component().set_note_preview_mode(false));
+            let _ = self.with_ui(|ui| {
+                let window = ui.shell.component();
+                window.set_note_preview_mode(false);
+                window.set_note_preview_blocks(Default::default());
+            });
             return;
         }
         if !self.defer_note_transition("note-preview".to_owned()) {
@@ -30,18 +34,12 @@ impl Runtime {
         else {
             return;
         };
-        let (preview, warning) = match slint::StyledText::from_markdown(&content) {
-            Ok(preview) => (preview, ""),
-            Err(_) => (
-                slint::StyledText::from_plain_text(&content),
-                "当前预览暂不支持此格式，显示原文。",
-            ),
-        };
+        let preview = preview_blocks(&content);
         self.notes.borrow_mut().preview = true;
         let _ = self.with_ui(|ui| {
             let window = ui.shell.component();
-            window.set_note_preview_text(preview);
-            window.set_note_preview_warning(warning.into());
+            window.set_note_preview_blocks(ModelRc::new(slint::VecModel::from(preview)));
+            window.set_note_preview_warning("".into());
             window.set_note_preview_mode(true);
         });
     }
@@ -277,7 +275,7 @@ impl Runtime {
             window.set_note_current_name("".into());
             window.set_note_error("".into());
             window.set_note_preview_mode(false);
-            window.set_note_preview_text(Default::default());
+            window.set_note_preview_blocks(Default::default());
         });
         self.note_syncing.set(false);
     }

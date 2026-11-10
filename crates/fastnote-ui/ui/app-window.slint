@@ -20,10 +20,10 @@ import { TaskDrawer } from "tasks/task-drawer.slint";
 import { TaskRowData, TodaySectionData, CalendarDayData } from "tasks/types.slint";
 import { CalendarPage } from "calendar/page.slint";
 import { CalendarCellView, CalendarSectionData } from "calendar/types.slint";
-import { NotesPage, NoteRowData } from "notes/page.slint";
+import { NotesPage, NoteRowData, NotePreviewBlock } from "notes/page.slint";
 import { Palette, Date } from "std-widgets.slint";
 
-export { BannerData, BannerTone, DialogData, DialogTone, ToastData, ToastTone, FloatingBall, BallMenuWindow, ShellPalette, ShellFocus, Palette, Date, TaskRowData, TodaySectionData, CalendarDayData, CalendarCellView, CalendarSectionData, NoteRowData }
+export { BannerData, BannerTone, DialogData, DialogTone, ToastData, ToastTone, FloatingBall, BallMenuWindow, ShellPalette, ShellFocus, Palette, Date, TaskRowData, TodaySectionData, CalendarDayData, CalendarCellView, CalendarSectionData, NoteRowData, NotePreviewBlock }
 
 struct PagePresentation {
     label: string,
@@ -80,7 +80,7 @@ export component MainWindow inherits Window {
     in property <string> note-save-label;
     in property <bool> note-has-selection;
     in property <bool> note-preview-mode;
-    in property <styled-text> note-preview-text;
+    in property <[NotePreviewBlock]> note-preview-blocks;
     in property <string> note-preview-warning;
     in-out property <string> note-content;
     in-out property <string> note-create-name;
@@ -111,6 +111,7 @@ export component MainWindow inherits Window {
     callback note-flush();
     callback note-discard();
     callback note-toggle-preview();
+    callback note-open-link(string);
     in property <string> page-title: "今日任务";
     in property <string> sidebar-date;
     in property <string> sidebar-weekday;
@@ -604,7 +605,7 @@ export component MainWindow inherits Window {
                         undo-visible: root.note-undo-visible;
                         create(name) => { root.note-create(name); }
                         create-start(id, folder) => { root.note-create-start(id, folder); }
-                        preview-mode: root.note-preview-mode; preview-text: root.note-preview-text; preview-warning: root.note-preview-warning;
+                        preview-mode: root.note-preview-mode; preview-blocks: root.note-preview-blocks; preview-warning: root.note-preview-warning;
                         opened(id) => { root.note-open(id); }
                         selected-entry(id) => { root.note-select-entry(id); }
                         toggle-folder(id) => { root.note-toggle-folder(id); }
@@ -619,6 +620,7 @@ export component MainWindow inherits Window {
                         flush => { root.note-flush(); }
                         discard => { root.note-discard(); }
                         toggle-preview => { root.note-toggle-preview(); }
+                        open-link(url) => { root.note-open-link(url); }
                     }
                     if root.current_page != "设置" && root.current_page != "今日任务" && root.current_page != "日历" && root.current_page != "小记": PagePlaceholder {
                         icon: root.current_page == "设置" ? root.settings-icon : root.pages[root.active-index].icon;
