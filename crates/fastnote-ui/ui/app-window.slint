@@ -80,6 +80,7 @@ export component MainWindow inherits Window {
     in property <string> note-save-label;
     in property <bool> note-has-selection;
     in property <bool> note-preview-mode;
+    private property <bool> note-shortcut-blocked;
     in property <[NotePreviewBlock]> note-preview-blocks;
     in property <string> note-preview-warning;
     in-out property <string> note-content;
@@ -353,7 +354,9 @@ export component MainWindow inherits Window {
             if (!event.modifiers.control || event.modifiers.alt || event.modifiers.shift) {
                 return reject;
             }
-            if ((event.text == "s" || event.text == "S") && root.current_page == "小记" && root.note-has-selection && !root.note-create-open && root.note-rename-id == "") {
+            if (event.text == "/" && root.current_page == "小记" && root.note-has-selection && !root.note-shortcut-blocked) {
+                root.note-toggle-preview();
+            } else if ((event.text == "s" || event.text == "S") && root.current_page == "小记" && root.note-has-selection && !root.note-create-open && root.note-rename-id == "") {
                 root.note-flush();
             } else if ((event.text == "n" || event.text == "N") && root.current_page == "今日任务") {
                 root.focus-task-create();
@@ -592,6 +595,7 @@ export component MainWindow inherits Window {
                         select-date(value) => { root.calendar-select-date(value); }
                     }
                     if root.current_page == "小记": NotesPage {
+                        changed shortcut-blocked => { root.note-shortcut-blocked = self.shortcut-blocked; }
                         rows: root.note-rows; total: root.note-total; selected-id: root.note-selected-id;
                         current-name: root.note-current-name; selected-path: root.note-selected-path;
                         can-back: root.note-can-back; can-forward: root.note-can-forward; can-parent: root.note-can-parent;

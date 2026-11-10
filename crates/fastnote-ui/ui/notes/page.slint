@@ -37,6 +37,7 @@ export component NotesPage inherits Rectangle {
     in property <bool> undo-visible;
     in property <string> created-date;
     in property <string> updated-date;
+    out property <bool> shortcut-blocked: root.create-open || root.create-busy || root.rename-id != "" || root.delete-id != "" || root.confirm-discard;
     private property <bool> drawer-open: true;
     private property <bool> confirm-discard: false;
     private property <string> delete-id;
@@ -60,6 +61,12 @@ export component NotesPage inherits Rectangle {
     callback create(string);
     background: transparent;
     focus-outside := FocusScope { focus-on-tab-navigation: false; }
+    // 编辑控件卸载时恢复页面焦点，避免首次进入预览后快捷键失效。
+    changed preview-mode => {
+        if (root.preview-mode && root.has-selection && !root.shortcut-blocked) {
+            focus-outside.focus();
+        }
+    }
     TouchArea { clicked => { focus-outside.focus(); } }
 
     VerticalLayout {
@@ -88,8 +95,7 @@ export component NotesPage inherits Rectangle {
                     overflow: elide;
                 }
             }
-            Text { text: edit-mode.hovered ? "编辑" : preview-mode-button.hovered ? "预览" : ""; width: 28px; font-size: 12px; color: ShellPalette.text-secondary; vertical-alignment: center; }
-            Rectangle {
+            modes := Rectangle {
                 width: 68px; height: 32px; border-radius: 7px; background: ShellPalette.subtle;
                 HorizontalLayout {
                     padding: 1px; spacing: 2px;
@@ -172,8 +178,8 @@ export component NotesPage inherits Rectangle {
                                             text: block.text; default-color: ShellPalette.text-primary;
                                             link-color: ShellPalette.accent;
                                             link-clicked(url) => { root.open-link(url); }
-                                            default-font-size: block.kind == 1 ? 26px : block.kind == 2 ? 23px : block.kind == 3 ? 20px : block.kind == 4 ? 18px : block.kind == 5 ? 16px : 14px;
-                                            default-font-family: block.kind == 7 ? "Consolas" : "Microsoft YaHei UI";
+                                            default-font-size: block.kind == 1 ? 26px : block.kind == 2 ? 23px : block.kind == 3 ? 20px : block.kind == 4 ? 18px : block.kind == 5 ? 16px : block.kind == 6 ? 15px : 14px;
+                                            default-font-family: block.kind == 7 ? "Consolas" : block.kind >= 1 && block.kind <= 6 ? "SimHei" : "Microsoft YaHei UI";
                                         }
                                     }
                                 }
@@ -182,6 +188,18 @@ export component NotesPage inherits Rectangle {
                     }
                 }
             }
+        }
+    }
+    if edit-mode.hovered || preview-mode-button.hovered: Rectangle {
+        x: clamp(modes.absolute-position.x - root.absolute-position.x - 72px, 4px, root.width - self.width - 4px);
+        y: modes.absolute-position.y - root.absolute-position.y + modes.height + 6px;
+        width: 154px; height: 32px; border-radius: 6px;
+        background: ShellPalette.surface; border-width: 1px; border-color: ShellPalette.border-strong;
+        drop-shadow-blur: 8px; drop-shadow-color: ShellPalette.shadow; drop-shadow-offset-y: 2px;
+        Text {
+            x: 10px; width: parent.width - 20px; height: parent.height;
+            text: "Ctrl+/ 快速切换";
+            font-size: 12px; color: ShellPalette.text-primary; vertical-alignment: center;
         }
     }
     if root.delete-id != "": Rectangle {
