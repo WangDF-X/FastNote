@@ -5,11 +5,15 @@ use std::time::{Duration, Instant, SystemTime};
 
 use crossbeam_channel::{bounded, Receiver, RecvTimeoutError, Sender, TrySendError};
 use fastnote_core::{
-    Command as TaskCommand, CommandResult, DateTime, DesktopSetting, DesktopSettings, NoteCommand,
-    NoteCommandResult, NoteUndoState, Query, QueryResult, SettingsRepository, Utc,
+    Command as TaskCommand, CommandResult, DateTime, DesktopSetting, DesktopSettings,
+    JournalCommand, JournalCommandResult, NaiveDate, NoteCommand, NoteCommandResult, NoteUndoState,
+    Query, QueryResult, SettingsRepository, Utc,
 };
-use fastnote_store::{NoteStoreError, SqliteSettings, StoreError, TaskStoreError};
+use fastnote_store::{
+    JournalStoreError, NoteStoreError, SqliteSettings, StoreError, TaskStoreError,
+};
 
+use crate::journal::{JournalRead, JournalReadResult};
 use crate::logging::storage_error;
 use crate::notes::{NoteRead, NoteReadResult};
 
@@ -37,6 +41,19 @@ pub(super) enum Command {
         id: u64,
         query: NoteRead,
     },
+    JournalExecute {
+        id: u64,
+        command: JournalCommand,
+    },
+    JournalQuery {
+        id: u64,
+        read: JournalRead,
+    },
+    JournalAddImage {
+        id: u64,
+        entry_date: NaiveDate,
+        source: std::path::PathBuf,
+    },
     Stop,
 }
 
@@ -61,6 +78,14 @@ pub(super) enum Reply {
     NoteQueried {
         id: u64,
         result: Result<NoteReadResult, NoteStoreError>,
+    },
+    JournalExecuted {
+        id: u64,
+        result: Result<JournalCommandResult, JournalStoreError>,
+    },
+    JournalQueried {
+        id: u64,
+        result: Result<JournalReadResult, JournalStoreError>,
     },
 }
 
@@ -135,6 +160,31 @@ impl DbWorker {
 
     pub(super) fn note_query(&self, id: u64, query: NoteRead) -> Result<(), SendError> {
         self.send(Command::NoteQuery { id, query })
+    }
+
+    pub(super) fn journal_execute(
+        &self,
+        id: u64,
+        command: JournalCommand,
+    ) -> Result<(), SendError> {
+        self.send(Command::JournalExecute { id, command })
+    }
+
+    pub(super) fn journal_query(&self, id: u64, read: JournalRead) -> Result<(), SendError> {
+        self.send(Command::JournalQuery { id, read })
+    }
+
+    pub(super) fn journal_add_image(
+        &self,
+        id: u64,
+        entry_date: NaiveDate,
+        source: std::path::PathBuf,
+    ) -> Result<(), SendError> {
+        self.send(Command::JournalAddImage {
+            id,
+            entry_date,
+            source,
+        })
     }
 
     fn send(&self, command: Command) -> Result<(), SendError> {
@@ -338,6 +388,52 @@ fn work(
                     elapsed_us = started.elapsed().as_micros() as u64
                 );
                 Reply::NoteQueried { id, result }
+            }
+            Command::JournalExecute { id, command } => {
+                let started = Instant::now();
+                let result = crate::journal::execute(store.as_mut(), path.as_deref(), command);
+                if started.elapsed().as_millis() > 50 {
+                    tracing::warn!(
+                        request_id = id,
+                        elapsed_ms = started.elapsed().as_millis() as u64,
+                        "journal command slow"
+                    );
+                }
+                Reply::JournalExecuted { id, result }
+            }
+            Command::JournalQuery { id, read } => {
+                let scope = match &read {
+                    JournalRead::Entry(_) => "journal_entry",
+                    JournalRead::Summaries { .. } => "journal_summaries",
+                    JournalRead::Attachments(_) => "journal_attachments",
+                    JournalRead::AttachmentView(_) => "journal_attachment_view",
+                };
+                let started = Instant::now();
+                let result = crate::journal::query(store.as_mut(), path.as_deref(), read);
+                tracing::info!(
+                    phase = "db_query_completed",
+                    request_id = id,
+                    query_scope = scope,
+                    elapsed_us = started.elapsed().as_micros() as u64
+                );
+                Reply::JournalQueried { id, result }
+            }
+            Command::JournalAddImage {
+                id,
+                entry_date,
+                source,
+            } => {
+                let started = Instant::now();
+                let result =
+                    crate::journal::add_image(store.as_mut(), path.as_deref(), entry_date, &source);
+                if started.elapsed().as_millis() > 50 {
+                    tracing::warn!(
+                        request_id = id,
+                        elapsed_ms = started.elapsed().as_millis() as u64,
+                        "journal image command slow"
+                    );
+                }
+                Reply::JournalExecuted { id, result }
             }
         };
         if !report(&replies, &wake, reply) {

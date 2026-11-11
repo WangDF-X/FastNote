@@ -21,6 +21,7 @@ import { TaskRowData, TodaySectionData, CalendarDayData } from "tasks/types.slin
 import { CalendarPage } from "calendar/page.slint";
 import { CalendarCellView, CalendarSectionData } from "calendar/types.slint";
 import { NotesPage, NoteRowData, NotePreviewBlock } from "notes/page.slint";
+import { JournalPage, JournalRowData, JournalAttachmentView } from "journal/page.slint";
 import { Palette, Date } from "std-widgets.slint";
 
 export { BannerData, BannerTone, DialogData, DialogTone, ToastData, ToastTone, FloatingBall, BallMenuWindow, ShellPalette, ShellFocus, Palette, Date, TaskRowData, TodaySectionData, CalendarDayData, CalendarCellView, CalendarSectionData, NoteRowData, NotePreviewBlock }
@@ -113,6 +114,50 @@ export component MainWindow inherits Window {
     callback note-discard();
     callback note-toggle-preview();
     callback note-open-link(string);
+    in property <[JournalRowData]> journal-rows;
+    in property <string> journal-period-label;
+    in property <bool> journal-week-mode;
+    in property <bool> journal-empty;
+    in property <bool> journal-has-today;
+    in property <string> journal-date-label;
+    in property <string> journal-selected-date;
+    in property <bool> journal-editing;
+    in-out property <string> journal-content;
+    in property <string> journal-save-label;
+    in property <string> journal-error;
+    in property <bool> journal-preview-mode;
+    in property <[NotePreviewBlock]> journal-preview-blocks;
+    in property <[JournalAttachmentView]> journal-attachments;
+    in property <string> journal-image-usage;
+    in property <bool> journal-add-image-busy;
+    in property <bool> journal-pending-image;
+    in property <string> journal-pending-image-label;
+    in property <bool> journal-viewer-visible;
+    in property <image> journal-viewer-image;
+    in property <string> journal-viewer-title;
+    in property <bool> journal-viewer-loading;
+    in property <int> journal-viewer-index;
+    callback journal-open(string);
+    callback journal-navigate(int);
+    callback journal-shift(int);
+    callback journal-view-mode(int);
+    callback journal-today();
+    callback journal-new-today();
+    callback journal-close();
+    callback journal-edit(string);
+    callback journal-flush();
+    callback journal-toggle-preview();
+    callback journal-retry();
+    callback journal-open-link(string);
+    callback journal-add-image();
+    callback journal-confirm-image();
+    callback journal-cancel-image();
+    callback journal-viewer-open(int);
+    callback journal-viewer-prev();
+    callback journal-viewer-next();
+    callback journal-viewer-close();
+    callback journal-viewer-delete(string);
+    callback journal-image-delete(string);
     in property <string> page-title: "今日任务";
     in property <string> sidebar-date;
     in property <string> sidebar-weekday;
@@ -351,6 +396,21 @@ export component MainWindow inherits Window {
                 root.task-close();
                 return accept;
             }
+            if (root.current_page == "日记" && !root.dialog-visible) {
+                if (event.text == Key.Escape) {
+                    if (root.journal-viewer-visible) { root.journal-viewer-close(); return accept; }
+                    if (root.journal-editing) { root.journal-close(); return accept; }
+                }
+                if (root.journal-viewer-visible) {
+                    if (event.text == Key.LeftArrow) { root.journal-viewer-prev(); return accept; }
+                    if (event.text == Key.RightArrow) { root.journal-viewer-next(); return accept; }
+                }
+                if (!root.journal-editing) {
+                    if (event.text == Key.LeftArrow) { root.journal-navigate(-1); return accept; }
+                    if (event.text == Key.RightArrow) { root.journal-navigate(1); return accept; }
+                    if (event.text == "t" || event.text == "T") { root.journal-today(); return accept; }
+                }
+            }
             if (!event.modifiers.control || event.modifiers.alt || event.modifiers.shift) {
                 return reject;
             }
@@ -358,6 +418,10 @@ export component MainWindow inherits Window {
                 root.note-toggle-preview();
             } else if ((event.text == "s" || event.text == "S") && root.current_page == "小记" && root.note-has-selection && !root.note-create-open && root.note-rename-id == "") {
                 root.note-flush();
+            } else if ((event.text == "s" || event.text == "S") && root.current_page == "日记" && root.journal-editing) {
+                root.journal-flush();
+            } else if (event.text == "/" && root.current_page == "日记" && root.journal-editing) {
+                root.journal-toggle-preview();
             } else if ((event.text == "n" || event.text == "N") && root.current_page == "今日任务") {
                 root.focus-task-create();
             } else if (event.text == "1") {
@@ -626,7 +690,53 @@ export component MainWindow inherits Window {
                         toggle-preview => { root.note-toggle-preview(); }
                         open-link(url) => { root.note-open-link(url); }
                     }
-                    if root.current_page != "设置" && root.current_page != "今日任务" && root.current_page != "日历" && root.current_page != "小记": PagePlaceholder {
+                    if root.current_page == "日记": JournalPage {
+                        rows: root.journal-rows;
+                        period-label: root.journal-period-label;
+                        week-mode: root.journal-week-mode;
+                        empty: root.journal-empty;
+                        has-today: root.journal-has-today;
+                        date-label: root.journal-date-label;
+                        selected-date: root.journal-selected-date;
+                        editing: root.journal-editing;
+                        content <=> root.journal-content;
+                        save-label: root.journal-save-label;
+                        error: root.journal-error;
+                        preview-mode: root.journal-preview-mode;
+                        preview-blocks: root.journal-preview-blocks;
+                        attachments: root.journal-attachments;
+                        image-usage: root.journal-image-usage;
+                        add-image-busy: root.journal-add-image-busy;
+                        pending-image: root.journal-pending-image;
+                        pending-image-label: root.journal-pending-image-label;
+                        viewer-visible: root.journal-viewer-visible;
+                        viewer-image: root.journal-viewer-image;
+                        viewer-title: root.journal-viewer-title;
+                        viewer-loading: root.journal-viewer-loading;
+                        viewer-index: root.journal-viewer-index;
+                        open(date) => { root.journal-open(date); }
+                        navigate(delta) => { root.journal-navigate(delta); }
+                        shift(delta) => { root.journal-shift(delta); }
+                        view-mode(mode) => { root.journal-view-mode(mode); }
+                        today => { root.journal-today(); }
+                        new-today => { root.journal-new-today(); }
+                        close => { root.journal-close(); }
+                        edited(value) => { root.journal-edit(value); }
+                        flush => { root.journal-flush(); }
+                        toggle-preview => { root.journal-toggle-preview(); }
+                        retry => { root.journal-retry(); }
+                        open-link(url) => { root.journal-open-link(url); }
+                        add-image => { root.journal-add-image(); }
+                        confirm-image => { root.journal-confirm-image(); }
+                        cancel-image => { root.journal-cancel-image(); }
+                        viewer-open(index) => { root.journal-viewer-open(index); }
+                        viewer-prev => { root.journal-viewer-prev(); }
+                        viewer-next => { root.journal-viewer-next(); }
+                        viewer-close => { root.journal-viewer-close(); }
+                        viewer-delete(id) => { root.journal-viewer-delete(id); }
+                        image-delete(id) => { root.journal-image-delete(id); }
+                    }
+                    if root.current_page != "设置" && root.current_page != "今日任务" && root.current_page != "日历" && root.current_page != "小记" && root.current_page != "日记": PagePlaceholder {
                         icon: root.current_page == "设置" ? root.settings-icon : root.pages[root.active-index].icon;
                         title: root.page-title + "工作区";
                         description: root.current_page == "设置" ? "外观、快捷键和数据管理将在这里统一设置。\n点击内容区返回，可回到进入设置前的页面。" : root.pages[root.active-index].description;

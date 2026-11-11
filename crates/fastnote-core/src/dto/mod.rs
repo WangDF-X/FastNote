@@ -1,9 +1,11 @@
 //! 由统一服务产出的只读视图；UI 不自行推导业务状态。
 
+mod journal;
 mod note;
 mod task;
 mod today;
 
+pub use journal::{JournalAttachmentPayload, JournalImageUsage, JournalSummary};
 pub use note::{
     NoteDateGroup, NoteDetail, NoteFileEntry, NoteListPage, NoteListQuery, NoteSummary,
 };

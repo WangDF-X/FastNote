@@ -1,0 +1,686 @@
+import { ScrollView, TextEdit } from "std-widgets.slint";
+import { ShellPalette } from "../palette.slint";
+import { ActionButton } from "../components/action-button.slint";
+import { NotePreviewBlock } from "../components/markdown-preview.slint";
+import { NoteModeButton } from "../notes/mode-button.slint";
+import { JournalRowData, JournalAttachmentView } from "types.slint";
+export { JournalRowData, JournalAttachmentView } from "types.slint";
+
+/// DIARY-01：按日分组列表、日期导航与单日 Markdown 编辑器。
+export component JournalPage inherits Rectangle {
+    in property <[JournalRowData]> rows;
+    in property <string> period-label;
+    in property <bool> week-mode: false;
+    in property <bool> empty: false;
+    in property <bool> has-today: false;
+    in property <string> date-label;
+    in property <string> selected-date;
+    in property <bool> editing: false;
+    in-out property <string> content;
+    in property <string> save-label;
+    in property <string> error;
+    in property <bool> preview-mode: false;
+    in property <[NotePreviewBlock]> preview-blocks;
+    in property <[JournalAttachmentView]> attachments;
+    in property <string> image-usage;
+    in property <bool> add-image-busy: false;
+    in property <bool> pending-image: false;
+    in property <string> pending-image-label;
+    in property <bool> viewer-visible: false;
+    in property <image> viewer-image;
+    in property <string> viewer-title;
+    in property <bool> viewer-loading: false;
+    in property <int> viewer-index: 0;
+    callback open(string);
+    callback navigate(int);
+    callback shift(int);
+    callback view-mode(int);
+    callback today();
+    callback new-today();
+    callback close();
+    callback edited(string);
+    callback flush();
+    callback toggle-preview();
+    callback retry();
+    callback open-link(string);
+    callback add-image();
+    callback confirm-image();
+    callback cancel-image();
+    callback viewer-open(int);
+    callback viewer-prev();
+    callback viewer-next();
+    callback viewer-close();
+    callback viewer-delete(string);
+    callback image-delete(string);
+    private property <bool> confirm-delete: false;
+    private property <string> delete-image-id;
+
+    background: transparent;
+    // 切到预览后编辑框卸载，保留页面键盘焦点。
+    focus-holder := FocusScope { focus-on-tab-navigation: false; }
+    changed preview-mode => { if (root.preview-mode) { focus-holder.focus(); } }
+    changed viewer-visible => { if (!root.viewer-visible) { root.confirm-delete = false; } }
+    changed editing => { if (!root.editing) { root.delete-image-id = ""; } }
+
+    if !root.editing: VerticalLayout {
+        padding: 12px;
+        spacing: 10px;
+
+        HorizontalLayout {
+            height: 40px;
+            spacing: 8px;
+            cross-axis-alignment: center;
+            HorizontalLayout {
+                horizontal-stretch: 0;
+                cross-axis-alignment: center;
+                spacing: 4px;
+                ActionButton {
+                    label: ""; width: 40px; ghost: true;
+                    with-icon: true;
+                    icon: @image-url("../../../../ui/icons/arrow-left-solid.svg");
+                    text-color: ShellPalette.accent;
+                    accent-hover: true;
+                    accessible-label: root.week-mode ? "上一周" : "上一个月";
+                    activated => { root.shift(-1); }
+                }
+                Text {
+                    text: root.period-label;
+                    width: 144px;
+                    font-size: root.week-mode ? 15px : 17px;
+                    font-weight: 600;
+                    color: ShellPalette.text-primary;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                    overflow: elide;
+                }
+                ActionButton {
+                    label: ""; width: 40px; ghost: true;
+                    with-icon: true;
+                    icon: @image-url("../../../../ui/icons/arrow-left-solid.svg");
+                    icon-rotation: 180deg;
+                    text-color: ShellPalette.accent;
+                    accent-hover: true;
+                    accessible-label: root.week-mode ? "下一周" : "下一个月";
+                    activated => { root.shift(1); }
+                }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            HorizontalLayout {
+                horizontal-stretch: 0;
+                cross-axis-alignment: center;
+                spacing: 8px;
+                toggle := FocusScope {
+                    width: 88px; height: 34px;
+                    accessible-role: button;
+                    accessible-label: root.week-mode ? "切换到月视图" : "切换到周视图";
+                    key-pressed(event) => {
+                        if (event.text == Key.Return || event.text == " ") {
+                            root.view-mode(root.week-mode ? 0 : 1);
+                            return accept;
+                        }
+                        return reject;
+                    }
+                    Rectangle {
+                        width: parent.width; height: parent.height;
+                        border-radius: 7px;
+                        border-width: 1px;
+                        border-color: ShellPalette.border;
+                        background: toggle-touch.has-hover ? ShellPalette.selected : ShellPalette.surface;
+                        Text {
+                            width: parent.width;
+                            height: parent.height;
+                            text: root.week-mode ? "月视图" : "周视图";
+                            font-size: 14px;
+                            color: ShellPalette.text-primary;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        toggle-touch := TouchArea {
+                            clicked => { toggle.focus(); root.view-mode(root.week-mode ? 0 : 1); }
+                        }
+                    }
+                    if toggle.has-focus: Rectangle {
+                        x: -3px; y: -3px;
+                        width: parent.width + 6px; height: parent.height + 6px;
+                        border-radius: 9px;
+                        border-width: 2px;
+                        border-color: ShellPalette.accent;
+                        background: transparent;
+                    }
+                }
+                ActionButton {
+                    label: "今天"; width: 64px; text-size: 13px;
+                    accent-hover: true;
+                    activated => { root.today(); }
+                }
+            }
+        }
+
+        if root.empty: VerticalLayout {
+            vertical-stretch: 1;
+            alignment: center;
+            spacing: 10px;
+            Image {
+                width: 48px; height: 48px;
+                source: @image-url("../../../../ui/icons/journal.svg");
+                colorize: ShellPalette.text-tertiary;
+            }
+            Text {
+                text: "这个月还没有日记 — 写下今天的进展吧";
+                font-size: 14px; color: ShellPalette.text-secondary;
+                horizontal-alignment: center;
+            }
+            HorizontalLayout {
+                alignment: center;
+                ActionButton { label: "开始写"; primary: true; activated => { root.new-today(); } }
+            }
+        }
+
+        if !root.empty: ScrollView {
+            vertical-stretch: 1;
+            content-width: self.visible-width;
+            content-height: list.preferred-height;
+            list := VerticalLayout {
+                width: parent.visible-width;
+                padding-right: 8px;
+                spacing: root.week-mode ? 6px : 2px;
+                for row in root.rows: VerticalLayout {
+                    spacing: 2px;
+                    if row.group != "": Text {
+                        text: row.group;
+                        font-size: 12px; font-weight: 600;
+                        color: ShellPalette.text-tertiary;
+                        height: 26px; vertical-alignment: bottom;
+                    }
+                    row-focus := FocusScope {
+                        height: root.week-mode ? 76px : 64px;
+                        enabled: row.openable;
+                        accessible-role: button;
+                        accessible-label: row.axis + " " + row.excerpt + " " + row.image-count + (row.openable ? "" : "，不可编辑");
+                        key-pressed(event) => {
+                            if (event.text == Key.Return || event.text == " ") {
+                                root.open(row.date);
+                                return accept;
+                            }
+                            return reject;
+                        }
+                        Rectangle {
+                            height: parent.height;
+                            border-radius: root.week-mode ? 12px : 10px;
+                            border-width: row.is-today || row.openable ? 1px : 0px;
+                            border-color: row.is-today ? ShellPalette.accent : ShellPalette.border;
+                            background: row.is-today
+                                ? ShellPalette.selected
+                                : row.openable ? ShellPalette.surface : ShellPalette.canvas;
+                            HorizontalLayout {
+                                padding-left: root.week-mode ? 18px : 14px;
+                                padding-right: root.week-mode ? 18px : 14px;
+                                spacing: root.week-mode ? 14px : 12px;
+                                cross-axis-alignment: center;
+                                VerticalLayout {
+                                    width: root.week-mode ? 58px : 44px;
+                                    alignment: center;
+                                    spacing: root.week-mode ? 3px : 0px;
+                                    Text {
+                                        text: row.axis;
+                                        font-size: root.week-mode ? 16px : 24px;
+                                        font-weight: 600;
+                                        color: row.is-today ? ShellPalette.accent : row.openable ? ShellPalette.text-primary : ShellPalette.text-tertiary;
+                                        horizontal-alignment: center;
+                                    }
+                                    Text {
+                                        text: row.caption;
+                                        font-size: root.week-mode ? 11px : 12px;
+                                        color: row.placeholder ? ShellPalette.text-tertiary : ShellPalette.text-secondary;
+                                        horizontal-alignment: center;
+                                    }
+                                }
+                                Text {
+                                    text: row.excerpt;
+                                    font-size: root.week-mode ? 15px : 14px;
+                                    color: row.placeholder
+                                        ? (row.is-today ? ShellPalette.accent : ShellPalette.text-tertiary)
+                                        : ShellPalette.text-primary;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                    horizontal-stretch: 1;
+                                }
+                                Rectangle {
+                                    width: 48px;
+                                    height: 24px;
+                                    border-radius: 6px;
+                                    background: row.image-count == "" ? transparent : ShellPalette.task-done;
+                                    Text {
+                                        text: row.image-count;
+                                        color: ShellPalette.success;
+                                        font-size: 12px;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                                Text {
+                                    text: row.time;
+                                    width: 150px;
+                                    horizontal-alignment: right;
+                                    font-size: root.week-mode ? 12px : 12px;
+                                    color: ShellPalette.text-tertiary;
+                                    vertical-alignment: center;
+                                }
+                            }
+                            TouchArea {
+                                enabled: row.openable;
+                                clicked => { row-focus.focus(); root.open(row.date); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if root.has-today && !root.empty: HorizontalLayout {
+            ActionButton {
+                label: "＋ 新建今日"; primary: true;
+                activated => { root.new-today(); }
+            }
+            Rectangle { horizontal-stretch: 1; }
+        }
+    }
+
+    if root.editing: VerticalLayout {
+        padding: 12px;
+        spacing: 8px;
+
+        HorizontalLayout {
+            height: 34px;
+            spacing: 10px;
+            ActionButton {
+                label: "返回"; ghost: true; with-icon: true;
+                icon: @image-url("../../../../ui/icons/arrow-left.svg");
+                activated => { root.close(); }
+            }
+            Text {
+                text: root.date-label;
+                font-size: 17px; font-weight: 600;
+                color: ShellPalette.text-primary;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                overflow: elide;
+            }
+            modes := Rectangle {
+                width: 68px; height: 32px; border-radius: 7px; background: ShellPalette.subtle;
+                HorizontalLayout {
+                    padding: 1px; spacing: 2px;
+                    NoteModeButton {
+                        label: "编辑"; icon: @image-url("../../../../ui/icons/note-edit.svg");
+                        selected: !root.preview-mode;
+                        activated => { if (root.preview-mode) { root.toggle-preview(); } }
+                    }
+                    NoteModeButton {
+                        label: "预览"; icon: @image-url("../../../../ui/icons/note-preview.svg");
+                        selected: root.preview-mode;
+                        activated => { if (!root.preview-mode) { root.toggle-preview(); } }
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+            background: ShellPalette.surface;
+            border-width: 1px;
+            border-color: ShellPalette.border;
+            border-radius: 10px;
+
+            VerticalLayout {
+                padding: 14px;
+                spacing: 8px;
+
+                if root.error != "": HorizontalLayout {
+                    spacing: 8px;
+                    Text {
+                        text: root.error; color: ShellPalette.danger;
+                        wrap: word-wrap; vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+                    ActionButton { label: "重试"; activated => { root.retry(); } }
+                }
+
+                if !root.preview-mode: editor := TextEdit {
+                    vertical-stretch: 1;
+                    text <=> root.content;
+                    placeholder-text: "今天的进展与感受…";
+                    wrap: word-wrap;
+                    edited(value) => { root.edited(value); }
+                    init => { self.focus(); }
+                    changed has-focus => { if (!self.has-focus) { root.flush(); } }
+                    key-pressed(event) => {
+                        if (event.modifiers.control && !event.modifiers.alt && !event.modifiers.shift && (event.text == "s" || event.text == "S")) {
+                            root.flush();
+                            return accept;
+                        }
+                        return reject;
+                    }
+                }
+
+                if root.preview-mode: ScrollView {
+                    vertical-stretch: 1;
+                    content-width: self.visible-width;
+                    content-height: preview.preferred-height;
+                    preview := VerticalLayout {
+                        width: parent.visible-width;
+                        spacing: 8px;
+                        for block in root.preview-blocks: HorizontalLayout {
+                            Rectangle { width: block.indent * 18px; }
+                            Rectangle {
+                                horizontal-stretch: 1;
+                                background: block.kind == 7 ? ShellPalette.subtle : transparent;
+                                border-radius: block.kind == 7 ? 6px : 0px;
+                                VerticalLayout {
+                                    padding: block.kind == 7 ? 10px : 0px;
+                                    StyledText {
+                                        text: block.text;
+                                        default-color: ShellPalette.text-primary;
+                                        link-color: ShellPalette.accent;
+                                        link-clicked(url) => { root.open-link(url); }
+                                        default-font-size: block.kind == 1 ? 26px : block.kind == 2 ? 23px : block.kind == 3 ? 20px : block.kind == 4 ? 18px : block.kind == 5 ? 16px : block.kind == 6 ? 15px : 14px;
+                                        default-font-family: block.kind == 7 ? "Consolas" : block.kind >= 1 && block.kind <= 6 ? "SimHei" : "Microsoft YaHei UI";
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            height: root.pending-image ? 40px : 66px;
+            background: transparent;
+
+            if root.pending-image: HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    text: root.pending-image-label;
+                    font-size: 12px;
+                    color: ShellPalette.warning;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: "较大，会明显增加数据库和备份体积。";
+                    font-size: 11px;
+                    color: ShellPalette.danger;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+                ActionButton {
+                    label: "取消";
+                    activated => { root.cancel-image(); }
+                }
+                ActionButton {
+                    label: "添加"; primary: true;
+                    activated => { root.confirm-image(); }
+                }
+            }
+
+            if !root.pending-image: ScrollView {
+                height: 64px;
+                vertical-scrollbar-policy: ScrollBarPolicy.always-off;
+                content-width: gallery.width;
+                content-height: self.visible-height;
+                gallery := HorizontalLayout {
+                    width: max(parent.visible-width, self.preferred-width);
+                    height: 64px;
+                    spacing: 8px;
+                    for item in root.attachments: Rectangle {
+                        width: 84px;
+                        height: 62px;
+                        background: ShellPalette.surface;
+                        border-width: 1px;
+                        border-color: ShellPalette.border;
+                        border-radius: 6px;
+                        thumb-focus := FocusScope {
+                            key-pressed(event) => {
+                                if (event.text == Key.Return || event.text == " ") {
+                                    root.viewer-open(item.index);
+                                    return accept;
+                                }
+                                return reject;
+                            }
+                        }
+                        VerticalLayout {
+                            padding: 3px;
+                            spacing: 2px;
+                            Image {
+                                height: 40px;
+                                source: item.image;
+                                image-fit: contain;
+                            }
+                            Text {
+                                text: item.label;
+                                font-size: 10px;
+                                color: ShellPalette.text-tertiary;
+                                horizontal-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+                        thumb := TouchArea {
+                            clicked => { thumb-focus.focus(); root.viewer-open(item.index); }
+                        }
+                        remove-area := TouchArea {
+                            x: parent.width - 22px;
+                            y: 2px;
+                            width: 22px;
+                            height: 22px;
+                            mouse-cursor: pointer;
+                            clicked => { root.delete-image-id = item.id; }
+                        }
+                        if thumb.has-hover || remove-area.has-hover: Rectangle {
+                            x: parent.width - 19px;
+                            y: 4px;
+                            width: 15px;
+                            height: 15px;
+                            border-radius: 8px;
+                            background: #000000A6;
+                            Text {
+                                text: "×";
+                                color: #FFFFFF;
+                                font-size: 11px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                    VerticalLayout {
+                        width: 96px;
+                        height: 62px;
+                        alignment: center;
+                        ActionButton {
+                            label: root.add-image-busy ? "处理中…" : "添加图片";
+                            with-icon: !root.add-image-busy;
+                            icon: @image-url("../../../../ui/icons/plus.svg");
+                            enabled: !root.add-image-busy;
+                            activated => { root.add-image(); }
+                        }
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            if root.image-usage != "": Text {
+                text: "图片占用 " + root.image-usage;
+                font-size: 11px;
+                color: ShellPalette.text-tertiary;
+                vertical-alignment: center;
+            }
+            Text {
+                text: root.save-label;
+                font-size: 12px; font-weight: 500;
+                color: root.error != "" || root.save-label == "未保存"
+                    ? ShellPalette.danger
+                    : root.save-label != "" && root.save-label.starts-with("已保存")
+                        ? ShellPalette.success
+                        : ShellPalette.text-secondary;
+                vertical-alignment: center;
+            }
+            Rectangle { horizontal-stretch: 1; }
+            Text {
+                text: "Ctrl+S 保存 · Ctrl+/ 切换预览";
+                font-size: 11px; color: ShellPalette.text-tertiary;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    if root.delete-image-id != "": Rectangle {
+        background: ShellPalette.overlay;
+        TouchArea { clicked => { } }
+        Rectangle {
+            width: min(380px, parent.width - 32px);
+            height: 156px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: ShellPalette.surface;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: ShellPalette.border;
+            VerticalLayout {
+                padding: 20px;
+                spacing: 12px;
+                Text { text: "删除这张图片？"; font-size: 16px; font-weight: 600; color: ShellPalette.text-primary; }
+                Text { text: "删除后无法恢复；若这是最后一张且正文为空，该日日记也会被删除。"; color: ShellPalette.text-secondary; wrap: word-wrap; }
+                Rectangle { vertical-stretch: 1; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Rectangle { horizontal-stretch: 1; }
+                    ActionButton { label: "取消"; activated => { root.delete-image-id = ""; } }
+                    ActionButton {
+                        label: "删除"; danger: true;
+                        activated => {
+                            root.image-delete(root.delete-image-id);
+                            root.delete-image-id = "";
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if root.viewer-visible: Rectangle {
+        background: ShellPalette.overlay;
+
+        // 遮罩只拦截点击，查看器内容与按钮在其上层。
+        TouchArea { clicked => { } }
+
+        Rectangle {
+            x: 0px; y: 0px;
+            width: parent.width;
+            height: 44px;
+            background: transparent;
+            HorizontalLayout {
+                padding-left: 16px;
+                padding-right: 16px;
+                spacing: 8px;
+                Text {
+                    text: root.viewer-title;
+                    color: #FFFFFF;
+                    font-size: 14px;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+                ActionButton {
+                    label: "关闭"; ghost: true; text-color: #FFFFFF;
+                    activated => { root.viewer-close(); }
+                }
+            }
+        }
+
+        if root.viewer-loading: Text {
+            text: "正在加载图片…";
+            color: #FFFFFF;
+            font-size: 13px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            width: parent.width;
+            height: parent.height;
+        }
+
+        if !root.viewer-loading: Image {
+            x: 72px;
+            y: 54px;
+            width: parent.width - 144px;
+            height: parent.height - 112px;
+            source: root.viewer-image;
+            image-fit: contain;
+        }
+
+        ActionButton {
+            label: "‹";
+            x: 16px;
+            y: (parent.height - 40px) / 2;
+            width: 40px;
+            ghost: true;
+            text-color: #FFFFFF;
+            accessible-label: "上一张";
+            activated => { root.viewer-prev(); }
+        }
+        ActionButton {
+            label: "›";
+            x: parent.width - 56px;
+            y: (parent.height - 40px) / 2;
+            width: 40px;
+            ghost: true;
+            text-color: #FFFFFF;
+            accessible-label: "下一张";
+            activated => { root.viewer-next(); }
+        }
+        ActionButton {
+            label: "删除图片";
+            danger: true;
+            width: 104px;
+            x: (parent.width - 104px) / 2;
+            y: parent.height - 52px;
+            enabled: root.attachments.length > 0 && root.viewer-index >= 0 && root.viewer-index < root.attachments.length;
+            activated => { root.confirm-delete = true; }
+        }
+
+        if root.confirm-delete: Rectangle {
+            background: ShellPalette.overlay;
+            TouchArea { clicked => { } }
+            Rectangle {
+                width: min(380px, parent.width - 32px);
+                height: 156px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                background: ShellPalette.surface;
+                border-radius: 12px;
+                border-width: 1px;
+                border-color: ShellPalette.border;
+                VerticalLayout {
+                    padding: 20px;
+                    spacing: 12px;
+                    Text { text: "删除这张图片？"; font-size: 16px; font-weight: 600; color: ShellPalette.text-primary; }
+                    Text { text: "删除后无法恢复；若这是最后一张且正文为空，该日日记也会被删除。"; color: ShellPalette.text-secondary; wrap: word-wrap; }
+                    Rectangle { vertical-stretch: 1; }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Rectangle { horizontal-stretch: 1; }
+                        ActionButton { label: "取消"; activated => { root.confirm-delete = false; } }
+                        ActionButton {
+                            label: "删除"; danger: true;
+                            activated => {
+                                if (root.viewer-index >= 0 && root.viewer-index < root.attachments.length) {
+                                    root.viewer-delete(root.attachments[root.viewer-index].id);
+                                }
+                                root.confirm-delete = false;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

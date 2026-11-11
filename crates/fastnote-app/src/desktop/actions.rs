@@ -68,6 +68,8 @@ impl Runtime {
                         || (parse_action(action).is_ok()
                             && self.defer_note_transition(action.to_owned()))
                         || (parse_action(action).is_ok()
+                            && self.defer_journal_transition(action.to_owned()))
+                        || (parse_action(action).is_ok()
                             && self.defer_task_transition(Transition::Navigate(action.to_owned()))))
                 {
                     return ShellUpdate {
@@ -79,6 +81,7 @@ impl Runtime {
                 let update = self.controller.borrow_mut().handle_action(action);
                 if update.route_changed {
                     self.release_notes();
+                    self.release_journal();
                     self.release_calendar();
                     self.capture_task_resume();
                     self.today_dirty.set(true);
@@ -92,7 +95,9 @@ impl Runtime {
                         self.ensure_current_page_resources();
                     }
                     if should_refresh_today(&update, self.main_content_visible())
-                        || ((update.view.page_label == "日历" || update.view.page_label == "小记")
+                        || ((update.view.page_label == "日历"
+                            || update.view.page_label == "小记"
+                            || update.view.page_label == "日记")
                             && self.main_content_visible())
                     {
                         self.defer_page_tasks();

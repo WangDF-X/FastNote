@@ -154,7 +154,7 @@ fn test_v3_upgrade_preserves_reminders_custom_schema_and_backup() {
 
     let store = SqliteSettings::open(&path, now()).unwrap();
     let db = Connection::open(&path).unwrap();
-    assert_eq!(version(&db), 5);
+    assert_eq!(version(&db), 6);
     let status: (String, String) = db
         .query_row(
             "SELECT status,status_changed_at FROM tasks WHERE id='task'",
@@ -199,12 +199,12 @@ fn test_v3_upgrade_preserves_reminders_custom_schema_and_backup() {
 }
 
 #[test]
-fn test_fresh_database_has_v5_schema_indexes_wal_and_audit() {
+fn test_fresh_database_has_v6_schema_indexes_wal_and_audit() {
     let directory = tempdir();
     let path = directory.path().join("nested/fake.db");
     let store = SqliteSettings::open(&path, now()).unwrap();
     let connection = Connection::open(&path).unwrap();
-    assert_eq!(version(&connection), 5);
+    assert_eq!(version(&connection), 6);
     let mode: String = connection
         .pragma_query_value(None, "journal_mode", |row| row.get(0))
         .unwrap();
@@ -217,6 +217,8 @@ fn test_fresh_database_has_v5_schema_indexes_wal_and_audit() {
         "task_dependencies",
         "notes",
         "note_folders",
+        "journal_attachments",
+        "journal_attachment_data",
         "journal_entries",
         "app_settings",
         "reminders",
@@ -255,13 +257,88 @@ fn test_fresh_database_has_v5_schema_indexes_wal_and_audit() {
             .query_row::<i64, _, _>("SELECT count(*) FROM schema_migrations", [], |row| row
                 .get(0))
             .unwrap(),
-        5
+        6
     );
     drop(connection);
     store.checkpoint().unwrap();
     drop(store);
     SqliteSettings::open(&path, now()).unwrap();
     assert!(!directory.path().join("backups").exists());
+}
+
+#[test]
+fn test_v6_preserves_journal_and_allows_blank_content_with_attachments() {
+    let directory = tempdir();
+    let path = directory.path().join("fake.db");
+    create_v1(&path);
+    Connection::open(&path)
+        .unwrap()
+        .execute(
+            "INSERT INTO journal_entries(id,entry_date,content,created_at,updated_at)
+             VALUES('journal','2026-10-23','旧正文','a','b')",
+            [],
+        )
+        .unwrap();
+
+    let _store = SqliteSettings::open(&path, now()).unwrap();
+    let connection = Connection::open(&path).unwrap();
+    connection.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
+    assert_eq!(version(&connection), 6);
+    for table in ["journal_attachments", "journal_attachment_data"] {
+        assert_eq!(
+            connection
+                .query_row::<i64, _, _>(
+                    "SELECT count(*) FROM sqlite_schema WHERE type='table' AND name=?1",
+                    [table],
+                    |row| row.get(0),
+                )
+                .unwrap(),
+            1
+        );
+    }
+    let content: String = connection
+        .query_row(
+            "SELECT content FROM journal_entries WHERE entry_date='2026-10-23'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(content, "旧正文");
+
+    // v6 允许空正文；是否保留由应用层按图片数量决定。
+    connection
+        .execute(
+            "INSERT INTO journal_entries(id,entry_date,content,created_at,updated_at)
+             VALUES('blank','2026-10-24','','a','b')",
+            [],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO journal_attachments(id,entry_date,position,media_type,width,height,byte_size,thumbnail_size,created_at)
+             VALUES('image','2026-10-24',0,'image/png',10,10,100,20,'a')",
+            [],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO journal_attachment_data(attachment_id,bytes,thumbnail) VALUES('image',x'00',x'00')",
+            [],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "DELETE FROM journal_entries WHERE entry_date='2026-10-24'",
+            [],
+        )
+        .unwrap();
+    assert_eq!(
+        connection
+            .query_row::<i64, _, _>("SELECT count(*) FROM journal_attachments", [], |row| row
+                .get(0))
+            .unwrap(),
+        0
+    );
 }
 
 #[test]
@@ -280,7 +357,7 @@ fn test_v1_upgrade_preserves_data_and_produces_complete_v1_backup() {
     assert_eq!(store.load_desktop().unwrap().entry_mode.as_str(), "tray");
     assert_eq!(store.load_desktop().unwrap().theme.as_str(), "dark");
     let connection = Connection::open(&path).unwrap();
-    assert_eq!(version(&connection), 5);
+    assert_eq!(version(&connection), 6);
     let plan: String = connection
         .query_row("SELECT name FROM plans", [], |row| row.get(0))
         .unwrap();

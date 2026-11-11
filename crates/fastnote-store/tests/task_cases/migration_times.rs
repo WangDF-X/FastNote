@@ -52,7 +52,7 @@ fn test_v2_upgrade_preserves_task_and_reminder_and_makes_complete_old_schema_bac
     assert_eq!(task.due_date.unwrap().to_string(), "2026-11-04");
     assert!(task.start_time.is_none() && task.due_time.is_none());
     let connection = Connection::open(&path).unwrap();
-    assert_eq!(version(&connection), 5);
+    assert_eq!(version(&connection), 6);
     assert_eq!(
         connection
             .query_row("SELECT state FROM reminders", [], |row| row

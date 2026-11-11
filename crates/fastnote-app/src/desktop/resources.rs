@@ -57,6 +57,7 @@ impl Runtime {
             || self.dialog_blocked()
             || self.tasks.borrow().resource_protected()
             || self.note_protected()
+            || self.journal_protected()
             || self
                 .with_ui(|ui| {
                     let window = ui.shell.component();
@@ -272,6 +273,8 @@ impl Runtime {
             self.tasks.borrow_mut().today.take();
             self.tasks.borrow_mut().editor.take();
             self.retained_feedback.borrow_mut().take();
+            self.journal_save_timer.stop();
+            *self.journal.borrow_mut() = super::journal::JournalSession::default();
         } else {
             self.tasks.borrow_mut().release_clean_cache();
         }
