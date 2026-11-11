@@ -1,0 +1,23 @@
+// 日记列表行；group 只在该分组第一行非空，避免额外空行。
+// axis/caption 随视图变化：月视图为日号+星期，周视图为星期+月/日。
+// openable 表示点击后能进入编辑器；placeholder 表示没有正文/未到日期。
+export struct JournalRowData {
+    group: string,
+    date: string,
+    axis: string,
+    caption: string,
+    excerpt: string,
+    image-count: string,
+    time: string,
+    is-today: bool,
+    openable: bool,
+    placeholder: bool,
+}
+
+// 已解码的缩略图；index 用于打开查看器。
+export struct JournalAttachmentView {
+    id: string,
+    image: image,
+    label: string,
+    index: int,
+}

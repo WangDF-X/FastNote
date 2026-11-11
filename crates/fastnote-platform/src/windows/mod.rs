@@ -1,4 +1,5 @@
 mod caption;
+mod dialog;
 mod error;
 mod hotkey;
 mod links;
@@ -9,6 +10,7 @@ mod tray;
 mod window;
 
 pub use caption::configure_custom_caption;
+pub use dialog::pick_image_file;
 pub use error::PlatformError;
 pub use hotkey::WindowsHotkey;
 pub use links::open_web_link;

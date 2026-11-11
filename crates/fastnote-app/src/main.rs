@@ -1,6 +1,7 @@
 mod clock;
 mod controller;
 mod desktop;
+mod journal;
 mod logging;
 mod notes;
 mod routing;

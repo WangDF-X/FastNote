@@ -46,7 +46,7 @@
     └── fastnote.log.2026-10-23
 ```
 
-- 数据目录不存放缓存图片、附件；第一版无附件。
+- 日记图片以 BLOB 存入主数据库（`journal_attachments` / `journal_attachment_data`），数据目录不额外存放附件文件；图片占用计入数据库体积。
 - 卸载应用**不删除**用户数据；文档与卸载提示需说明。
 - 用户可在设置中查看并打开数据目录（DATA-01）。
 
@@ -243,11 +243,42 @@ CREATE UNIQUE INDEX ux_notes_converted_task
 CREATE TABLE journal_entries (
     id         TEXT PRIMARY KEY,
     entry_date TEXT NOT NULL UNIQUE CHECK (length(entry_date) = 10),
-    content    TEXT NOT NULL CHECK (length(trim(content)) > 0),
+    content    TEXT NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
 ```
+
+- **schema v6：** 去掉 `length(trim(content)) > 0`，允许「正文为空 + 有图片」的日记；无正文且无附件的条目仍由应用层删除，不落库。
+
+### 4.6a 日记图片附件（schema v6 新增）
+
+```sql
+CREATE TABLE journal_attachments (
+    id             TEXT PRIMARY KEY,
+    entry_date     TEXT NOT NULL REFERENCES journal_entries(entry_date) ON DELETE CASCADE,
+    position       INTEGER NOT NULL,
+    media_type     TEXT NOT NULL CHECK (media_type IN ('image/png', 'image/jpeg')),
+    width          INTEGER NOT NULL CHECK (width > 0),
+    height         INTEGER NOT NULL CHECK (height > 0),
+    byte_size      INTEGER NOT NULL CHECK (byte_size > 0),
+    thumbnail_size INTEGER NOT NULL CHECK (thumbnail_size > 0),
+    created_at     TEXT NOT NULL
+);
+
+CREATE TABLE journal_attachment_data (
+    attachment_id TEXT PRIMARY KEY REFERENCES journal_attachments(id) ON DELETE CASCADE,
+    bytes         BLOB NOT NULL,
+    thumbnail     BLOB NOT NULL
+);
+
+CREATE INDEX idx_journal_attachments_date
+    ON journal_attachments(entry_date, position);
+```
+
+- 附件按 `entry_date` 关联业务主键，删除日记级联删除元数据与原图/缩略图。
+- 原图与缩略图分表存放，列表和缩略图条不读取完整原图。
+- 单张 ≤ 10MB、单日 ≤ 20 张、像素 ≤ 4,000 万；仅接受 PNG/JPEG（按魔数识别），详见 [DIARY-01](../06-journal/01-overview-and-editor.md) §5.1。
 
 ### 4.7 设置
 
@@ -347,7 +378,8 @@ CREATE INDEX idx_journal_date      ON journal_entries(entry_date DESC);
 
 ### 5.1 版本规则
 
-- 当前 schema 版本：**4**。旧 `m0001_init.sql`、`m0002_reminders.sql`、`m0003_task_times.sql` 保持不变；新增 `m0004_task_workflow.sql` 实现 D-TODAY-09。旧库先预迁移备份再顺序升级。
+- 当前 schema 版本：**6**。`m0001`–`m0004` 保持不变；`m0005_note_files.sql` 增加小记文件树（NOTE-03）；`m0006_journal_attachments.sql` 重建日记表并新增图片附件两表。旧库先预迁移备份再顺序升级。
+- v6 在一个 `BEGIN IMMEDIATE` 事务内重建 `journal_entries`（保留 id、日期、正文与时间，仅移除正文非空 CHECK），随后创建附件元数据/二进制两表及索引；重建期间临时停用外键，事务内完成外键与完整性检查，成功或失败都恢复外键开启。旧日记正文与时间不得改写。
 - v4 在一个 `BEGIN IMMEDIATE` 事务内重建 tasks 的三态 CHECK，所有旧 `waiting` 转为 `todo`，其余字段逐列保留；任务树、依赖、小记转换关联、提醒/投递账本及既有索引/时分校验触发器完整保留。为防重建时外键级联删除，事务前临时停用外键执行，事务内完成外键和完整性检查，成功或失败都恢复外键开启；失败不留下部分状态/结构/设置变化。
 - v4 保留 `tasks.default_sort`、`today.show_unscheduled/show_completed` 原值；将 `today.tomorrow_collapsed` 原值和更新时间复制到 `today.later_collapsed`，缺失时用默认 `true`；删除 `today.show_in_progress/show_waiting/tomorrow_collapsed`。无关设置和历史时间不改写。
 - `PRAGMA user_version` 为权威版本；`schema_migrations` 记录历史。
@@ -357,7 +389,7 @@ CREATE INDEX idx_journal_date      ON journal_entries(entry_date DESC);
 ### 5.2 启动流程
 
 1. 读取 `user_version`。
-2. `= 0` 且库为空 → 顺序执行 m0001–m0004，每版记录 `schema_migrations`，最终 `user_version=4`。
+2. `= 0` 且库为空 → 顺序执行 m0001–m0006，每版记录 `schema_migrations`，最终 `user_version=6`。
 3. `> 当前支持版本` → 拒绝打开，提示「数据由更高版本创建，请升级应用」，不写库。
 4. `< 当前版本` → 先创建预迁移备份（`backups/pre-migration-v{from}-{timestamp}.fnsbackup`），再逐版本迁移；失败回滚并保留原库。
 5. 迁移后执行 `PRAGMA foreign_key_check` + `quick_check`；异常进入数据恢复流程。
@@ -381,7 +413,7 @@ CREATE INDEX idx_journal_date      ON journal_entries(entry_date DESC);
 | `backup_created_at` | 备份时间（RFC 3339 UTC） |
 | `backup_app_version` | 生成备份的应用版本 |
 | `backup_schema_version` | 生成时的 schema 版本 |
-| `backup_counts` | 紧凑 JSON：plans/tasks/task_dependencies/notes/journals/reminders/reminder_deliveries 数量（读取 v1 备份时后两项缺省为 0） |
+| `backup_counts` | 紧凑 JSON：plans/tasks/task_dependencies/notes/journals/journal_attachments/reminders/reminder_deliveries 数量（读取 v1 备份时后两项缺省为 0，v6 以前 `journal_attachments` 缺省为 0） |
 
 - 默认文件名：`fastnote-backup-YYYYMMDD-HHmmss.fnsbackup`；同秒冲突追加 `-2`。
 - 备份失败不得留下半成品：临时文件命名为 `.tmp`，失败删除。
@@ -473,8 +505,9 @@ CREATE INDEX idx_journal_date      ON journal_entries(entry_date DESC);
 | 任务 | 10,000 | 100,000 | 单树深度 ≤ 50（UI 显示限制，数据不限） |
 | 依赖边 | 5,000 | 50,000 | 单任务前置 ≤ 20 |
 | 小记 | 5,000 | 100,000 | 单条 ≤ 20,000 字符 |
-| 日记 | 3,000 | 50,000 | 单篇 ≤ 50,000 字符 |
-| 数据库 | < 20MB | 500MB | 超过 200MB 时提示用户备份与清理 |
+| 日记 | 3,000 | 50,000 | 单篇 ≤ 10,000 字符 |
+| 日记图片 | 每篇 0–20 张 | 单张 10MB、单日 20 张 | 原图与缩略图存入数据库；单张像素 ≤ 4,000 万 |
+| 数据库 | < 20MB（无图片时） | 500MB | 超过 200MB 时提示备份与清理；含图片时按实际占用提示，删除图片不立即缩小文件 |
 
 - 普通列表每批加载 ≤200 条；今日按既有每组初始 200、每次追加 200、最多 1000 的会话上限。分页须限制查询分配，不意味着把整个数据库先读入内存。
 - 长文本编辑超过 20,000 字符时提示性能风险（见各模块）。
@@ -492,6 +525,8 @@ CREATE INDEX idx_journal_date      ON journal_entries(entry_date DESC);
 | AC-ARCH-20 | 数据库版本高于应用支持版本时拒绝打开并给出明确提示，不修改文件。 |
 | AC-ARCH-21 | 备份文件可在另一平台/设备恢复（schema 兼容时），设置与数据完整。 |
 | AC-ARCH-22 | 配置项缺失或非法时应用正常启动并使用默认值。 |
+| AC-ARCH-23 | v1–v5 可顺序迁移至 v6；旧日记正文/日期/时间保留，`user_version=6` 且附件两表存在。 |
+| AC-ARCH-24 | 删除日记条目级联删除其图片元数据与二进制，不留下孤儿行。 |
 | AC-ARCH-23 | 参考机查询 p95：今日在 1 万任务下 <10ms；月历在 1 万任务下 <20ms（含组装）；包含 2,000 任务的计划详情 <30ms。测量口径见 [QA-03 §8](../10-quality/03-test-strategy.md)。 |
 | AC-ARCH-24 | 删除计划（归档后）后，其任务、依赖、笔记关联均无残留（外键检查通过）。 |
 

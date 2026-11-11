@@ -4,13 +4,14 @@ use rusqlite::{params, Connection, TransactionBehavior};
 use crate::database::check_integrity;
 use crate::StoreError;
 
-pub(crate) const CURRENT_VERSION: i64 = 5;
-const SCRIPTS: [&str; 5] = [
+pub(crate) const CURRENT_VERSION: i64 = 6;
+const SCRIPTS: [&str; 6] = [
     include_str!("../migrations/m0001_init.sql"),
     include_str!("../migrations/m0002_reminders.sql"),
     include_str!("../migrations/m0003_task_times.sql"),
     include_str!("../migrations/m0004_task_workflow.sql"),
     include_str!("../migrations/m0005_note_files.sql"),
+    include_str!("../migrations/m0006_journal_attachments.sql"),
 ];
 
 const DEFAULTS: &[(&str, &str)] = &[
@@ -59,7 +60,7 @@ fn migrate_step(
     script: &str,
     timestamp: &str,
 ) -> Result<(), StoreError> {
-    if version != 4 && version != 5 {
+    if !matches!(version, 4..=6) {
         return migrate_one(connection, version, script, timestamp);
     }
     // SQLite 表重建必须在事务外临时关闭外键；事务内仍执行 foreign_key_check。

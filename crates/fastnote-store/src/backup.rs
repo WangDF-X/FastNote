@@ -93,6 +93,7 @@ fn write_backup(
         "plans": count("plans")?, "tasks": count("tasks")?,
         "task_dependencies": count("task_dependencies")?, "notes": count("notes")?,
         "journals": count("journal_entries")?,
+        "journal_attachments": if version >= 6 { count("journal_attachments")? } else { 0 },
         "reminders": if version >= 2 { count("reminders")? } else { 0 },
         "reminder_deliveries": if version >= 2 { count("reminder_deliveries")? } else { 0 },
     })

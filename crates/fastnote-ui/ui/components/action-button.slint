@@ -23,6 +23,8 @@ export component ActionButton inherits Rectangle {
     in property <bool> danger: false;
     /// 普通关闭或清除操作，仅在交互时突出危险色。
     in property <bool> dismiss: false;
+    /// hover 时使用淡蓝主题底色（用于“今天”等轻量导航按钮）。
+    in property <bool> accent-hover: false;
     in property <bool> enabled: true;
     /// 焦点锚点标识，用于对话框关闭后精确恢复焦点；空字符串表示不参与。
     in property <string> focus-key: "";
@@ -60,7 +62,7 @@ export component ActionButton inherits Rectangle {
     border-radius: 6px;
     border-width: filled || root.ghost ? 0px : 1px;
     border-color: ShellPalette.border;
-    background: filled ? (mouse-area.pressed ? fill-color.darker(ShellPalette.dark ? 0.1 : 0.25) : mouse-area.has-hover ? fill-color.darker(ShellPalette.dark ? 0.05 : 0.1) : fill-color) : root.enabled && root.dismiss && (mouse-area.has-hover || mouse-area.pressed) ? ShellPalette.danger-subtle : (mouse-area.pressed ? ShellPalette.subtle : mouse-area.has-hover ? ShellPalette.hover : root.ghost ? transparent : ShellPalette.surface);
+    background: filled ? (mouse-area.pressed ? fill-color.darker(ShellPalette.dark ? 0.1 : 0.25) : mouse-area.has-hover ? fill-color.darker(ShellPalette.dark ? 0.05 : 0.1) : fill-color) : root.enabled && root.dismiss && (mouse-area.has-hover || mouse-area.pressed) ? ShellPalette.danger-subtle : (mouse-area.pressed ? ShellPalette.subtle : mouse-area.has-hover ? (root.accent-hover ? ShellPalette.selected : ShellPalette.hover) : root.ghost ? transparent : ShellPalette.surface);
     animate background { duration: 120ms; }
     opacity: enabled ? 1 : 0.45;
     forward-focus: keyboard;

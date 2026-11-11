@@ -1003,6 +1003,7 @@ dependencies = [
  "fastnote-platform",
  "fastnote-store",
  "fastnote-ui",
+ "image",
  "pulldown-cmark",
  "rusqlite",
  "slint",

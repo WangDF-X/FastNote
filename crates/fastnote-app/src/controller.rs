@@ -1,6 +1,6 @@
 //! 路由唯一持有者：完整参数导航、会话保留、设置与计划详情的显式返回。
 
-use fastnote_core::Clock;
+use fastnote_core::{Clock, NaiveDate};
 use fastnote_ui::{ShellUpdate, ShellView};
 
 use crate::routing::{parse_action, NavigationAction, Page, Route, RouteSessions};
@@ -24,6 +24,19 @@ impl<C: Clock> AppController<C> {
 
     pub(crate) fn shell_view(&self) -> ShellView {
         self.route.shell_view(self.clock.today())
+    }
+
+    /// 当前完整路由，供页面按需加载各自的参数。
+    pub(crate) fn route(&self) -> Route {
+        self.route
+    }
+
+    /// 日记内部切换日期只更新会话参数，不触发整页路由变化。
+    pub(crate) fn retain_journal_date(&mut self, date: NaiveDate) {
+        if matches!(self.route, Route::Journal { .. }) {
+            self.route = Route::Journal { date };
+            self.sessions.remember(self.route);
+        }
     }
 
     pub(crate) fn handle_action(&mut self, action: &str) -> ShellUpdate {
@@ -386,6 +399,31 @@ mod tests {
         controller.handle_action("navigate:今日任务");
         controller.handle_action("navigate:小记");
         assert_eq!(controller.route, Route::Notes { selected: None });
+    }
+
+    #[test]
+    fn test_journal_date_is_retained_without_treating_inner_navigation_as_back() {
+        let mut controller = controller();
+        controller.handle_action("navigate:日记");
+        controller.retain_journal_date(date("2026-11-08"));
+        assert_eq!(
+            controller.route(),
+            Route::Journal {
+                date: date("2026-11-08")
+            }
+        );
+        // 其他页面不受影响。
+        controller.handle_action("navigate:今日任务");
+        controller.retain_journal_date(date("2026-11-09"));
+        assert_eq!(controller.route(), Route::Today);
+        // 再进入日记沿用会话内最后一天。
+        controller.handle_action("navigate:日记");
+        assert_eq!(
+            controller.route(),
+            Route::Journal {
+                date: date("2026-11-08")
+            }
+        );
     }
 
     #[test]

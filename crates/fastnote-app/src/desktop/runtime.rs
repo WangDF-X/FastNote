@@ -107,6 +107,9 @@ pub(super) struct Runtime {
     pub notes: RefCell<super::notes::NoteSession>,
     pub note_syncing: Cell<bool>,
     pub note_save_timer: Timer,
+    pub journal: RefCell<super::journal::JournalSession>,
+    pub journal_syncing: Cell<bool>,
+    pub journal_save_timer: Timer,
 }
 
 impl Runtime {
@@ -184,6 +187,9 @@ impl Runtime {
             notes: RefCell::new(super::notes::NoteSession::default()),
             note_syncing: Cell::new(false),
             note_save_timer: Timer::default(),
+            journal: RefCell::new(super::journal::JournalSession::default()),
+            journal_syncing: Cell::new(false),
+            journal_save_timer: Timer::default(),
         });
         register(&runtime);
         runtime.connect_kernel();
@@ -215,6 +221,8 @@ impl Runtime {
                 Reply::Queried { id, result } => self.task_queried(id, result),
                 Reply::NoteExecuted { id, result } => self.note_executed(id, result),
                 Reply::NoteQueried { id, result } => self.note_queried(id, result),
+                Reply::JournalExecuted { id, result } => self.journal_executed(id, result),
+                Reply::JournalQueried { id, result } => self.journal_queried(id, result),
             }
         }
         while let Ok(event) = self.native.try_recv() {

@@ -6,6 +6,7 @@ mod calendar;
 mod close;
 mod effects;
 mod gesture;
+mod journal;
 mod lease;
 mod lifecycle;
 mod notes;

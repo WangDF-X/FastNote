@@ -37,6 +37,11 @@ impl Runtime {
         let check = self.observe_task_clock();
         self.sync_shell_date(check.sample.local.date());
         self.ensure_current_page_resources();
+        let page = self.controller.borrow().shell_view().page_label;
+        if page == "日记" {
+            self.load_journal();
+            return;
+        }
         if self.controller.borrow().shell_view().page_label == "小记" {
             self.load_notes();
             return;
@@ -101,6 +106,7 @@ impl Runtime {
     /// 隐藏只失效、取消普通打开/刷新意图；必要保存/删除确认读仍由内核接收。
     pub(in crate::desktop) fn task_page_hidden(&self) {
         self.release_notes();
+        self.release_journal();
         self.release_calendar();
         self.pending_effects.borrow_mut().discard_page_effects();
         self.capture_task_resume();

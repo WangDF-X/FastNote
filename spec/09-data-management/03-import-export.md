@@ -36,17 +36,30 @@
 | `tasks` | 所有任务（含已完成） |
 | `notes` | 所有小记 |
 | `journals` | 所有日记 |
+| `journal_attachments` | 所有日记图片元数据与原图/缩略图（放入 zip 的 `images/`） |
 | `settings` | 通用设置 + 任务偏好（不含路径相关字段） |
 | `meta` | 应用元数据中不敏感的部分 |
 
 > **已确认（2026-10-26）Q-DATA-21：** 导出是否包含 app_meta（如窗口几何、入口位置等）？→ **当前默认处理：** 不包含——app_meta 是环境相关的，重新安装后会自动生成合理默认值。
 
-### 3.2 文件格式
+### 3.2 文件格式（2026-11-10 修订：`.fnzip`）
+
+导出为 ZIP 归档，扩展名 `.fnzip`，内含 `data.json` 与图片目录：
+
+```text
+fastnote-export-20261110-143200.fnzip
+├── data.json
+└── images/
+    ├── <attachment-id>.png
+    └── <attachment-id>.jpg
+```
+
+`data.json`：
 
 ```jsonc
 {
-  "format_version": 2,
-  "exported_at": "2026-10-23T14:32:00Z",
+  "format_version": 3,
+  "exported_at": "2026-11-10T14:32:00Z",
   "fastnote_version": "1.0.0",
   "data": {
     "plans": [ ... ],
@@ -54,28 +67,45 @@
     "tasks": [ ... ],
     "notes": [ ... ],
     "journals": [ ... ],
+    "journal_attachments": [
+      {
+        "id": "019a...",
+        "entry_date": "2026-11-10",
+        "position": 0,
+        "media_type": "image/png",
+        "width": 1280,
+        "height": 720,
+        "byte_size": 345678,
+        "thumbnail_size": 23456,
+        "created_at": "2026-11-10T06:32:00Z",
+        "file": "images/019a....png",
+        "thumbnail": "images/019a....thumb.jpg"
+      }
+    ],
     "settings": { ... }
   }
 }
 ```
 
-- JSON 格式版本与数据库 schema 分开管理；本轮 D-TODAY-09 只实施数据库 v4 升级，不新增导入导出功能。后续实现旧格式读取时，旧 `waiting` 统一正规化为 `todo`，旧明日折叠键映射为稍后折叠键、废弃两个状态分组开关；新导出只包含三态和现行设置。
-- 文件编码：UTF-8。
-- 缩进：2 空格（可读性优先于体积）。
-- 文件大小预期：典型使用场景 < 5MB。
+- JSON 格式版本与数据库 schema 分开管理；v1 导出不再生成纯 JSON 图片 base64。
+- 文件编码 UTF-8；`data.json` 缩进 2 空格；图片按原字节写入，不做二次编码。
+- 文件大小随图片数量增长，导出前展示合计大小；不再承诺“典型 < 5MB”。
+- ZIP 依赖在实现导入导出时按项目规则论证版本、许可证、体积与性能，不提前写入依赖。
 
 ### 3.3 导出流程
 
 ```text
-1. 用户点击「导出数据」按钮 → 弹出文件选择对话框
-2. 选择保存路径 → .json 后缀自动补全
+1. 用户点击「导出数据」按钮 → 弹出文件保存对话框
+2. 选择保存路径 → .fnzip 后缀自动补全
 3. 执行导出：
-   a. 从 DB 读取所有实体
-   b. 组装 JSON 对象
-   c. 写入文件
-4. Toast「已导出到 path.json」+ 「打开文件夹」链接
-5. 同时记录日志：导出完成, count=N entities, size=M KB
+   a. 从 DB 读取所有实体与日记图片
+   b. 组装 data.json，原图/缩略图按附件 ID 写入 images/
+   c. 写 ZIP 临时文件 → 校验 → 原子重命名
+4. Toast「已导出到 path.fnzip」+ 「打开文件夹」链接
+5. 同时记录日志：导出完成, count=N entities, images=M, size=K KB
 ```
+
+> **兼容：** 实现导入时仍需读取 v1/v2 JSON（无图片）；v3 `.fnzip` 为唯一新导出格式。旧 `waiting` 统一正规化为 `todo`，旧明日折叠键映射为稍后折叠键。
 
 导出期间：
 - 显示模态进度框：「正在导出数据...」（不可取消或提供取消按钮）。
@@ -87,21 +117,21 @@
 
 ### 4.1 导入前确认
 
-点击「导入数据」→ 选择 `.json` 文件 → 弹窗预览并确认：
+点击「导入数据」→ 选择 `.fnzip` 文件 → 弹窗预览并确认：
 
 ```text
 ┌───────────────────────────────────┐
 │ 导入数据                          │
 │                                   │
-│ 文件: fastnote_export_2026.json   │
-│ 版本: format_version=2            │
+│ 文件: fastnote_export_2026.fnzip  │
+│ 版本: format_version=3            │
 │                                   │
 │ 导入内容:                         │
 │ • 计划    3 个                    │
 │ • 阶段    7 个                    │
 │ • 任务   45 个                    │
 │ • 小记   23 条                    │
-│ • 日记   12 篇                    │
+│ • 日记   12 篇（图片 8 张）        │
 │                                   │
 │ 导入模式: 替换现有数据             │
 │ ──────────────────────           │
@@ -126,14 +156,15 @@
 ### 4.3 导入流程
 
 ```text
-1. 读取并验证 JSON 结构（schema check）
-2. 自动创建一次备份 → backup_pre_import_YYYYMMDD.db.copy
-3. BEGIN IMMEDIATE 事务
-4. 删除 plans/stages/tasks/notes/journals 中的所有数据
-5. 逐批次 INSERT 新数据（每 100 条 commit 一次检查点）
-6. COMMIT
-7. Toast「已导入 N 个实体，正在重启...」
-8. std::process::exit(0) → 下次启动加载新数据
+1. 读取 .fnzip → 验证 data.json 结构与 format_version
+2. 校验每个附件的 images/ 文件存在、字节数与元数据一致
+3. 自动创建一次备份 → backup_pre_import_YYYYMMDD.fnsbackup
+4. BEGIN IMMEDIATE 事务
+5. 删除 plans/stages/tasks/notes/journal_entries 中的所有数据（附件级联删除）
+6. 逐批次 INSERT 新数据；日记图片按附件 ID 写入元数据与 BLOB
+7. COMMIT
+8. Toast「已导入 N 个实体，正在重启...」
+9. std::process::exit(0) → 下次启动加载新数据
 ```
 
 ### 4.4 错误处理
@@ -141,6 +172,8 @@
 | 错误类型 | 处理方式 |
 | --- | --- |
 | JSON 格式错误 | Dialog 告知具体行号和错误原因 |
+| ZIP 损坏或缺少图片文件 | Dialog 指出缺失的附件 ID/文件名；不修改当前数据 |
+| 图片字节数与元数据不一致 | 中止导入并提示文件已损坏；不修改当前数据 |
 | schema version 不匹配 | Dialog 告知需要更新的版本 |
 | 磁盘空间不足 | 中止导入 + 提示 + 自动删除了备份（如有） |
 | 导入中途崩溃 | 下次启动时检测到异常标记 → 自动回滚到 pre-import 备份 |
@@ -174,12 +207,13 @@
 
 | 编号 | 验收标准 |
 | --- | --- |
-| AC-DATA-11 | 导出 JSON 格式正确，包含所有必要实体集合且版本号=2。 |
-| AC-DATA-12 | 导入时预览显示正确的各实体数量。 |
+| AC-DATA-11 | 导出 `.fnzip` 格式正确，包含所有必要实体集合且版本号=3。 |
+| AC-DATA-12 | 导入时预览显示正确的各实体与图片数量。 |
 | AC-DATA-13 | 替换模式下导入后旧数据完全被清除。 |
 | AC-DATA-14 | 导入过程中如果失败能自动回滚到 pre-import 备份。 |
-| AC-DATA-15 | 不支持的文件格式（非 JSON）拒绝并告知原因。 |
-| AC-DATA-16 | 导出文件大小符合预期（<5MB for typical use）。 |
+| AC-DATA-15 | 不支持的文件格式（非 `.fnzip` 或旧 JSON 之外的格式）拒绝并告知原因。 |
+| AC-DATA-16 | 导出文件大小与内容一致，图片按原字节写入，不含 base64。 |
+| AC-DATA-17 | 含图片的导出再导入后，日记正文、图片顺序与查看结果一致。 |
 
 ---
 
@@ -192,3 +226,4 @@
 | Q-DATA-21 | §3.1 | 导出是否包含 app_meta | 不包含 |
 | Q-DATA-22 | §4.2 | merge 模式的同名计划 | 不支持 merge |
 | Q-DATA-23 | §5 | Markdown/CSV 导出 | v1 不实现 |
+| Q-DATA-24 | §3.2 | ZIP 实现依赖 | 做导入导出时论证并引入；本轮只定格式 |
